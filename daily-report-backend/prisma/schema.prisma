@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         String    // Admin, Manager (Pre-Sales/Delivery), Staff (SE, PM, Sales)
+  status       String    @default("invited") // invited, active, suspended
+  avatarUrl    String?
+  supervisorId String?
+  team         String?
+
+  supervisor   User?     @relation("SupervisorRelation", fields: [supervisorId], references: [id])
+  subordinates User[]    @relation("SupervisorRelation")
+
+  activities   Activity[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Activity {
+  id             String   @id @default(uuid())
+  userId         String
+  actKey         String   // Category/Type of activity
+  topic          String?  // Title or topic
+  dur            Float    // Duration in hours
+  date           String   // YYYY-MM-DD
+  startTime      String?  // HH:MM
+  endTime        String?  // HH:MM
+  status         String   @default("completed") // completed, progress
+  
+  // Jira specific
+  source         String   @default("app") // app, jira
+  ticketId       String?
+  ticketTitle    String?
+  
+  // Pre-Sales/PM specific
+  customerName   String?
+  prName         String?
+  nps            Int?
+  leadId         String?
+  prospectValue  Float?
+  
+  user           User         @relation(fields: [userId], references: [id])
+  attachments    Attachment[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Attachment {
+  id         String   @id @default(uuid())
+  activityId String
+  filename   String
+  path       String
+  mimetype   String
+  size       Int
+  createdAt  DateTime @default(now())
+
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+model Setting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

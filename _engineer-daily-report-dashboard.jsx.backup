@@ -1,0 +1,2402 @@
+import { useState, useMemo, useEffect, useRef } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, Legend, CartesianGrid } from "recharts";
+
+// ─────────────────────────────────────────────
+// DESIGN TOKENS
+// ─────────────────────────────────────────────
+const T = {
+  // Base
+  bg:       "#0F1117",
+  surface:  "#171923",
+  surfaceHi:"#1E2333",
+  border:   "#252B3B",
+  borderHi: "#2F3850",
+  // Text
+  textPri:  "#F0F4FF",
+  textSec:  "#8892AA",
+  textMute: "#4A5568",
+  // Accents
+  indigo:   "#6366F1",
+  indigoHi: "#818CF8",
+  indigoLo: "#1E1F3B",
+  violet:   "#A855F7",
+  violetLo: "#1E1535",
+  teal:     "#14B8A6",
+  tealLo:   "#0D2926",
+  amber:    "#F59E0B",
+  amberLo:  "#2A1F08",
+  red:      "#F87171",
+  redLo:    "#2A1111",
+  green:    "#34D399",
+  greenLo:  "#0D2420",
+  // Jira brand
+  jira:     "#2684FF",
+  jiraLo:   "#0D1F3C",
+};
+
+const FONT   = "'DM Sans', 'Plus Jakarta Sans', sans-serif";
+const DISPLAY= "'Syne', 'DM Sans', sans-serif";
+const MONO   = "'JetBrains Mono', 'Fira Code', monospace";
+
+// ─────────────────────────────────────────────
+// ACTIVITY TAXONOMY
+// ─────────────────────────────────────────────
+// SOURCE = jira → cukup ticket ID + jam
+// SOURCE = app  → full form
+const ACTS = {
+  // ── DELIVERY ──
+  jira_impl: {
+    label: "Implementation",   icon: "🗂",  color: T.teal,  colorLo: T.tealLo,
+    team: "delivery", source: "jira", kpiDomain: "impl",
+    desc: "Project task dari Jira (PROJ-xxx)",
+  },
+  jira_pm: {
+    label: "Preventive Maint.",icon: "🔧", color: T.amber, colorLo: T.amberLo,
+    team: "delivery", source: "jira", kpiDomain: "pm",
+    desc: "PM ticket dari Jira (MAINT-xxx)",
+  },
+  jira_cm: {
+    label: "Corrective Maint.",icon: "🚨", color: T.red,   colorLo: T.redLo,
+    team: "delivery", source: "jira", kpiDomain: "cm",
+    desc: "Incident/CM ticket dari Jira (CM-xxx / SUP-xxx)",
+  },
+  jira_enh: {
+    label: "Enhancement",      icon: "⚡", color: T.indigo, colorLo: T.indigoLo,
+    team: "delivery", source: "jira", kpiDomain: "enh",
+    desc: "Enhancement request dari Jira",
+  },
+  jira_ops: {
+    label: "Operational Svc",  icon: "⚙️", color: T.violet, colorLo: T.violetLo,
+    team: "delivery", source: "jira", kpiDomain: "ops",
+    desc: "Ops/KB4 task dari Jira",
+  },
+  pm_presentation: {
+    label: "Q PM Presentation", icon: "📊", color: "#F472B6", colorLo: "#2A0F1E",
+    team: "delivery", source: "app", kpiDomain: "pm",
+    desc: "Presentasi Quarterly PM ke Customer — wajib input Nama Customer dan Skor NPS (0–4)",
+  },
+  learning: {
+    label: "Learning & Dev",   icon: "📚", color: "#22D3EE", colorLo: "#0C2230",
+    team: "delivery", source: "app",
+    desc: "Belajar mandiri, baca artikel, ikut training, sertifikasi",
+  },
+  internal: {
+    label: "Internal Meeting", icon: "💬", color: "#94A3B8", colorLo: "#1A1F2E",
+    team: "delivery", source: "app",
+    desc: "Rapat internal, briefing tim, koordinasi non-klien",
+  },
+  koordinasi: {
+    label: "Koordinasi Klien", icon: "🤝", color: "#FB923C", colorLo: "#2A1800",
+    team: "delivery", source: "app",
+    desc: "Koordinasi dengan klien di luar Jira ticket aktif",
+  },
+  // ── PRE-SALES ──
+  prospecting: {
+    label: "Prospecting",      icon: "🔍", color: T.violet, colorLo: T.violetLo,
+    team: "presales", source: "app",
+  },
+  demo: {
+    label: "Demo & Presentasi",icon: "🎯", color: "#C084FC", colorLo: "#1E1030",
+    team: "presales", source: "app",
+  },
+  proposal: {
+    label: "Proposal / SOW",   icon: "📋", color: "#E879F9", colorLo: "#2A0F30",
+    team: "presales", source: "app",
+  },
+  negotiation: {
+    label: "Negosiasi",        icon: "🤝", color: T.teal,   colorLo: T.tealLo,
+    team: "presales", source: "app",
+  },
+  survey: {
+    label: "Site Survey",      icon: "📐", color: T.amber,  colorLo: T.amberLo,
+    team: "presales", source: "app",
+  },
+  ps_learning: {
+    label: "Learning & Dev",   icon: "📚", color: "#22D3EE", colorLo: "#0C2230",
+    team: "presales", source: "app",
+  },
+  ps_internal: {
+    label: "Internal Meeting", icon: "💬", color: "#94A3B8", colorLo: "#1A1F2E",
+    team: "presales", source: "app",
+  },
+};
+
+const PS_STAGES = ["Contacted","Demo Scheduled","Demo Done","Proposal Sent","Negotiation","Won","Lost"];
+
+const ROLES = {
+  admin:   { label:"Admin",             color:T.red,    lo:T.redLo,    team:"all"      },
+  mgr_ps:  { label:"Mgr Pre-Sales",     color:T.violet, lo:T.violetLo, team:"presales" },
+  mgr_dl:  { label:"Mgr Delivery",      color:T.teal,   lo:T.tealLo,   team:"delivery" },
+  pm:      { label:"Project Manager",   color:T.amber,  lo:T.amberLo,  team:"delivery" },
+  presales:{ label:"Sales Engineer",    color:T.violet, lo:T.violetLo, team:"presales" },
+  delivery:{ label:"Service Engineer",  color:T.teal,   lo:T.tealLo,   team:"delivery" },
+};
+
+const teamOf  = r => ROLES[r]?.team || "all";
+const isAdmin = r => r === "admin";
+const isMgr   = r => ["admin","mgr_ps","mgr_dl"].includes(r);
+const isPM    = r => r === "pm";
+const actsFor = r => {
+  const t = teamOf(r);
+  return Object.entries(ACTS)
+    .filter(([,v]) => t === "all" || v.team === t)
+    .reduce((acc,[k,v]) => ({...acc,[k]:v}), {});
+};
+
+// ─────────────────────────────────────────────
+// KPI ENGINE
+// ─────────────────────────────────────────────
+// PD-001 KPI scoring helpers — sesuai dokumen resmi
+const KPI = {
+  label: s => s==null?"N/A":s===-1?"Pelanggaran":s>=3.5?"Sangat Baik":s>=3?"Baik":s>=2?"Cukup":s>=1?"Kurang":"Tidak Memenuhi",
+  color: s => s==null?T.textMute:s===-1?T.red:s>=3.5?T.green:s>=3?T.teal:s>=2?T.amber:T.red,
+  eligible: s => s!=null && s!==-1 && s>=3.0,
+
+  // Implementasi
+  seImplTask: p => p>=90?4:p>=75?3:p>=50?2:p>=25?1:0,
+  // Dokumentasi: l=jumlah doc terlambat, c=true jika doc kritikal (MoP/RC) missing
+  seImplDoc: (l,c) => c?0:l===0?4:l===1?3:l<=3?2:l>3?1:0,
+
+  // Preventive Maintenance
+  // sEnd = akhir rentang tanggal (date string); act = tanggal aktual pelaksanaan
+  sePMExec: (sEnd, act) => {
+    if(!act) return -1;
+    const diff = Math.round((new Date(act) - new Date(sEnd)) / 864e5);
+    if(diff <= 0) return 4;       // dalam rentang
+    if(diff <= 7) return 3;       // ≤ 1 minggu setelah
+    if(diff <= 14) return 2;      // > 1–2 minggu
+    if(diff <= 28) return 1;      // > 2–4 minggu
+    return 0;                     // > 4 minggu
+  },
+  // reportDays = hari kerja setelah tanggal aktual PM
+  sePMRep: d => d==null?-1:d<=3?4:d<=5?3:d<=10?2:d<=15?1:0,
+
+  // Corrective Maintenance — Response (SLA 15 menit utk semua severity)
+  // m = menit aktual response
+  seCMResp: m => m==null?-1:m===0?0:m<=15?4:m<=30?3:m<=45?2:m>45?1:-1,
+
+  // Resolution time — sla per severity (jam): T1=8, T2=16, T3/T4=48
+  seCMRes: (h, sev) => {
+    if(h==null) return -1;
+    const sla = sev===1?8:sev===2?16:48;
+    if(h===0) return 0;   // direspon tanpa tindak lanjut
+    if(h<=sla) return 4;
+    if(h<=sla*2) return 3;
+    if(h<=sla*3) return 2;
+    return 1;
+  },
+
+  // Enhancement — SLA 1 hari kerja = 8 jam
+  seEnh: h => h==null?-1:h===0?0:h<=8?4:h<=16?3:h<=24?2:1,
+
+  // Operational Service
+  // ml = hari terlambat monthly, ql = hari terlambat quarterly
+  seOpsMonthly:   d => d==null?-1:d<=0?4:d<=7?3:d<=14?2:d<=28?1:0,
+  seOpsQuarterly: d => d==null?-1:d<=0?4:d<=7?3:d<=14?2:d<=28?1:0,
+  seOps: (ml, ql, nps) => {
+    const scores = [];
+    if(ml!=null) scores.push(ml<0?4:ml===0?4:ml<=7?3:ml<=14?2:ml<=28?1:0);
+    if(ql!=null) scores.push(ql<0?4:ql===0?4:ql<=7?3:ql<=14?2:ql<=28?1:0);
+    scores.push(nps??3);
+    if(scores.some(s=>s===-1)) return -1;
+    return scores.reduce((a,b)=>a+b,0)/scores.length;
+  },
+
+  // PD-002 Project Manager helpers
+  // PD-002 Pasal 10.1: CD aktual vs rencana
+  pmTL: (pl,ac) => { if(!pl||!ac) return null; const d=(ac-pl)/pl*100; return d<=10?4:d<=25?3:d<=50?2:d<=100?1:0; },
+  // PD-002 Pasal 10.2: MD aktual vs rencana
+  pmMD: (pl,ac) => { if(!pl||!ac) return null; const d=(ac-pl)/pl*100; return d<=10?4:d<=25?3:d<=50?2:d<=100?1:0; },
+  pmBAST: (dl,ac) => { if(!ac) return -1; const diff=Math.round((new Date(ac)-new Date(dl))/864e5); return diff<=0?4:diff<=7?3:diff<=14?2:1; },
+  pmGov: d => d==null?-1:d<0?4:d===0?4:d<=7?3:d<=14?2:d<=28?1:0,
+  // Admin/docs PD-002 Pasal 10.3: kritikal = SOW/BAST missing → 0
+  pmAdmin: (l,c) => c?0:l===0?4:l===1?3:l<=3?2:l>3?1:0,
+  // Ops NPS delivery PD-002 Pasal 16.2: opsNpsSent = days late
+  pmOpsNps: d => d==null?-1:d<0?4:d===0?4:d<=7?3:d<=14?2:d<=28?1:0,
+};
+
+function calcKPI(user, acts) {
+  const my = acts.filter(a => a.user === user.name);
+  const role = user.role;
+  if (role !== "delivery" && role !== "pm") return null;
+
+  if (isPM(role)) {
+    // PD-002: 3 domain – Impl, PM (BAST), Ops (Governance + NPS)
+    const impl = my.filter(a => a.actKey==="jira_impl" && a.kpi?.cdPlan!=null);
+    const pm   = my.filter(a => a.actKey==="jira_pm"   && a.kpi?.bastDeadline);
+    // Ops: govLateDays (monthly governance issues), opsNpsSent (days late NPS delivery)
+    const ops  = my.filter(a => a.actKey==="jira_ops");
+    const hasOps = ops.some(a => a.kpi?.govLateDays!=null || a.kpi?.opsNpsSent!=null);
+
+    // Domain Implementasi: (TL + MD + Admin + NPS) / 4
+    const iS = impl.length ? (() => {
+      const scores = impl.map(a => {
+        const tl  = KPI.pmTL(a.kpi.cdPlan, a.kpi.cdActual);
+        const md  = KPI.pmMD(a.kpi.mdPlan, a.kpi.mdActual);
+        const adm = KPI.pmAdmin(a.kpi.docsLate||0, a.kpi.critMissing||false);
+        const nps = a.kpi.nps ?? 3;
+        const parts = [tl,md,adm,nps].filter(x=>x!=null);
+        return parts.reduce((a,b)=>a+b,0)/parts.length;
+      });
+      return scores.reduce((a,b)=>a+b,0)/scores.length;
+    })() : null;
+
+    // Domain PM: avg BAST scoring per aktivitas
+    const pS = pm.length ? (() => {
+      const scores = pm.map(a => KPI.pmBAST(a.kpi.bastDeadline, a.kpi.bastActual));
+      if(scores.some(s=>s===-1)) return -1;
+      return scores.reduce((a,b)=>a+b,0)/scores.length;
+    })() : null;
+
+    // Domain Ops: avg(governance scores + NPS jika applicable)
+    const oS = hasOps ? (() => {
+      const govScores = ops.filter(a=>a.kpi?.govLateDays!=null)
+        .map(a=>KPI.pmGov(a.kpi.govLateDays));
+      const npsScores = ops.filter(a=>a.kpi?.opsNpsSent!=null)
+        .map(a=>KPI.pmOpsNps(a.kpi.opsNpsSent));
+      const all = [...govScores, ...npsScores];
+      if(!all.length) return null;
+      if(all.some(s=>s===-1)) return -1;
+      return all.reduce((a,b)=>a+b,0)/all.length;
+    })() : null;
+
+    const domains=[iS,pS,oS].filter(d=>d!=null);
+    const final=domains.some(d=>d===-1)?-1:domains.length?domains.reduce((a,b)=>a+b,0)/domains.length:null;
+    return { final, domains:[
+      {label:"Implementasi",score:iS,count:impl.length},
+      {label:"Preventive Maint.",score:pS,count:pm.length},
+      {label:"Operational Svc",score:oS,count:ops.filter(a=>a.kpi?.govLateDays!=null||a.kpi?.opsNpsSent!=null).length},
+    ]};
+  } else {
+    const impl = my.filter(a => a.actKey==="jira_impl" && a.kpi?.taskPct!=null);
+    const pm   = my.filter(a => a.actKey==="jira_pm"   && a.kpi?.scheduledEnd);
+    const cm   = my.filter(a => a.actKey==="jira_cm"   && a.kpi?.responseMin!=null);
+    const enh  = my.filter(a => a.actKey==="jira_enh"  && a.kpi?.responseHours!=null);
+    const ops  = my.filter(a => a.actKey==="jira_ops"  && a.kpi?.monthlyLateDays!=null);
+    const iS = impl.length ? impl.map(a=>(KPI.seImplTask(a.kpi.taskPct)+KPI.seImplDoc(a.kpi.docsLate||0,a.kpi.critMissing||false)+(a.kpi.nps??3))/3).reduce((a,b)=>a+b,0)/impl.length : null;
+    const pmPres = my.filter(a => a.actKey==="pm_presentation" && a.kpi?.nps!=null);
+    const pmS = (() => {
+      const execScores = pm.map(a=>{ const e=KPI.sePMExec(a.kpi.scheduledEnd,a.kpi.actualDate),r=KPI.sePMRep(a.kpi.reportDays); return (e===-1||r===-1)?-1:(e+r)/2; });
+      const npsScores  = pmPres.map(a => a.kpi.nps);
+      const all = [...execScores, ...npsScores];
+      if(!all.length) return null;
+      if(all.some(s=>s===-1)) return -1;
+      return all.reduce((a,b)=>a+b,0)/all.length;
+    })();
+    const cmS= cm.length   ? cm.map(a=>{ const r=KPI.seCMResp(a.kpi.responseMin),s=KPI.seCMRes(a.kpi.resolutionHours,a.kpi.severity||2); return (r===-1||s===-1)?-1:(r+s)/2; }).reduce((a,b)=>a+b,0)/cm.length : null;
+    const eS = enh.length  ? enh.map(a=>KPI.seEnh(a.kpi.responseHours)).reduce((a,b)=>a+b,0)/enh.length : null;
+    const oS = ops.length  ? ops.map(a=>KPI.seOps(a.kpi.monthlyLateDays,a.kpi.quarterlyLateDays,a.kpi.nps??3)).reduce((a,b)=>a+b,0)/ops.length : null;
+    const domains=[iS,pmS,cmS,eS,oS].filter(d=>d!=null);
+    const final=domains.some(d=>d===-1)?-1:domains.length?domains.reduce((a,b)=>a+b,0)/domains.length:null;
+    return { final, domains:[
+      {label:"Implementation",score:iS,count:impl.length},
+      {label:"Preventive Maint.",score:pmS,count:pm.length+pmPres.length},
+      {label:"Corrective Maint.",score:cmS,count:cm.length},
+      {label:"Enhancement",score:eS,count:enh.length},
+      {label:"Operational Svc",score:oS,count:ops.length},
+    ]};
+  }
+}
+
+// ─────────────────────────────────────────────
+// MOCK DATA
+// ─────────────────────────────────────────────
+// Single source of truth — satu array untuk semua member + login
+const INIT_MEMBERS = [
+  // ── Delivery ──
+  { id:10, name:"Budi Santoso",  email:"budi@seraphim.id",  password:"Member123!", role:"delivery", avatar:"BS", team:"delivery", position:"Senior Service Engineer", dept:"Delivery",  status:"active",    joinDate:"2023-01-15", supervisorId:12 },
+  { id:11, name:"Dewi Rahayu",   email:"dewi@seraphim.id",  password:"Dewi123!",   role:"delivery", avatar:"DR", team:"delivery", position:"Service Engineer",        dept:"Delivery",  status:"active",    joinDate:"2023-03-10", supervisorId:12 },
+  { id:12, name:"Rizky Pratama", email:"rizky@seraphim.id", password:"Rizky123!",  role:"mgr_dl",   avatar:"RP", team:"delivery", position:"Delivery Manager",        dept:"Delivery",  status:"active",    joinDate:"2022-06-01", supervisorId:null },
+  { id:13, name:"Sari Indah",    email:"sari@seraphim.id",  password:"Sari123!",   role:"delivery", avatar:"SI", team:"delivery", position:"Junior Service Engineer",  dept:"Delivery",  status:"suspended", joinDate:"2023-07-20", supervisorId:12 },
+  { id:14, name:"Doni Prasetyo", email:"doni@seraphim.id",  password:"PM123!",     role:"pm",       avatar:"DP", team:"delivery", position:"Project Manager",         dept:"Delivery",  status:"active",    joinDate:"2022-04-18", supervisorId:12 },
+  // ── Pre-Sales ──
+  { id:15, name:"Ahmad Yusuf",   email:"ahmad@seraphim.id", password:"Ahmad123!",  role:"presales", avatar:"AY", team:"presales", position:"Sales Engineer",          dept:"Pre-Sales", status:"active",    joinDate:"2023-02-14", supervisorId:20 },
+  { id:16, name:"Nina Kartika",  email:"nina@seraphim.id",  password:"PS123!",     role:"presales", avatar:"NK", team:"presales", position:"Senior Sales Engineer",   dept:"Pre-Sales", status:"active",    joinDate:"2022-11-05", supervisorId:20 },
+  { id:17, name:"Lena Susanti",  email:"lena@seraphim.id",  password:"Lena123!",   role:"presales", avatar:"LS", team:"presales", position:"Sales Engineer",          dept:"Pre-Sales", status:"invited",   joinDate:"2024-01-08", supervisorId:20 },
+  // ── Pre-Sales Manager (new) ──
+  { id:20, name:"Hendra Wijaya", email:"hendra@seraphim.id",password:"Mgr123!",    role:"mgr_ps",   avatar:"HW", team:"presales", position:"Pre-Sales Manager",       dept:"Pre-Sales", status:"active",    joinDate:"2021-03-01", supervisorId:null },
+  // ── Admin ──
+  { id:99, name:"Ari Wibowo",    email:"ari@seraphim.id",   password:"Admin123!",  role:"admin",    avatar:"AW", team:"all",      position:"System Administrator",    dept:"IT",        status:"active",    joinDate:"2021-01-01", supervisorId:null },
+];
+
+// Demo accounts = member yang ditampilkan di login page
+const DEMO_ACCOUNTS = INIT_MEMBERS.filter(m =>
+  ["ari@seraphim.id","budi@seraphim.id","doni@seraphim.id","nina@seraphim.id","rizky@seraphim.id"].includes(m.email)
+);
+
+const INIT_ACTS = [
+  // ─── Budi Santoso (Service Engineer) ───
+  { id:1,  user:"Budi Santoso", userTeam:"delivery", actKey:"jira_impl", date:"2026-03-10", dur:210, status:"completed",
+    ticketId:"PROJ-101", ticketTitle:"API Integration Gateway Pembayaran", customerName:"PT. Tokobagus", note:"Selesai endpoint /payment/confirm",
+    kpi:{ taskPct:100, docsLate:1, critMissing:false, nps:4 } },
+  { id:2,  user:"Budi Santoso", userTeam:"delivery", actKey:"jira_pm",   date:"2026-03-05", dur:240, status:"completed",
+    ticketId:"MAINT-001", ticketTitle:"PM Firewall Q1 – PT. Tokobagus", customerName:"PT. Tokobagus", note:"Selesai tepat waktu",
+    kpi:{ scheduledEnd:"2026-03-07", actualDate:"2026-03-05", reportDays:2 } },
+  { id:3,  user:"Budi Santoso", userTeam:"delivery", actKey:"jira_cm",   date:"2026-03-08", dur:120, status:"completed",
+    ticketId:"CM-042", ticketTitle:"Auth Service Down – PT. Tokobagus", customerName:"PT. Tokobagus", note:"Root cause: expired cert",
+    kpi:{ severity:1, responseMin:10, resolutionHours:5 } },
+  { id:4,  user:"Budi Santoso", userTeam:"delivery", actKey:"learning",  date:"2026-03-09", dur:90,  status:"completed",
+    topic:"CISSP Module 4 – Identity & Access Management", note:"Sudah sampai bab 12" },
+  { id:5,  user:"Budi Santoso", userTeam:"delivery", actKey:"internal",  date:"2026-03-07", dur:60,  status:"completed",
+    topic:"Briefing Sprint 14 – Tim Delivery", note:"Review backlog + capacity planning" },
+
+  // ─── Dewi Rahayu (Service Engineer) ───
+  { id:6,  user:"Dewi Rahayu",  userTeam:"delivery", actKey:"jira_impl", date:"2026-03-10", dur:240, status:"in_progress",
+    ticketId:"PROJ-102", ticketTitle:"SIEM Integration Phase 1 – PT. BRI", customerName:"PT. BRI", note:"Masih di config agent",
+    kpi:{ taskPct:75, docsLate:2, critMissing:false, nps:3 } },
+  { id:7,  user:"Dewi Rahayu",  userTeam:"delivery", actKey:"jira_cm",   date:"2026-03-07", dur:60,  status:"completed",
+    ticketId:"CM-043", ticketTitle:"SIEM Agent Disconnect – PT. BRI", customerName:"PT. BRI", note:"",
+    kpi:{ severity:2, responseMin:12, resolutionHours:8 } },
+  { id:8,  user:"Dewi Rahayu",  userTeam:"delivery", actKey:"koordinasi",date:"2026-03-06", dur:90,  status:"completed",
+    topic:"Koordinasi kick-off SIEM Phase 2", contact:"PT. BRI – Pak Hendro IT", note:"Bahas scope & jadwal" },
+  { id:9,  user:"Dewi Rahayu",  userTeam:"delivery", actKey:"learning",  date:"2026-03-04", dur:120, status:"completed",
+    topic:"Webinar: Elastic Stack 8.x Advanced", note:"Fokus ML anomaly detection" },
+
+  // ─── Doni Prasetyo (Project Manager) ───
+  { id:10, user:"Doni Prasetyo",userTeam:"delivery", actKey:"jira_impl", date:"2026-03-10", dur:480, status:"completed",
+    ticketId:"PROJ-101", ticketTitle:"[PM] E-Commerce v2 – Manage & Close", customerName:"PT. Tokobagus", note:"Milestone 3 done",
+    kpi:{ cdPlan:60, cdActual:72, mdPlan:120, mdActual:130, docsLate:1, critMissing:false, nps:4 } },
+  { id:11, user:"Doni Prasetyo",userTeam:"delivery", actKey:"jira_pm",   date:"2026-03-06", dur:120, status:"completed",
+    ticketId:"MAINT-001", ticketTitle:"[PM] Koordinasi PM Q1 PT. Tokobagus", customerName:"PT. Tokobagus", note:"BAST PM sudah ditandatangani",
+    kpi:{ bastDeadline:"2026-03-10", bastActual:"2026-03-06" } },
+  { id:111, user:"Doni Prasetyo",userTeam:"delivery", actKey:"jira_ops",  date:"2026-03-11", dur:60,  status:"completed",
+    ticketId:"OPS-GOV-001", ticketTitle:"Governance Ops – PT. Tokobagus – Maret 2026", customerName:"PT. Tokobagus", note:"Governance issue ditutup tepat waktu",
+    kpi:{ govLateDays:0 } },
+  { id:12, user:"Doni Prasetyo",userTeam:"delivery", actKey:"internal",  date:"2026-03-09", dur:90,  status:"completed",
+    topic:"Steering Committee Meeting – Q1 Review", note:"Presentasi progress 3 project aktif" },
+
+  // ─── Nina Kartika (Pre-Sales) ───
+  { id:13, user:"Nina Kartika", userTeam:"presales", actKey:"demo",       date:"2026-03-10", dur:120, status:"completed",
+    prName:"PT. Kalbe Farma", prId:"LEAD-185", value:1200000000, stage:"Demo Done", note:"Demo HRMS berjalan lancar, interested" },
+  { id:14, user:"Nina Kartika", userTeam:"presales", actKey:"negotiation",date:"2026-03-08", dur:120, status:"completed",
+    prName:"PT. Mayora Indah", prId:"LEAD-176", value:980000000,  stage:"Negotiation", note:"Nego harga lisensi annual" },
+  { id:15, user:"Nina Kartika", userTeam:"presales", actKey:"ps_learning",date:"2026-03-06", dur:90,  status:"completed",
+    topic:"Sales Methodology: MEDDIC Framework", note:"Training internal dari Pak Rizky" },
+
+  // ─── Ahmad Yusuf (Pre-Sales) ───
+  { id:16, user:"Ahmad Yusuf",  userTeam:"presales", actKey:"prospecting",date:"2026-03-10", dur:90,  status:"completed",
+    prName:"PT. Indomaret Digital", prId:"LEAD-201", value:850000000, stage:"Contacted", note:"Cold outreach via LinkedIn + email" },
+  { id:17, user:"Ahmad Yusuf",  userTeam:"presales", actKey:"proposal",   date:"2026-03-09", dur:240, status:"in_progress",
+    prName:"PT. Sido Muncul", prId:"LEAD-198", value:2400000000, stage:"Proposal", note:"Draft SOW section 3-5" },
+  { id:18, user:"Ahmad Yusuf",  userTeam:"presales", actKey:"survey",     date:"2026-03-07", dur:180, status:"completed",
+    prName:"PT. Wings Group", prId:"LEAD-210", value:3100000000, stage:"Survey", note:"Site survey gudang Cibitung – 3 lokasi" },
+];
+
+const WEEKLY = {
+  delivery: [
+    { d:"Sen", jira_impl:8,  jira_pm:2, jira_cm:3, jira_enh:2, jira_ops:3, learning:1, internal:2, koordinasi:1 },
+    { d:"Sel", jira_impl:12, jira_pm:3, jira_cm:2, jira_enh:4, jira_ops:2, learning:2, internal:1, koordinasi:2 },
+    { d:"Rab", jira_impl:10, jira_pm:1, jira_cm:4, jira_enh:3, jira_ops:2, learning:1, internal:3, koordinasi:1 },
+    { d:"Kam", jira_impl:9,  jira_pm:2, jira_cm:1, jira_enh:5, jira_ops:3, learning:2, internal:2, koordinasi:0 },
+    { d:"Jum", jira_impl:11, jira_pm:2, jira_cm:2, jira_enh:3, jira_ops:4, learning:1, internal:1, koordinasi:2 },
+  ],
+  presales: [
+    { d:"Sen", prospecting:5, demo:2, proposal:3, negotiation:1, survey:1, ps_learning:1, ps_internal:2 },
+    { d:"Sel", prospecting:8, demo:3, proposal:4, negotiation:2, survey:2, ps_learning:2, ps_internal:1 },
+    { d:"Rab", prospecting:4, demo:4, proposal:2, negotiation:3, survey:1, ps_learning:1, ps_internal:2 },
+    { d:"Kam", prospecting:6, demo:5, proposal:5, negotiation:2, survey:3, ps_learning:0, ps_internal:1 },
+    { d:"Jum", prospecting:7, demo:3, proposal:3, negotiation:4, survey:2, ps_learning:2, ps_internal:1 },
+  ],
+};
+const PIPELINE=[
+  {m:"Jan",contacted:12,demo:8,proposal:5,negotiation:3,won:2},
+  {m:"Feb",contacted:15,demo:10,proposal:7,negotiation:4,won:3},
+  {m:"Mar",contacted:18,demo:13,proposal:8,negotiation:5,won:4},
+];
+
+// ─────────────────────────────────────────────
+// UI PRIMITIVES
+// ─────────────────────────────────────────────
+function Tag({ color, lo, children, small }) {
+  return (
+    <span style={{ padding:small?"2px 7px":"3px 10px", borderRadius:20, fontSize:small?9:10, fontWeight:700,
+      background:lo||color+"22", color, border:`1px solid ${color}33`,
+      textTransform:"uppercase", letterSpacing:".05em", display:"inline-flex", alignItems:"center", gap:3 }}>
+      {children}
+    </span>
+  );
+}
+function RoleBadge({ role }) {
+  const r = ROLES[role]; if(!r) return null;
+  return <Tag color={r.color} lo={r.lo}>{r.label}</Tag>;
+}
+function TeamBadge({ team }) {
+  if(team==="presales") return <Tag color={T.violet} lo={T.violetLo}>Pre-Sales</Tag>;
+  if(team==="delivery") return <Tag color={T.teal}   lo={T.tealLo}>Delivery</Tag>;
+  return <Tag color={T.textSec} lo={T.border}>All Teams</Tag>;
+}
+function Pill({ active, color, lo, children, onClick, small }) {
+  return (
+    <button onClick={onClick} style={{ padding:small?"4px 11px":"5px 14px", borderRadius:20, fontSize:small?11:12, fontWeight:active?700:400,
+      cursor:"pointer", border:`1.5px solid ${active?color:T.border}`, fontFamily:FONT,
+      background:active?lo:T.surface, color:active?color:T.textSec, transition:"all .15s" }}>
+      {children}
+    </button>
+  );
+}
+function Btn({ children, v="primary", sz="md", style:s={}, ...p }) {
+  const S = {
+    sm:{padding:"5px 13px",fontSize:11},
+    md:{padding:"8px 16px",fontSize:13},
+    lg:{padding:"11px 22px",fontSize:14},
+  };
+  const V = {
+    primary: { background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`, color:"#fff", border:"none", boxShadow:`0 4px 14px ${T.indigo}50` },
+    teal:    { background:`linear-gradient(135deg,#0D9488,${T.teal})`,          color:"#fff", border:"none", boxShadow:`0 4px 14px ${T.teal}40` },
+    amber:   { background:`linear-gradient(135deg,#D97706,${T.amber})`,         color:"#000", border:"none" },
+    danger:  { background:T.redLo,    color:T.red,    border:`1px solid ${T.red}30` },
+    ghost:   { background:"transparent", color:T.textSec, border:`1px solid ${T.border}` },
+    sec:     { background:T.surface,   color:T.textSec, border:`1px solid ${T.border}` },
+    green:   { background:T.greenLo,   color:T.green,  border:`1px solid ${T.green}30` },
+  };
+  return (
+    <button {...p} style={{ borderRadius:8, fontWeight:600, cursor:"pointer", fontFamily:FONT,
+      transition:"all .15s", display:"inline-flex", alignItems:"center", gap:5,
+      ...(S[sz]||S.md), ...(V[v]||V.primary), ...s, opacity:p.disabled?.6:1 }}>
+      {children}
+    </button>
+  );
+}
+function Card({ children, p=20, style:s={}, glow }) {
+  return (
+    <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:14,
+      boxShadow: glow ? `0 0 0 1px ${glow}30, 0 4px 24px ${glow}12` : "0 2px 16px rgba(0,0,0,.3)",
+      padding:p, ...s }}>
+      {children}
+    </div>
+  );
+}
+function Modal({ open, onClose, children, width=500 }) {
+  if(!open) return null;
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,backdropFilter:"blur(8px)" }}>
+      <div style={{ background:T.surface,border:`1px solid ${T.borderHi}`,borderRadius:18,padding:28,width,maxWidth:"94vw",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 32px 80px rgba(0,0,0,.6)" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+function MHead({ title, sub, onClose }) {
+  return (
+    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20 }}>
+      <div>
+        <h2 style={{ margin:0,fontSize:17,fontWeight:700,color:T.textPri,fontFamily:DISPLAY }}>{title}</h2>
+        {sub && <p style={{ margin:"3px 0 0",fontSize:12,color:T.textSec }}>{sub}</p>}
+      </div>
+      <button onClick={onClose} style={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:6,color:T.textSec,width:28,height:28,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>×</button>
+    </div>
+  );
+}
+function Lbl({ children, required }) {
+  return (
+    <div style={{ fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:5 }}>
+      {children}{required&&<span style={{ color:T.red }}> *</span>}
+    </div>
+  );
+}
+function Inp({ label, required, error, ...p }) {
+  const [f,sf] = useState(false);
+  return (
+    <div>
+      {label && <Lbl required={required}>{label}</Lbl>}
+      <input {...p} onFocus={e=>{sf(true);p.onFocus?.(e)}} onBlur={e=>{sf(false);p.onBlur?.(e)}}
+        style={{ width:"100%", background:T.surfaceHi, color:T.textPri, fontSize:13,
+          border:`1.5px solid ${error?T.red:f?T.indigo:T.border}`, borderRadius:8,
+          padding:"8px 12px", outline:"none", boxSizing:"border-box", fontFamily:p.mono?MONO:FONT,
+          transition:"border-color .15s", ...p.style }} />
+      {error && <div style={{ fontSize:10,color:T.red,marginTop:3 }}>⚠ {error}</div>}
+    </div>
+  );
+}
+function PwInp({ label, value, onChange, error }) {
+  const [show,ss]=useState(false),[f,sf]=useState(false);
+  return (
+    <div>
+      <Lbl required>{label}</Lbl>
+      {error&&<div style={{ fontSize:10,color:T.red,marginBottom:3 }}>⚠ {error}</div>}
+      <div style={{ position:"relative" }}>
+        <input type={show?"text":"password"} value={value} onChange={onChange}
+          onFocus={()=>sf(true)} onBlur={()=>sf(false)}
+          style={{ width:"100%",background:T.surfaceHi,color:T.textPri,fontSize:13,border:`1.5px solid ${error?T.red:f?T.indigo:T.border}`,borderRadius:8,padding:"8px 90px 8px 12px",outline:"none",boxSizing:"border-box",fontFamily:FONT }} />
+        <button onClick={()=>ss(v=>!v)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.textMute,cursor:"pointer",fontSize:11,fontFamily:FONT }}>
+          {show?"Sembunyikan":"Tampilkan"}
+        </button>
+      </div>
+    </div>
+  );
+}
+function Avi({ av, team, sz=36 }) {
+  const g = team==="presales" ? `linear-gradient(135deg,${T.violet},#C084FC)` : team==="delivery" ? `linear-gradient(135deg,#0D9488,${T.teal})` : `linear-gradient(135deg,${T.indigo},${T.indigoHi})`;
+  return (
+    <div style={{ width:sz,height:sz,borderRadius:"50%",background:g,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:sz*.32,fontWeight:800,color:"#fff",letterSpacing:".02em" }}>
+      {av}
+    </div>
+  );
+}
+function Divider({ my=14 }) {
+  return <div style={{ height:1, background:T.border, margin:`${my}px 0` }} />;
+}
+function fmtH(m) { const h=Math.floor(m/60),mn=m%60; return mn>0?`${h}h ${mn}m`:`${h}h`; }
+function fmtIDR(v) { if(!v||isNaN(v)) return "—"; if(v>=1e9) return `Rp ${(v/1e9).toFixed(1)}M`; if(v>=1e6) return `Rp ${(v/1e6).toFixed(0)}jt`; return `Rp ${Number(v).toLocaleString("id-ID")}`; }
+
+// ─────────────────────────────────────────────
+// KPI SCORE DISPLAY
+// ─────────────────────────────────────────────
+function ScoreRing({ score, size=52 }) {
+  const c = KPI.color(score);
+  const pct = score==null?0:score===-1?0:Math.min(100,(score/4)*100);
+  const r = size/2-4, circ = 2*Math.PI*r;
+  return (
+    <div style={{ position:"relative",width:size,height:size,flexShrink:0 }}>
+      <svg width={size} height={size} style={{ transform:"rotate(-90deg)" }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={T.border} strokeWidth={3.5} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={c} strokeWidth={3.5}
+          strokeDasharray={`${pct/100*circ} ${circ}`} strokeLinecap="round"
+          style={{ transition:"stroke-dasharray .5s ease" }} />
+      </svg>
+      <div style={{ position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center" }}>
+        <span style={{ fontSize:size*.22,fontWeight:800,color:c,fontFamily:MONO,lineHeight:1 }}>
+          {score==null?"—":score===-1?"-1":score.toFixed(1)}
+        </span>
+      </div>
+    </div>
+  );
+}
+function ScoreBar({ score, showLabel=true }) {
+  const c=KPI.color(score); const pct=score==null?0:score===-1?0:Math.min(100,(score/4)*100);
+  return (
+    <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+      <div style={{ flex:1,height:5,background:T.border,borderRadius:3,overflow:"hidden" }}>
+        <div style={{ height:"100%",width:`${pct}%`,background:c,borderRadius:3,transition:"width .4s" }} />
+      </div>
+      {showLabel && <span style={{ fontSize:11,fontWeight:700,color:c,fontFamily:MONO,width:26,textAlign:"right",flexShrink:0 }}>{score==null?"—":score===-1?"-1":score.toFixed(1)}</span>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// LOG ENTRY FORM
+// ─────────────────────────────────────────────
+function LogForm({ user, onSave, onCancel }) {
+  const availActs = useMemo(() => actsFor(user.role), [user.role]);
+  const [actKey, setActKey] = useState(Object.keys(availActs)[0]);
+  const [startTime, setStart] = useState("09:00");
+  const [endTime,   setEnd]   = useState("10:00");
+  const [status, setStatus] = useState("completed");
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState({});
+  // Jira fields
+  const [ticketId, setTicketId] = useState("");
+  const [ticketTitle, setTicketTitle] = useState("");
+  const [customerName, setCustomer] = useState("");
+  // PM Presentation NPS
+  const [pmNps, setPmNps] = useState(3);
+  // App-only fields
+  const [topic, setTopic] = useState("");
+  const [contact, setContact] = useState("");
+  // Pre-sales fields
+  const [prName, setPrName] = useState("");
+  const [prId, setPrId]     = useState("");
+  const [value, setValue]   = useState("");
+  const [stage, setStage]   = useState("Contacted");
+  // Attachments
+  const [files, setFiles]   = useState([]);
+  const [dragOver, setDrag] = useState(false);
+  const fileRef = useRef(null);
+
+  const def = availActs[actKey] || {};
+  const isJira = def.source === "jira";
+  const isPS   = def.team === "presales" && def.source === "app";
+  const needsContact    = actKey === "koordinasi";
+  const needsCustomer   = ["jira_impl","jira_pm","jira_cm","jira_enh","pm_presentation"].includes(actKey);
+  const needsPmNps      = actKey === "pm_presentation";
+
+  const todayStr = new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+  // Compute duration in minutes from time range
+  const calcDur = (s, e) => {
+    const [sh,sm]=s.split(":").map(Number), [eh,em]=e.split(":").map(Number);
+    const d = (eh*60+em)-(sh*60+sm);
+    return d > 0 ? d : 0;
+  };
+  const dur = calcDur(startTime, endTime);
+  const durLabel = dur > 0 ? `${Math.floor(dur/60)}j ${dur%60>0?dur%60+"m":""}`.trim() : "—";
+
+  // File handling
+  const ALLOWED = ["application/pdf","image/png","image/jpeg","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+  const EXT_MAP  = {
+    "application/pdf":"PDF","image/png":"PNG","image/jpeg":"JPG",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"DOCX"
+  };
+  const addFiles = (raw) => {
+    const valid=[], errsLocal=[];
+    Array.from(raw).forEach(f=>{
+      if(!ALLOWED.includes(f.type)) return errsLocal.push(`${f.name}: format tidak didukung`);
+      if(f.size>20*1024*1024)       return errsLocal.push(`${f.name}: maks 20 MB`);
+      valid.push({ name:f.name, size:f.size, type:f.type, ext:EXT_MAP[f.type]||"FILE", id:Date.now()+Math.random() });
+    });
+    setFiles(p=>[...p,...valid]);
+    if(errsLocal.length) setErr(p=>({...p,files:errsLocal.join(" · ")}));
+  };
+
+  const save = () => {
+    const e = {};
+    if(dur<=0) e.time="Jam selesai harus setelah jam mulai";
+    if(isJira && !ticketId.trim()) e.ticketId="Ticket ID wajib";
+    if(needsCustomer && !customerName.trim()) e.customerName="Nama Customer wajib";
+    if(needsPmNps && (pmNps<0||pmNps>4)) e.pmNps="NPS harus 0-4";
+    if(isPS && !prId.trim()) e.prId="Prospect ID wajib";
+    setErr(e);
+    if(Object.keys(e).length) return;
+    onSave({
+      id: Date.now(), user: user.name, userTeam: teamOf(user.role), actKey,
+      date: new Date().toISOString().split("T")[0],
+      startTime, endTime, dur, status, note,
+      attachments: files,
+      ...(isJira ? { ticketId: ticketId.trim(), ticketTitle: ticketTitle.trim() } : {}),
+      ...(needsCustomer ? { customerName: customerName.trim() } : {}),
+      ...(needsPmNps ? { kpi: { nps: pmNps } } : {}),
+      ...(actKey==="learning"||actKey==="ps_learning"||actKey==="internal"||actKey==="ps_internal" ? { topic } : {}),
+      ...(needsContact ? { contact } : {}),
+      ...(isPS ? { prName, prId, value: Number(value)||0, stage } : {}),
+    });
+  };
+
+  // Group acts: jira vs non-jira
+  const jiraGroup = Object.entries(availActs).filter(([,v])=>v.source==="jira");
+  const appGroup  = Object.entries(availActs).filter(([,v])=>v.source==="app");
+
+  return (
+    <div style={{ display:"flex",flexDirection:"column",gap:16 }}>
+      <div style={{ fontSize:11,color:T.textMute,borderBottom:`1px solid ${T.border}`,paddingBottom:12 }}>{todayStr}</div>
+
+      {/* Activity type picker */}
+      <div>
+        <Lbl>Jenis Aktivitas</Lbl>
+        {jiraGroup.length > 0 && (
+          <div style={{ marginBottom:8 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:6 }}>
+              <div style={{ width:10,height:10,borderRadius:2,background:T.jira,boxShadow:`0 0 6px ${T.jira}` }} />
+              <span style={{ fontSize:10,color:T.jira,fontWeight:700,letterSpacing:".05em" }}>DARI JIRA — cukup ticket ID + jam</span>
+            </div>
+            <div style={{ display:"flex",flexWrap:"wrap",gap:5 }}>
+              {jiraGroup.map(([k,v]) => (
+                <button key={k} onClick={()=>setActKey(k)} style={{ padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:FONT,fontSize:12,fontWeight:actKey===k?700:400,
+                  border:`1.5px solid ${actKey===k?v.color:T.border}`,
+                  background:actKey===k?v.colorLo:T.surfaceHi,color:actKey===k?v.color:T.textSec,transition:"all .15s",display:"flex",alignItems:"center",gap:5 }}>
+                  <span>{v.icon}</span>{v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {appGroup.length > 0 && (
+          <div>
+            <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:6 }}>
+              <div style={{ width:10,height:10,borderRadius:2,background:T.textMute }} />
+              <span style={{ fontSize:10,color:T.textMute,fontWeight:700,letterSpacing:".05em" }}>NON-JIRA — aktivitas di luar tiket</span>
+            </div>
+            <div style={{ display:"flex",flexWrap:"wrap",gap:5 }}>
+              {appGroup.map(([k,v]) => (
+                <button key={k} onClick={()=>setActKey(k)} style={{ padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:FONT,fontSize:12,fontWeight:actKey===k?700:400,
+                  border:`1.5px solid ${actKey===k?v.color:T.border}`,
+                  background:actKey===k?v.colorLo:T.surfaceHi,color:actKey===k?v.color:T.textSec,transition:"all .15s",display:"flex",alignItems:"center",gap:5 }}>
+                  <span>{v.icon}</span>{v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {def.desc && <div style={{ marginTop:7,fontSize:11,color:T.textMute,background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 10px" }}>ℹ {def.desc}</div>}
+      </div>
+
+      {/* Jira fields */}
+      {isJira && (
+        <div style={{ background:T.jiraLo,border:`1.5px solid ${T.jira}30`,borderRadius:10,padding:"14px 16px" }}>
+          <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:12 }}>
+            <div style={{ width:12,height:12,borderRadius:2,background:T.jira }} />
+            <span style={{ fontSize:11,fontWeight:700,color:T.jira,letterSpacing:".04em" }}>JIRA TICKET</span>
+          </div>
+          <div style={{ display:"grid",gridTemplateColumns:"140px 1fr",gap:10 }}>
+            <Inp label="Ticket ID" required mono value={ticketId} error={err.ticketId}
+              placeholder="PROJ-101" onChange={e=>{setTicketId(e.target.value);setErr(p=>({...p,ticketId:""}));}} />
+            <Inp label="Judul Ticket (opsional)" value={ticketTitle}
+              placeholder="Deskripsi singkat..." onChange={e=>setTicketTitle(e.target.value)} />
+          </div>
+          {needsCustomer && (
+            <div style={{ marginTop:10 }}>
+              <Inp label="Nama Customer / Klien" required value={customerName} error={err.customerName}
+                placeholder="PT. Tokobagus, PT. BRI..." onChange={e=>{setCustomer(e.target.value);setErr(p=>({...p,customerName:""}));}} />
+            </div>
+          )}
+          {needsPmNps && (
+            <div style={{ marginTop:12,paddingTop:12,borderTop:`1px solid ${T.jira}20` }}>
+              <Lbl>Skor NPS Customer (0–4) <span style={{ color:T.red }}>*</span></Lbl>
+              <div style={{ display:"flex",gap:6,marginTop:6 }}>
+                {[0,1,2,3,4].map(n=>(
+                  <button key={n} type="button" onClick={()=>setPmNps(n)}
+                    style={{ flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${pmNps===n?T.indigo:T.border}`,
+                      cursor:"pointer",fontFamily:MONO,fontSize:16,fontWeight:700,
+                      background:pmNps===n?T.indigoLo:T.surfaceHi,
+                      color:pmNps===n?T.indigoHi:T.textMute,transition:"all .15s" }}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize:10,color:T.textMute,marginTop:5 }}>
+                {pmNps===4?"😄 Sangat Puas":pmNps===3?"🙂 Puas":pmNps===2?"😐 Cukup":pmNps===1?"😕 Kurang":"😞 Sangat Kurang"}
+                {" "}&nbsp;· NPS masuk ke perhitungan KPI domain Preventive Maintenance
+              </div>
+              {err.pmNps&&<div style={{ fontSize:11,color:T.red,marginTop:3 }}>{err.pmNps}</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pre-sales fields */}
+      {isPS && (
+        <div style={{ background:T.violetLo,border:`1.5px solid ${T.violet}30`,borderRadius:10,padding:"14px 16px" }}>
+          <div style={{ fontSize:11,fontWeight:700,color:T.violet,letterSpacing:".04em",marginBottom:12 }}>🎯 INFO PROSPECT / LEAD</div>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 130px",gap:10,marginBottom:10 }}>
+            <Inp label="Nama Prospect" value={prName} placeholder="PT. Contoh Jaya" onChange={e=>setPrName(e.target.value)} />
+            <Inp label="Lead ID" required mono value={prId} error={err.prId} placeholder="LEAD-XXX" onChange={e=>{setPrId(e.target.value);setErr(p=>({...p,prId:""}));}} />
+          </div>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
+            <Inp label="Estimasi Nilai (Rp)" type="number" value={value} placeholder="1000000000" onChange={e=>setValue(e.target.value)} />
+            <div>
+              <Lbl>Stage</Lbl>
+              <select value={stage} onChange={e=>setStage(e.target.value)} style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${T.border}`,borderRadius:8,padding:"8px 12px",color:T.textPri,fontSize:13,outline:"none",fontFamily:FONT }}>
+                {PS_STAGES.map(s=><option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Topic for learning/internal/koordinasi */}
+      {(actKey==="learning"||actKey==="ps_learning"||actKey==="internal"||actKey==="ps_internal") && (
+        <Inp label="Topik / Agenda" value={topic} placeholder={actKey.includes("learning")?"CISSP Module 4, Webinar Elastic...":"Agenda rapat, nama meeting..."} onChange={e=>setTopic(e.target.value)} />
+      )}
+      {needsContact && (
+        <Inp label="Kontak / Klien" value={contact} placeholder="PT. BRI – Pak Hendro IT" onChange={e=>setContact(e.target.value)} />
+      )}
+
+      {/* Time range + Status */}
+      <div>
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:8 }}>
+          <div>
+            <Lbl required>Jam Mulai</Lbl>
+            <input type="time" value={startTime} onChange={e=>{setStart(e.target.value);setErr(p=>({...p,time:""}));}}
+              style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${err.time?T.red:T.border}`,borderRadius:8,padding:"8px 10px",color:T.textPri,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:MONO,colorScheme:"dark" }} />
+          </div>
+          <div>
+            <Lbl required>Jam Selesai</Lbl>
+            <input type="time" value={endTime} onChange={e=>{setEnd(e.target.value);setErr(p=>({...p,time:""}));}}
+              style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${err.time?T.red:T.border}`,borderRadius:8,padding:"8px 10px",color:T.textPri,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:MONO,colorScheme:"dark" }} />
+          </div>
+          <div>
+            <Lbl>Durasi</Lbl>
+            <div style={{ height:37,display:"flex",alignItems:"center",padding:"0 12px",background:dur>0?T.indigoLo:T.surfaceHi,border:`1.5px solid ${dur>0?T.indigo+"50":T.border}`,borderRadius:8 }}>
+              <span style={{ fontSize:15,fontWeight:800,color:dur>0?T.indigoHi:T.textMute,fontFamily:MONO }}>{durLabel}</span>
+            </div>
+          </div>
+        </div>
+        {err.time && <div style={{ fontSize:10,color:T.red,marginTop:2 }}>⚠ {err.time}</div>}
+
+        <div>
+          <Lbl>Status</Lbl>
+          <div style={{ display:"flex",gap:6,height:35 }}>
+            {[["completed","✓ Selesai",T.green,T.greenLo],["in_progress","⏳ In Progress",T.amber,T.amberLo]].map(([v,l,col,lo])=>(
+              <button key={v} onClick={()=>setStatus(v)} style={{ flex:1,borderRadius:8,cursor:"pointer",fontFamily:FONT,fontSize:12,fontWeight:status===v?700:400,
+                border:`1.5px solid ${status===v?col:T.border}`,background:status===v?lo:T.surfaceHi,color:status===v?col:T.textSec,transition:"all .15s" }}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <Lbl>Catatan</Lbl>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="Progress, hambatan, catatan penting..."
+          style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${T.border}`,borderRadius:8,padding:"8px 12px",color:T.textPri,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:FONT,resize:"vertical",lineHeight:1.6 }}
+          onFocus={e=>e.target.style.borderColor=T.indigo} onBlur={e=>e.target.style.borderColor=T.border} />
+      </div>
+
+      {/* Attachment */}
+      <div>
+        <Lbl>Lampiran <span style={{ fontWeight:400,textTransform:"none",letterSpacing:0 }}>(PDF, PNG, JPG, DOCX · maks 20 MB)</span></Lbl>
+        <input ref={fileRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.docx" style={{ display:"none" }} onChange={e=>addFiles(e.target.files)} />
+        <div
+          onClick={()=>fileRef.current.click()}
+          onDragOver={e=>{e.preventDefault();setDrag(true);}}
+          onDragLeave={()=>setDrag(false)}
+          onDrop={e=>{e.preventDefault();setDrag(false);addFiles(e.dataTransfer.files);}}
+          style={{ border:`2px dashed ${dragOver?T.indigo:T.border}`,borderRadius:9,padding:"14px 16px",cursor:"pointer",
+            background:dragOver?T.indigoLo:T.surfaceHi,transition:"all .15s",textAlign:"center" }}>
+          <div style={{ fontSize:20,marginBottom:4 }}>📎</div>
+          <div style={{ fontSize:12,color:dragOver?T.indigoHi:T.textSec }}>Klik atau drag & drop file di sini</div>
+        </div>
+        {err.files && <div style={{ fontSize:10,color:T.red,marginTop:3 }}>⚠ {err.files}</div>}
+        {files.length>0 && (
+          <div style={{ display:"flex",flexDirection:"column",gap:4,marginTop:8 }}>
+            {files.map(f=>(
+              <div key={f.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:7 }}>
+                <span style={{ fontSize:10,fontWeight:700,color:T.indigoHi,background:T.indigoLo,padding:"2px 6px",borderRadius:4,fontFamily:MONO,flexShrink:0 }}>{f.ext}</span>
+                <span style={{ fontSize:12,color:T.textPri,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{f.name}</span>
+                <span style={{ fontSize:10,color:T.textMute,flexShrink:0 }}>{(f.size/1024/1024).toFixed(1)} MB</span>
+                <button onClick={e=>{e.stopPropagation();setFiles(p=>p.filter(x=>x.id!==f.id));}} style={{ background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:14,padding:0,flexShrink:0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display:"flex",gap:8,paddingTop:4,borderTop:`1px solid ${T.border}` }}>
+        <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={onCancel}>Batal</Btn>
+        <Btn v="primary" style={{ flex:2,justifyContent:"center" }} onClick={save}>+ Log Aktivitas</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY CARD
+// ─────────────────────────────────────────────
+function ActCard({ act }) {
+  const def = ACTS[act.actKey] || {};
+  const isJira = def.source === "jira";
+  const done   = act.status === "completed";
+  return (
+    <div style={{ display:"flex",gap:0,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden",transition:"border-color .15s" }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor=def.color+"50"}
+      onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+      <div style={{ width:3,background:def.color||T.border,flexShrink:0 }} />
+      <div style={{ flex:1,padding:"11px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap" }}>
+        {/* Category + Jira badge */}
+        <div style={{ display:"flex",flexDirection:"column",gap:4,width:160,flexShrink:0 }}>
+          <span style={{ fontSize:12,fontWeight:700,color:def.color,display:"flex",alignItems:"center",gap:4 }}>
+            {def.icon} {def.label}
+          </span>
+          {isJira && (
+            <span style={{ fontSize:10,fontWeight:700,color:T.jira,background:T.jiraLo,border:`1px solid ${T.jira}30`,borderRadius:4,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:4,width:"fit-content",fontFamily:MONO }}>
+              ◈ {act.ticketId}
+            </span>
+          )}
+        </div>
+        {/* Main content */}
+        <div style={{ flex:1,minWidth:160 }}>
+          <div style={{ fontSize:13,fontWeight:600,color:T.textPri,marginBottom:3 }}>
+            {act.ticketTitle || act.topic || act.prName || def.label}
+          </div>
+          <div style={{ display:"flex",gap:8,fontSize:11,color:T.textSec,flexWrap:"wrap",alignItems:"center" }}>
+            <span>👤 {act.user}</span>
+            {act.prId && <span style={{ fontFamily:MONO,color:T.violet,background:T.violetLo,padding:"1px 6px",borderRadius:4,fontSize:10 }}>{act.prId}</span>}
+            {act.value>0 && <span style={{ color:T.green,fontWeight:600 }}>💰 {fmtIDR(act.value)}</span>}
+            {act.stage && <Tag color={T.violet} lo={T.violetLo} small>{act.stage}</Tag>}
+            {act.contact && <span>🏢 {act.contact}</span>}
+            {act.note && <span style={{ color:T.textMute,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:280 }}>"{act.note}"</span>}
+          </div>
+        </div>
+        {/* Right */}
+        <div style={{ display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0 }}>
+          <span style={{ padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:done?T.greenLo:T.amberLo,color:done?T.green:T.amber,border:`1px solid ${done?T.green:T.amber}30` }}>
+            {done?"✓ Selesai":"⏳ Progress"}
+          </span>
+          <div style={{ display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2 }}>
+              <span style={{ fontSize:11,color:T.textMute,fontFamily:MONO }}>
+                {act.startTime&&act.endTime?`${act.startTime}–${act.endTime} · `:""}{fmtH(act.dur)}
+              </span>
+              <span style={{ fontSize:10,color:T.textMute }}>{act.date}</span>
+              {act.attachments?.length>0&&(
+                <span style={{ fontSize:10,color:T.indigoHi,background:T.indigoLo,padding:"1px 7px",borderRadius:10,border:`1px solid ${T.indigo}30` }}>📎 {act.attachments.length} file</span>
+              )}
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PERSONAL KPI PANEL
+// ─────────────────────────────────────────────
+// Quarter date ranges — dynamic based on current year
+function buildQuarters(year) {
+  const y = year || new Date().getFullYear();
+  return {
+    Q1: { label:`Q1 ${y} (Jan–Mar)`, start:`${y}-01-01`, end:`${y}-03-31` },
+    Q2: { label:`Q2 ${y} (Apr–Jun)`, start:`${y}-04-01`, end:`${y}-06-30` },
+    Q3: { label:`Q3 ${y} (Jul–Sep)`, start:`${y}-07-01`, end:`${y}-09-30` },
+    Q4: { label:`Q4 ${y} (Okt–Des)`, start:`${y}-10-01`, end:`${y}-12-31` },
+  };
+}
+
+function filterByQuarter(acts, q, year) {
+  const QUARTERS = buildQuarters(year);
+  const { start, end } = QUARTERS[q] || QUARTERS.Q1;
+  return acts.filter(a => a.date >= start && a.date <= end);
+}
+
+function PersonalKPI({ user, activities, isAdminView, onAdminEditNps }) {
+  const curYear = new Date().getFullYear();
+  const [year, setYear]    = useState(curYear);
+  const [quarter, setQuarter] = useState(() => {
+    const m = new Date().getMonth(); // 0-indexed
+    return m<3?"Q1":m<6?"Q2":m<9?"Q3":"Q4";
+  });
+  const QUARTERS = buildQuarters(year);
+  const myAllActs = activities.filter(a => a.user === user.name);
+  const myActs = filterByQuarter(myAllActs, quarter, year);
+
+  const kpi = useMemo(() => calcKPI(user, myActs), [user, myActs]);
+
+  // Cat breakdown for selected quarter
+  const catBreak = useMemo(() => {
+    const cats = actsFor(user.role);
+    return Object.entries(cats).map(([k,v]) => {
+      const list = myActs.filter(a=>a.actKey===k);
+      return { key:k, ...v, count:list.length, done:list.filter(a=>a.status==="completed").length, mins:list.reduce((s,a)=>s+a.dur,0) };
+    });
+  }, [myActs, user.role]);
+
+  const jiraCats    = catBreak.filter(c => c.source === "jira");
+  const nonJiraCats = catBreak.filter(c => c.source === "app");
+
+  // Stats: total jam, total aktivitas, selesai
+  const totalMins  = myActs.reduce((s,a)=>s+a.dur,0);
+  const totalActs  = myActs.length;
+  const doneActs   = myActs.filter(a=>a.status==="completed").length;
+  const jiraMins   = myActs.filter(a=>ACTS[a.actKey]?.source==="jira").reduce((s,a)=>s+a.dur,0);
+
+  const isSE = user.role === "delivery";
+  const isPMRole = user.role === "pm";
+
+  return (
+    <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
+      {/* Quarter + Year Selector */}
+      <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
+        <span style={{ fontSize:11,color:T.textMute,fontWeight:600,letterSpacing:".04em",textTransform:"uppercase" }}>Periode KPI:</span>
+        <div style={{ display:"flex",gap:3,background:T.surfaceHi,padding:3,borderRadius:8,border:`1px solid ${T.border}` }}>
+          {["Q1","Q2","Q3","Q4"].map(q=>(
+            <button key={q} onClick={()=>setQuarter(q)}
+              style={{ padding:"4px 12px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:FONT,fontSize:11,fontWeight:q===quarter?700:400,
+                background:q===quarter?T.indigo:"transparent",color:q===quarter?"#fff":T.textMute,transition:"all .15s" }}>
+              {q}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:3,background:T.surfaceHi,padding:"3px 6px",borderRadius:8,border:`1px solid ${T.border}` }}>
+          <button onClick={()=>setYear(y=>y-1)} style={{ background:"none",border:"none",color:T.textMute,cursor:"pointer",fontSize:13,padding:"0 3px",lineHeight:1 }}>‹</button>
+          <span style={{ fontSize:11,fontWeight:700,color:T.textPri,fontFamily:MONO,minWidth:34,textAlign:"center" }}>{year}</span>
+          <button onClick={()=>setYear(y=>y+1)} style={{ background:"none",border:"none",color:T.textMute,cursor:"pointer",fontSize:13,padding:"0 3px",lineHeight:1 }}>›</button>
+        </div>
+        <span style={{ fontSize:10,color:T.textMute }}>{QUARTERS[quarter]?.label}</span>
+      </div>
+
+      {/* Stats Row: total jam + aktivitas breakdown */}
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10 }}>
+        {[
+          { l:"Total Jam Kerja",   v:fmtH(totalMins),   sub:`${quarter} ${new Date().getFullYear()}`, col:T.indigoHi },
+          { l:"Total Aktivitas",   v:totalActs,          sub:`${doneActs} selesai`,                   col:T.teal },
+          { l:"Aktivitas Jira",    v:myActs.filter(a=>ACTS[a.actKey]?.source==="jira").length, sub:`${fmtH(jiraMins)} jam`, col:T.jira },
+          { l:"Non-Jira",          v:myActs.filter(a=>ACTS[a.actKey]?.source==="app").length,  sub:"learning, mtg, dll",   col:T.amber },
+        ].map((s,i)=>(
+          <Card key={i} p={0} style={{ overflow:"hidden" }}>
+            <div style={{ padding:"12px 14px" }}>
+              <div style={{ fontSize:9,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".08em",marginBottom:5 }}>{s.l}</div>
+              <div style={{ fontSize:22,fontWeight:800,color:s.col,fontFamily:MONO,marginBottom:2 }}>{s.v}</div>
+              <div style={{ fontSize:10,color:T.textMute }}>{s.sub}</div>
+            </div>
+            <div style={{ height:2,background:s.col,opacity:.4 }} />
+          </Card>
+        ))}
+      </div>
+
+      {/* KPI Score card — hanya untuk SE dan PM */}
+      {kpi ? (
+        <Card p={0} style={{ overflow:"hidden" }} glow={KPI.color(kpi.final)}>
+          <div style={{ background:`linear-gradient(135deg,${T.surface},${T.surfaceHi})`,padding:"18px 20px",display:"flex",alignItems:"center",gap:18,borderBottom:`1px solid ${T.border}` }}>
+            <ScoreRing score={kpi.final} size={60} />
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:10,color:T.textMute,marginBottom:3,letterSpacing:".05em",textTransform:"uppercase" }}>
+                {isPMRole?"PD-002 · Project Manager":"PD-001 · Service Engineer"} — Skor KPI {quarter} {year}
+              </div>
+              <div style={{ fontSize:16,fontWeight:700,color:KPI.color(kpi.final),marginBottom:8,fontFamily:DISPLAY }}>{KPI.label(kpi.final)}</div>
+              <div style={{ display:"flex",gap:7,flexWrap:"wrap" }}>
+                {(() => { const qb=KPI.eligible(kpi.final); return <Tag color={qb?T.green:T.red} lo={qb?T.greenLo:T.redLo}>{qb?"✓ Eligible QB":"✗ Tidak Eligible QB"}</Tag>; })()}
+                {kpi.final===-1 && <Tag color={T.red} lo={T.redLo}>⚠ Ada Pelanggaran</Tag>}
+                <Tag color={T.textMute} lo={T.border}>{kpi.domains.filter(d=>d.score!==null).length} domain aktif</Tag>
+              </div>
+            </div>
+          </div>
+          {/* Domain Scores */}
+          <div style={{ padding:"14px 20px",display:"flex",flexDirection:"column",gap:10 }}>
+            {kpi.domains.map((d,i) => (
+              <div key={i} style={{ display:"flex",alignItems:"center",gap:10 }}>
+                <span style={{ fontSize:12,color:T.textSec,width:175,flexShrink:0 }}>{d.label}</span>
+                <div style={{ flex:1 }}>
+                  {d.score!==null ? <ScoreBar score={d.score} /> : <span style={{ fontSize:11,color:T.textMute,fontStyle:"italic" }}>N/A — belum ada data</span>}
+                </div>
+                <span style={{ fontSize:11,color:T.textMute,width:65,textAlign:"right",flexShrink:0 }}>{d.count} aktivitas</span>
+              </div>
+            ))}
+          </div>
+          {/* Admin NPS edit panel for pm_presentation */}
+          {isAdminView && onAdminEditNps && (
+            <div style={{ padding:"0 16px 12px" }}>
+              <AdminNpsPanel acts={myActs} onAdminEditNps={onAdminEditNps} />
+            </div>
+          )}
+          {/* NPS pending notice */}
+          {!isAdminView && (() => {
+            const needNPS = myActs.filter(a=>a.actKey==="pm_presentation"&&a.kpi?.nps==null);
+            return needNPS.length>0 ? (
+              <div style={{ margin:"0 16px 12px",padding:"8px 12px",background:T.amberLo,border:`1px solid ${T.amber}30`,borderRadius:7,fontSize:11,color:T.amber,display:"flex",alignItems:"center",gap:6 }}>
+                ⚠ {needNPS.length} PM Presentation belum ada skor NPS. Hubungi Admin.
+              </div>
+            ) : null;
+          })()}
+        </Card>
+      ) : (
+        totalActs === 0 ? (
+          <Card p={20}>
+            <div style={{ textAlign:"center",color:T.textMute,fontSize:13 }}>Belum ada aktivitas di {quarter} {year}.</div>
+          </Card>
+        ) : null
+      )}
+
+      {/* Task per kategori — grid card setiap kategori */}
+      <Card p={18}>
+        <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14 }}>
+          <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em" }}>
+            Task per Kategori — {quarter}
+          </div>
+          <span style={{ fontSize:10,color:T.textMute }}>{totalActs} total aktivitas</span>
+        </div>
+        {/* Jira section */}
+        {jiraCats.length > 0 && (
+          <div style={{ marginBottom:14 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:5,marginBottom:8 }}>
+              <div style={{ width:8,height:8,borderRadius:1,background:T.jira }} />
+              <span style={{ fontSize:10,color:T.jira,fontWeight:700,letterSpacing:".05em" }}>VIA JIRA</span>
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:7 }}>
+              {jiraCats.map(c => <CatBox key={c.key} c={c} />)}
+            </div>
+          </div>
+        )}
+        {/* Non-Jira section */}
+        {nonJiraCats.length > 0 && (
+          <div>
+            <div style={{ display:"flex",alignItems:"center",gap:5,marginBottom:8 }}>
+              <div style={{ width:8,height:8,borderRadius:1,background:T.textMute }} />
+              <span style={{ fontSize:10,color:T.textMute,fontWeight:700,letterSpacing:".05em" }}>NON-JIRA</span>
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:7 }}>
+              {nonJiraCats.map(c => <CatBox key={c.key} c={c} />)}
+            </div>
+          </div>
+        )}
+        {totalActs === 0 && (
+          <div style={{ textAlign:"center",color:T.textMute,fontSize:13,padding:"24px 0" }}>Belum ada aktivitas di {quarter} {year}.</div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function CatBreakdown({ jiraCats, nonJiraCats }) {
+  return (
+    <Card p={18}>
+      <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:14 }}>Aktivitas per Kategori</div>
+      {jiraCats.length > 0 && (
+        <div style={{ marginBottom:12 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:5,marginBottom:8 }}>
+            <div style={{ width:8,height:8,borderRadius:1,background:T.jira }} />
+            <span style={{ fontSize:10,color:T.jira,fontWeight:700,letterSpacing:".05em" }}>VIA JIRA</span>
+          </div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:7 }}>
+            {jiraCats.map(c => <CatBox key={c.key} c={c} />)}
+          </div>
+        </div>
+      )}
+      {nonJiraCats.length > 0 && (
+        <div>
+          <div style={{ display:"flex",alignItems:"center",gap:5,marginBottom:8 }}>
+            <div style={{ width:8,height:8,borderRadius:1,background:T.textMute }} />
+            <span style={{ fontSize:10,color:T.textMute,fontWeight:700,letterSpacing:".05em" }}>NON-JIRA</span>
+          </div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:7 }}>
+            {nonJiraCats.map(c => <CatBox key={c.key} c={c} />)}
+          </div>
+        </div>
+      )}
+      {jiraCats.length===0&&nonJiraCats.length===0 && (
+        <div style={{ textAlign:"center",color:T.textMute,fontSize:13,padding:"24px 0" }}>Belum ada aktivitas.</div>
+      )}
+    </Card>
+  );
+}
+// AdminNpsPanel — editable NPS for pm_presentation activities (admin view)
+function AdminNpsPanel({ acts, onAdminEditNps }) {
+  const [editId, setEditId] = useState(null);
+  const [npsVal, setNpsVal] = useState(3);
+  const pmPres = acts.filter(a=>a.actKey==="pm_presentation");
+  if(!pmPres.length) return null;
+  return (
+    <div style={{ marginTop:12,padding:"10px 12px",background:`${T.amber}10`,border:`1px solid ${T.amber}30`,borderRadius:8 }}>
+      <div style={{ fontSize:10,fontWeight:700,color:T.amber,letterSpacing:".05em",marginBottom:8 }}>⭐ EDIT NPS (Admin)</div>
+      {pmPres.map(a=>(
+        <div key={a.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border}` }}>
+          <div style={{ flex:1,overflow:"hidden" }}>
+            <div style={{ fontSize:11,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{a.customerName||"—"} · {a.date}</div>
+          </div>
+          {editId===a.id ? (
+            <div style={{ display:"flex",gap:4,alignItems:"center" }}>
+              {[0,1,2,3,4].map(n=>(
+                <button key={n} onClick={()=>setNpsVal(n)} style={{ width:24,height:24,borderRadius:5,border:`1.5px solid ${npsVal===n?T.indigo:T.border}`,background:npsVal===n?T.indigoLo:T.surfaceHi,color:npsVal===n?T.indigoHi:T.textMute,cursor:"pointer",fontFamily:MONO,fontSize:11,fontWeight:700 }}>{n}</button>
+              ))}
+              <button onClick={()=>{ onAdminEditNps(a.id,npsVal); setEditId(null); }} style={{ padding:"2px 8px",borderRadius:5,background:T.greenLo,border:`1px solid ${T.green}30`,color:T.green,cursor:"pointer",fontFamily:FONT,fontSize:10,fontWeight:700 }}>✓</button>
+              <button onClick={()=>setEditId(null)} style={{ padding:"2px 6px",borderRadius:5,background:T.surfaceHi,border:`1px solid ${T.border}`,color:T.textMute,cursor:"pointer",fontFamily:FONT,fontSize:10 }}>×</button>
+            </div>
+          ) : (
+            <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+              <span style={{ fontSize:11,fontFamily:MONO,fontWeight:700,color:a.kpi?.nps!=null?T.green:T.amber }}>
+                {a.kpi?.nps!=null?`NPS: ${a.kpi.nps}`:"Belum"}
+              </span>
+              <button onClick={()=>{ setEditId(a.id); setNpsVal(a.kpi?.nps??3); }} style={{ padding:"2px 8px",borderRadius:5,background:T.amberLo,border:`1px solid ${T.amber}30`,color:T.amber,cursor:"pointer",fontFamily:FONT,fontSize:10,fontWeight:600 }}>Edit</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CatBox({ c }) {
+  const pct = c.count ? Math.round(c.done/c.count*100) : 0;
+  return (
+    <div style={{ background:T.surfaceHi,border:`1px solid ${c.color}25`,borderRadius:9,padding:"11px 13px",position:"relative",overflow:"hidden" }}>
+      <div style={{ position:"absolute",top:0,left:0,width:3,bottom:0,background:c.color,borderRadius:"3px 0 0 3px" }} />
+      <div style={{ fontSize:14,marginBottom:5 }}>{c.icon}</div>
+      <div style={{ fontSize:11,fontWeight:700,color:c.color,marginBottom:6,lineHeight:1.3 }}>{c.label}</div>
+      <div style={{ fontSize:20,fontWeight:800,color:T.textPri,fontFamily:MONO,marginBottom:4 }}>{c.count}</div>
+      <div style={{ fontSize:10,color:T.textMute,marginBottom:6 }}>{c.done}/{c.count} selesai · {fmtH(c.mins)}</div>
+      <div style={{ height:3,background:T.border,borderRadius:2,overflow:"hidden" }}>
+        <div style={{ height:"100%",width:`${pct}%`,background:c.color,borderRadius:2,transition:"width .5s" }} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// DASHBOARD VIEW
+// ─────────────────────────────────────────────
+function DashboardView({ currentUser, activities, members, onAdminEditNps }) {
+  const canSeeTeam = isMgr(currentUser.role); // admin, mgr_ps, mgr_dl bisa lihat tim
+  const myTeam = teamOf(currentUser.role);
+
+  // canSeeTeam: admin/mgr sees team. isAdminRole: admin only (no personal KPI tab)
+  const isAdminRole = isAdmin(currentUser.role);
+  const [tab, setTab] = useState(canSeeTeam ? "overview" : "kpi");
+  const [memberDetailId, setMemberDetail] = useState(null); // for member detail dropdown
+  const [memberDropOpen, setMDO] = useState(false);
+
+  const dlActs = activities.filter(a=>a.userTeam==="delivery");
+  const psActs = activities.filter(a=>a.userTeam==="presales");
+
+  // Visible members for mgr: only their direct reports + themselves
+  // For admin: everyone. For others: empty
+  const visibleMembers = useMemo(() => {
+    if(!canSeeTeam) return [];
+    if(isAdminRole) return members.filter(m=>m.status!=="invited");
+    // Mgr sees their direct reports
+    return members.filter(m=>m.supervisorId===currentUser.id||m.id===currentUser.id).filter(m=>m.status!=="invited");
+  },[members,canSeeTeam,isAdminRole,currentUser]);
+
+  // Leaderboard — hanya untuk mgr/admin, respecting visibility
+  const leaderboard = useMemo(() => {
+    if(!canSeeTeam) return [];
+    return visibleMembers.filter(m=>m.status==="active").map(m=>{
+      const acts = activities.filter(a=>a.user===m.name);
+      const mins = acts.reduce((s,a)=>s+a.dur,0);
+      const jiraM= acts.filter(a=>ACTS[a.actKey]?.source==="jira").reduce((s,a)=>s+a.dur,0);
+      const appM = acts.filter(a=>ACTS[a.actKey]?.source==="app").reduce((s,a)=>s+a.dur,0);
+      const done = acts.filter(a=>a.status==="completed").length;
+      const kpiRes = calcKPI(m, activities);
+      return { ...m, mins, jiraM, appM, total:acts.length, done, eff:acts.length?Math.round(done/acts.length*100):0, kpi:kpiRes?.final??null };
+    }).sort((a,b)=>b.mins-a.mins);
+  },[activities,visibleMembers,canSeeTeam]);
+
+  const maxMins = leaderboard[0]?.mins || 1;
+
+  // Tabs: Admin = Overview+Leaderboard+Member Detail (no KPI); Mgr = same + KPI Saya; SE/PM = KPI Saya only
+  const tabs = canSeeTeam
+    ? isAdminRole
+      ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
+      : [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"},{id:"kpi",label:"📈 KPI Saya"}]
+    : [{id:"kpi",label:"📈 KPI Saya"}];
+
+  const memberDetailUser = visibleMembers.find(m=>m.id===memberDetailId) || visibleMembers[0] || null;
+
+  return (
+    <div>
+      <div style={{ display:"flex",gap:3,marginBottom:22,background:T.surfaceHi,padding:3,borderRadius:10,border:`1px solid ${T.border}`,width:"fit-content" }}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"6px 16px",borderRadius:8,fontFamily:FONT,fontSize:12,fontWeight:tab===t.id?700:400,cursor:"pointer",border:"none",
+            background:tab===t.id?T.indigo:"transparent",color:tab===t.id?"#fff":T.textSec,transition:"all .15s" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── OVERVIEW ── */}
+      {tab==="overview" && (
+        <div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20 }}>
+            {[
+              {l:"Total Aktivitas",  v:activities.length,                              s:"semua tim",         col:T.indigoHi},
+              {l:"Total Jam Kerja",  v:fmtH(activities.reduce((s,a)=>s+a.dur,0)),       s:"semua member",      col:T.teal},
+              {l:"Pipeline PS",      v:fmtIDR(psActs.reduce((s,a)=>s+(Number(a.value)||0),0)), s:"Pre-Sales", col:T.violet},
+              {l:"Non-Jira Hari Ini",v:activities.filter(a=>ACTS[a.actKey]?.source==="app").length,s:"learning + internal + koordinasi",col:T.amber},
+            ].map((k,i)=>(
+              <Card key={i} p={0} glow={k.col} style={{ overflow:"hidden" }}>
+                <div style={{ padding:"15px 17px" }}>
+                  <div style={{ fontSize:9,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6 }}>{k.l}</div>
+                  <div style={{ fontSize:22,fontWeight:800,color:k.col,fontFamily:MONO,marginBottom:3 }}>{k.v}</div>
+                  <div style={{ fontSize:10,color:T.textMute }}>{k.s}</div>
+                </div>
+                <div style={{ height:2,background:k.col,opacity:.5 }} />
+              </Card>
+            ))}
+          </div>
+
+          {/* Jira vs Non-Jira split */}
+          <Card p={18} style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:14 }}>Komposisi Aktivitas — Jira vs Non-Jira</div>
+            <div style={{ display:"flex",gap:14 }}>
+              {leaderboard.slice(0,6).map(m => {
+                const jiraPct = m.mins ? Math.round(m.jiraM/m.mins*100) : 0;
+                return (
+                  <div key={m.id} style={{ flex:1,minWidth:0 }}>
+                    <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5 }}>
+                      <Avi av={m.avatar} team={m.team} sz={22} />
+                      <span style={{ fontSize:11,color:T.textPri,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name.split(" ")[0]}</span>
+                    </div>
+                    <div style={{ height:60,background:T.surfaceHi,borderRadius:6,overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"flex-end" }}>
+                      <div style={{ height:`${jiraPct}%`,background:T.jira,opacity:.85 }} />
+                      <div style={{ height:`${100-jiraPct}%`,background:T.textMute,opacity:.3 }} />
+                    </div>
+                    <div style={{ fontSize:9,color:T.jira,fontWeight:700,marginTop:3,textAlign:"center",fontFamily:MONO }}>{jiraPct}% Jira</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display:"flex",gap:14,marginTop:8 }}>
+              <div style={{ display:"flex",alignItems:"center",gap:5,fontSize:10,color:T.textMute }}><div style={{ width:10,height:10,borderRadius:2,background:T.jira,opacity:.85 }} /> Jira ticket hours</div>
+              <div style={{ display:"flex",alignItems:"center",gap:5,fontSize:10,color:T.textMute }}><div style={{ width:10,height:10,borderRadius:2,background:T.textMute,opacity:.5 }} /> Non-Jira (learning, meeting, koordinasi)</div>
+            </div>
+          </Card>
+
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14 }}>
+            <Card p={18}>
+              <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Delivery — Jam Mingguan</div>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={WEEKLY.delivery} barSize={5} barGap={0}>
+                  <XAxis dataKey="d" tick={{ fill:T.textMute,fontSize:11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill:T.textMute,fontSize:10 }} axisLine={false} tickLine={false} width={22} />
+                  <Tooltip contentStyle={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,color:T.textPri }} />
+                  {Object.entries(ACTS).filter(([,v])=>v.team==="delivery").map(([k,v])=><Bar key={k} dataKey={k} fill={v.color} radius={[2,2,0,0]} />)}
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+            <Card p={18}>
+              <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Pre-Sales — Mingguan</div>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={WEEKLY.presales} barSize={5} barGap={0}>
+                  <XAxis dataKey="d" tick={{ fill:T.textMute,fontSize:11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill:T.textMute,fontSize:10 }} axisLine={false} tickLine={false} width={22} />
+                  <Tooltip contentStyle={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,color:T.textPri }} />
+                  {Object.entries(ACTS).filter(([,v])=>v.team==="presales").map(([k,v])=><Bar key={k} dataKey={k} fill={v.color} radius={[2,2,0,0]} />)}
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ── LEADERBOARD ── */}
+      {tab==="leaderboard" && (
+        <Card p={0} style={{ overflow:"hidden" }}>
+          <div style={{ padding:"13px 20px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+            <span style={{ fontSize:13,fontWeight:700,color:T.textPri }}>⏱ Leaderboard Jam Kerja</span>
+            <span style={{ fontSize:11,color:T.textMute }}>{leaderboard.length} member aktif</span>
+          </div>
+          {leaderboard.map((m,i)=>(
+            <div key={m.id} style={{ display:"flex",alignItems:"center",gap:14,padding:"13px 20px",borderBottom:`1px solid ${T.border}`,background:i===0?`${T.green}08`:T.surface }}>
+              <span style={{ fontSize:18,width:28,flexShrink:0,textAlign:"center" }}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</span>
+              <Avi av={m.avatar} team={m.team} sz={36} />
+              <div style={{ flex:1,minWidth:0 }}>
+                <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:5 }}>
+                  <span style={{ fontSize:13,fontWeight:i<3?700:400,color:T.textPri }}>{m.name}</span>
+                  <RoleBadge role={m.role} />
+                </div>
+                <div style={{ height:5,background:T.border,borderRadius:3,overflow:"hidden",marginBottom:4 }}>
+                  <div style={{ height:"100%",borderRadius:3,transition:"width .5s",
+                    background:`linear-gradient(90deg,${m.team==="presales"?T.violet:T.teal} ${Math.round(m.jiraM/m.mins*100)||0}%, ${T.textMute} ${Math.round(m.jiraM/m.mins*100)||0}%)`,
+                    width:`${Math.round(m.mins/maxMins*100)}%` }} />
+                </div>
+                <div style={{ fontSize:10,color:T.textMute,display:"flex",gap:10 }}>
+                  <span>{m.total} aktivitas</span>
+                  <span>{m.done} selesai</span>
+                  <span style={{ color:T.jira }}>Jira: {fmtH(m.jiraM)}</span>
+                  <span style={{ color:T.textMute }}>Non-Jira: {fmtH(m.appM)}</span>
+                </div>
+              </div>
+              <div style={{ textAlign:"right",flexShrink:0 }}>
+                <div style={{ fontSize:18,fontWeight:800,color:m.team==="presales"?T.violet:T.teal,fontFamily:MONO }}>{fmtH(m.mins)}</div>
+                {m.kpi!==null && (
+                  <div style={{ marginTop:4,fontSize:11,fontWeight:700,color:KPI.color(m.kpi),fontFamily:MONO,
+                    background:`${KPI.color(m.kpi)}18`,padding:"2px 8px",borderRadius:8,border:`1px solid ${KPI.color(m.kpi)}30` }}>
+                    KPI {m.kpi===-1?"-1":m.kpi?.toFixed(1)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* ── PERSONAL KPI ── */}
+      {tab==="kpi" && !isAdminRole && <PersonalKPI user={currentUser} activities={activities} />}
+
+      {/* ── MEMBER DETAIL ── */}
+      {tab==="memberdetail" && (
+        <div>
+          {/* Member Dropdown selector */}
+          <div style={{ position:"relative",marginBottom:20,maxWidth:380 }}>
+            <div style={{ fontSize:11,color:T.textMute,marginBottom:6,fontWeight:600,letterSpacing:".04em",textTransform:"uppercase" }}>Pilih Team Member</div>
+            <button onClick={()=>setMDO(v=>!v)}
+              style={{ width:"100%",padding:"10px 14px",borderRadius:9,border:`1.5px solid ${memberDropOpen?T.indigo:T.border}`,
+                cursor:"pointer",fontFamily:FONT,fontSize:13,textAlign:"left",background:T.surface,
+                display:"flex",alignItems:"center",gap:10,transition:"border-color .15s" }}>
+              {memberDetailUser ? (
+                <>
+                  <Avi av={memberDetailUser.avatar} team={memberDetailUser.team} sz={28} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13,fontWeight:700,color:T.textPri }}>{memberDetailUser.name}</div>
+                    <div style={{ fontSize:10,color:T.textMute }}>{ROLES[memberDetailUser.role]?.label} · {memberDetailUser.position}</div>
+                  </div>
+                </>
+              ) : <span style={{ color:T.textMute }}>Pilih member...</span>}
+              <span style={{ fontSize:11,color:T.textMute,flexShrink:0 }}>{memberDropOpen?"▲":"▼"}</span>
+            </button>
+            {memberDropOpen && (
+              <div style={{ position:"absolute",top:"100%",left:0,right:0,zIndex:60,marginTop:4,
+                background:T.surface,border:`1.5px solid ${T.indigo}40`,borderRadius:10,
+                boxShadow:"0 10px 30px rgba(0,0,0,.6)",overflow:"hidden" }}>
+                <div style={{ padding:"7px 12px",borderBottom:`1px solid ${T.border}`,fontSize:10,color:T.textMute,fontWeight:700 }}>
+                  {visibleMembers.length} MEMBER — {isAdminRole?"Semua Tim":"Tim Langsung"}
+                </div>
+                <div style={{ maxHeight:260,overflowY:"auto" }}>
+                  {visibleMembers.map(m=>{
+                    const sel=m.id===memberDetailId;
+                    const mActs=activities.filter(a=>a.user===m.name);
+                    return (
+                      <button key={m.id} onClick={()=>{ setMemberDetail(m.id); setMDO(false); }}
+                        style={{ width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 14px",border:"none",
+                          cursor:"pointer",fontFamily:FONT,textAlign:"left",
+                          background:sel?T.indigoLo:T.surface,
+                          borderLeft:`3px solid ${sel?T.indigo:"transparent"}`,
+                          borderBottom:`1px solid ${T.border}`,transition:"all .1s" }}>
+                        <Avi av={m.avatar} team={m.team} sz={32} />
+                        <div style={{ flex:1,minWidth:0 }}>
+                          <div style={{ fontSize:12,fontWeight:sel?700:500,color:sel?T.indigoHi:T.textPri }}>{m.name}</div>
+                          <div style={{ fontSize:10,color:T.textMute,marginTop:1 }}>{ROLES[m.role]?.label} · {mActs.length} aktivitas</div>
+                        </div>
+                        <div style={{ textAlign:"right",flexShrink:0 }}>
+                          <div style={{ fontSize:11,fontFamily:MONO,color:T.teal,fontWeight:700 }}>{fmtH(mActs.reduce((s,a)=>s+a.dur,0))}</div>
+                          {m.status==="suspended"&&<span style={{ fontSize:9,color:T.amber }}>Suspended</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Member Detail Content */}
+          {memberDetailUser ? (
+            <div>
+              {/* Profile Card */}
+              <Card p={20} style={{ marginBottom:14 }}>
+                <div style={{ display:"flex",alignItems:"flex-start",gap:16,marginBottom:16 }}>
+                  <div style={{ position:"relative" }}>
+                    <Avi av={memberDetailUser.avatar} team={memberDetailUser.team} sz={56} />
+                    {memberDetailUser.status==="active"&&<div style={{ position:"absolute",bottom:2,right:2,width:10,height:10,borderRadius:"50%",background:T.green,border:`2px solid ${T.surface}` }} />}
+                    {memberDetailUser.status==="suspended"&&<div style={{ position:"absolute",bottom:2,right:2,width:10,height:10,borderRadius:"50%",background:T.amber,border:`2px solid ${T.surface}` }} />}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:18,fontWeight:800,color:T.textPri,fontFamily:DISPLAY,marginBottom:2 }}>{memberDetailUser.name}</div>
+                    <div style={{ fontSize:12,color:T.textMute,marginBottom:8 }}>{memberDetailUser.email}</div>
+                    <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+                      <RoleBadge role={memberDetailUser.role} />
+                      <TeamBadge team={memberDetailUser.team} />
+                      {(() => { const sup=members.find(m=>m.id===memberDetailUser.supervisorId); return sup?<Tag color={T.amber} lo={T.amberLo}>👤 {sup.name}</Tag>:null; })()}
+                    </div>
+                  </div>
+                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,textAlign:"right" }}>
+                    {[
+                      {l:"Jabatan",v:memberDetailUser.position},
+                      {l:"Dept",v:memberDetailUser.dept},
+                      {l:"Bergabung",v:memberDetailUser.joinDate},
+                      {l:"Status",v:memberDetailUser.status==="active"?"✓ Aktif":memberDetailUser.status==="suspended"?"⚠ Suspended":"📩 Invited"},
+                    ].map(f=>(
+                      <div key={f.l} style={{ padding:"6px 10px",background:T.surfaceHi,borderRadius:7,border:`1px solid ${T.border}` }}>
+                        <div style={{ fontSize:9,color:T.textMute,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2 }}>{f.l}</div>
+                        <div style={{ fontSize:11,fontWeight:600,color:T.textPri }}>{f.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+              {/* Member's PersonalKPI */}
+              <PersonalKPI user={memberDetailUser} activities={activities} isAdminView={true} onAdminEditNps={canSeeTeam?onAdminEditNps:null} />
+            </div>
+          ) : (
+            <Card p={30}><div style={{ textAlign:"center",color:T.textMute }}>Tidak ada member yang bisa dilihat.</div></Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITIES VIEW
+// ─────────────────────────────────────────────
+function ActivitiesView({ currentUser, activities, onAdd }) {
+  const [logOpen, setLog] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const myTeam = teamOf(currentUser.role);
+  const availActs = useMemo(() => actsFor(currentUser.role), [currentUser.role]);
+
+  const visible = useMemo(() => {
+    let list = isAdmin(currentUser.role)||isMgr(currentUser.role)||isPM(currentUser.role)
+      ? activities : activities.filter(a=>a.user===currentUser.name);
+    if(myTeam!=="all") list=list.filter(a=>a.userTeam===myTeam);
+    if(filter==="jira")   list=list.filter(a=>ACTS[a.actKey]?.source==="jira");
+    if(filter==="nonjira")list=list.filter(a=>ACTS[a.actKey]?.source==="app");
+    if(filter!=="all"&&filter!=="jira"&&filter!=="nonjira") list=list.filter(a=>a.actKey===filter);
+    return list;
+  },[activities,filter,currentUser,myTeam]);
+
+  const jiraKeys   = Object.entries(availActs).filter(([,v])=>v.source==="jira").map(([k])=>k);
+  const appKeys    = Object.entries(availActs).filter(([,v])=>v.source==="app").map(([k])=>k);
+
+  return (
+    <div>
+      {/* Filter bar */}
+      <div style={{ display:"flex",gap:5,marginBottom:16,flexWrap:"wrap",alignItems:"center" }}>
+        <Pill active={filter==="all"} color={T.indigoHi} lo={T.indigoLo} onClick={()=>setFilter("all")}>Semua ({activities.filter(a=>myTeam==="all"||a.userTeam===myTeam).length})</Pill>
+        <div style={{ width:1,height:18,background:T.border }} />
+        <Pill active={filter==="jira"} color={T.jira} lo={T.jiraLo} onClick={()=>setFilter("jira")} small>◈ Jira</Pill>
+        <Pill active={filter==="nonjira"} color={T.textSec} lo={T.border} onClick={()=>setFilter("nonjira")} small>Non-Jira</Pill>
+        <div style={{ width:1,height:18,background:T.border }} />
+        {[...jiraKeys,...appKeys].map(k=>{
+          const v=ACTS[k]; const cnt=activities.filter(a=>a.actKey===k&&(myTeam==="all"||a.userTeam===myTeam)).length;
+          if(!cnt) return null;
+          return <Pill key={k} active={filter===k} color={v.color} lo={v.colorLo} onClick={()=>setFilter(k)} small>{v.icon} {v.label} ({cnt})</Pill>;
+        })}
+      </div>
+      <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+        {visible.length===0 && (
+          <Card p={40} style={{ textAlign:"center" }}>
+            <div style={{ fontSize:13,color:T.textMute }}>Tidak ada aktivitas untuk filter ini.</div>
+          </Card>
+        )}
+        {visible.map(a => <ActCard key={a.id} act={a} />)}
+      </div>
+
+      <Modal open={logOpen} onClose={()=>setLog(false)} width={560}>
+        <MHead title="Log Aktivitas" sub={new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} onClose={()=>setLog(false)} />
+        <LogForm user={currentUser} onSave={a=>{onAdd(a);setLog(false);}} onCancel={()=>setLog(false)} />
+      </Modal>
+      <button onClick={()=>setLog(true)} style={{ position:"fixed",bottom:28,right:28,width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,color:"#fff",border:"none",fontSize:22,cursor:"pointer",boxShadow:`0 4px 20px ${T.indigo}60`,display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,transition:"transform .15s" }}
+        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>+</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MEMBERS VIEW
+// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// INVITE MODAL
+// ─────────────────────────────────────────────
+const SMTP_PROVS=[
+  {id:"gmail",    label:"Gmail",       host:"smtp.gmail.com",                         port:"587"},
+  {id:"sendgrid", label:"SendGrid",    host:"smtp.sendgrid.net",                      port:"587"},
+  {id:"ses",      label:"Amazon SES",  host:"email-smtp.us-east-1.amazonaws.com",     port:"587"},
+  {id:"custom",   label:"Custom SMTP", host:"",                                        port:"587"},
+];
+
+function InviteModal({ open, onClose, members, onAdd }) {
+  const [step,setStep]=useState(1);
+  const [form,setF]=useState({name:"",email:"",role:"delivery"});
+  const [smtp,setS]=useState({provider:"gmail",host:"smtp.gmail.com",port:"587",user:"",pass:""});
+  const [errs,setE]=useState({});
+  const [busy,setBusy]=useState(false);
+
+  const sf=(k,v)=>{setF(p=>({...p,[k]:v}));setE(p=>({...p,[k]:""}));};
+
+  const validateStep1=()=>{
+    const e={};
+    if(!form.name.trim()) e.name="Nama wajib";
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email="Format email tidak valid";
+    if(members.find(m=>m.email.toLowerCase()===form.email.toLowerCase())) e.email="Email sudah terdaftar";
+    setE(e); return !Object.keys(e).length;
+  };
+  const validateStep2=()=>{
+    const e={};
+    if(smtp.provider==="custom"&&!smtp.host.trim()) e.host="Host wajib";
+    if(!smtp.user.trim()) e.user="Username / API key wajib";
+    if(!smtp.pass.trim()) e.pass="Password wajib";
+    setE(e); return !Object.keys(e).length;
+  };
+
+  const send=()=>{
+    setBusy(true);
+    setTimeout(()=>{
+      const av=form.name.trim().split(" ").map(w=>w[0].toUpperCase()).slice(0,2).join("");
+      const t=ROLES[form.role]?.team||"delivery";
+      onAdd({ id:Date.now(), ...form, avatar:av, team:t,
+        position:"", dept:t==="presales"?"Pre-Sales":"Delivery",
+        status:"invited", joinDate:new Date().toISOString().split("T")[0] });
+      setBusy(false); setStep(4);
+    },1000);
+  };
+
+  const reset=()=>{setStep(1);setF({name:"",email:"",role:"delivery"});setS({provider:"gmail",host:"smtp.gmail.com",port:"587",user:"",pass:""});setE({});setBusy(false);};
+  const close=()=>{reset();onClose();};
+
+  const rc=ROLES[form.role];
+
+  return (
+    <Modal open={open} onClose={close} width={480}>
+      {step===4 ? (
+        <div style={{ textAlign:"center",padding:"28px 0" }}>
+          <div style={{ width:52,height:52,borderRadius:"50%",background:T.greenLo,border:`2px solid ${T.green}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,margin:"0 auto 12px" }}>✓</div>
+          <div style={{ fontSize:16,fontWeight:700,color:T.green,marginBottom:6,fontFamily:DISPLAY }}>Undangan Terkirim!</div>
+          <p style={{ fontSize:13,color:T.textSec,margin:"0 0 16px" }}>Email dikirim ke <strong style={{ color:T.textPri }}>{form.email}</strong>. Link aktivasi berlaku 24 jam.</p>
+          <Btn v="teal" style={{ width:"100%",justifyContent:"center" }} onClick={close}>Selesai ✓</Btn>
+        </div>
+      ) : (
+        <>
+          <MHead title={["","Undang Member Baru","Konfigurasi SMTP","Preview Email"][step]} sub={["","Isi data member yang akan diundang","Setup email server untuk kirim undangan","Cek email sebelum dikirim"][step]} onClose={close} />
+
+          {/* Step indicator */}
+          <div style={{ display:"flex",alignItems:"center",gap:4,marginBottom:20 }}>
+            {["Data","SMTP","Preview"].map((s,i)=>{
+              const done=step>i+1, active=step===i+1;
+              return <div key={i} style={{ display:"flex",alignItems:"center",gap:4 }}>
+                <div style={{ width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",flexShrink:0,
+                  background:done?T.green:active?T.indigo:T.border }}>{done?"✓":i+1}</div>
+                <span style={{ fontSize:11,fontWeight:active?700:400,color:done?T.green:active?T.textPri:T.textMute,whiteSpace:"nowrap" }}>{s}</span>
+                {i<2&&<div style={{ width:16,height:1,background:T.border,margin:"0 2px" }} />}
+              </div>;
+            })}
+          </div>
+
+          {/* Step 1 */}
+          {step===1 && (
+            <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+              <Inp label="Nama Lengkap" required value={form.name} error={errs.name} onChange={e=>sf("name",e.target.value)} placeholder="Budi Santoso" />
+              <Inp label="Email" required type="email" value={form.email} error={errs.email} onChange={e=>sf("email",e.target.value)} placeholder="budi@seraphim.id" />
+              <div>
+                <Lbl>Role</Lbl>
+                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
+                  {Object.entries(ROLES).map(([k,r])=>{
+                    const active=form.role===k;
+                    return <button key={k} onClick={()=>sf("role",k)} style={{ padding:"8px 10px",borderRadius:8,cursor:"pointer",textAlign:"left",fontFamily:FONT,border:`1.5px solid ${active?r.color+"60":T.border}`,background:active?r.lo:T.surfaceHi,transition:"all .15s" }}>
+                      <div style={{ fontSize:11,fontWeight:700,color:active?r.color:T.textPri }}>{r.label}</div>
+                      <div style={{ fontSize:10,color:T.textMute,marginTop:1 }}>{r.team==="all"?"All Teams":r.team==="presales"?"Pre-Sales":"Delivery"}</div>
+                    </button>;
+                  })}
+                </div>
+              </div>
+              {/* Supervisor field — hanya untuk SE, PM, dan Sales Engineer */}
+              {["delivery","pm","presales"].includes(form.role) && (
+                <div>
+                  <Lbl>Atasan Langsung <span style={{ color:T.red }}>*</span></Lbl>
+                  <select value={form.supervisorId||""} onChange={e=>sf("supervisorId",e.target.value?Number(e.target.value):null)}
+                    style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${errs.supervisorId?T.red:T.border}`,borderRadius:8,padding:"8px 12px",color:form.supervisorId?T.textPri:T.textMute,fontSize:12,outline:"none",fontFamily:FONT }}>
+                    <option value="">-- Pilih atasan langsung --</option>
+                    {(members||[]).filter(m=>["mgr_dl","mgr_ps"].includes(m.role)&&m.status==="active").map(m=>(
+                      <option key={m.id} value={m.id}>{m.name} ({ROLES[m.role]?.label})</option>
+                    ))}
+                  </select>
+                  {errs.supervisorId&&<div style={{ fontSize:11,color:T.red,marginTop:3 }}>{errs.supervisorId}</div>}
+                </div>
+              )}
+              <div style={{ display:"flex",gap:8,marginTop:4,paddingTop:12,borderTop:`1px solid ${T.border}` }}>
+                <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={close}>Batal</Btn>
+                <Btn v="primary" style={{ flex:2,justifyContent:"center" }} onClick={()=>validateStep1()&&setStep(2)}>Lanjut → SMTP</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 */}
+          {step===2 && (
+            <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+              <div>
+                <Lbl>Email Provider</Lbl>
+                <div style={{ display:"flex",gap:5,flexWrap:"wrap" }}>
+                  {SMTP_PROVS.map(p=>{
+                    const active=smtp.provider===p.id;
+                    return <button key={p.id} onClick={()=>setS(s=>({...s,provider:p.id,host:p.host,port:p.port}))} style={{ padding:"4px 12px",borderRadius:20,cursor:"pointer",fontFamily:FONT,fontSize:12,border:`1.5px solid ${active?T.indigo:T.border}`,background:active?T.indigoLo:T.surfaceHi,color:active?T.indigoHi:T.textSec,fontWeight:active?700:400 }}>{p.label}</button>;
+                  })}
+                </div>
+              </div>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 80px",gap:8 }}>
+                <Inp label="SMTP Host" value={smtp.host} error={errs.host} readOnly={smtp.provider!=="custom"} onChange={e=>setS(s=>({...s,host:e.target.value}))} />
+                <Inp label="Port" value={smtp.port} onChange={e=>setS(s=>({...s,port:e.target.value}))} />
+              </div>
+              <Inp label="Username / Email Pengirim" required value={smtp.user} error={errs.user} onChange={e=>{setS(s=>({...s,user:e.target.value}));setE(p=>({...p,user:""}));}} />
+              <PwInp label="Password / API Key" value={smtp.pass} error={errs.pass} onChange={e=>{setS(s=>({...s,pass:e.target.value}));setE(p=>({...p,pass:""}));}} />
+              <div style={{ background:T.amberLo,border:`1px solid ${T.amber}30`,borderRadius:7,padding:"7px 11px",fontSize:11,color:T.amber }}>⚠ Kredensial hanya disimpan di .env server, tidak dikirim ke frontend.</div>
+              <div style={{ display:"flex",gap:8,paddingTop:8,borderTop:`1px solid ${T.border}` }}>
+                <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={()=>setStep(1)}>← Kembali</Btn>
+                <Btn v="primary" style={{ flex:2,justifyContent:"center" }} onClick={()=>validateStep2()&&setStep(3)}>Preview →</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 */}
+          {step===3 && (
+            <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+              <div style={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,padding:14 }}>
+                {[["FROM",smtp.user],["TO",`${form.name} <${form.email}>`],["SUBJECT","Undangan bergabung ke EngineerLog"]].map(([k,v])=>(
+                  <div key={k} style={{ fontSize:11,color:T.textMute,fontFamily:MONO,marginBottom:2 }}>{k}: <span style={{ color:T.textPri }}>{v}</span></div>
+                ))}
+                <div style={{ borderTop:`1px solid ${T.border}`,marginTop:10,paddingTop:10,fontSize:13,color:T.textSec,lineHeight:1.7 }}>
+                  Halo <strong style={{ color:T.textPri }}>{form.name}</strong>, kamu diundang sebagai{" "}
+                  <span style={{ color:rc?.color,fontWeight:700 }}>{rc?.label}</span> di EngineerLog — Seraphim Digital Technology.
+                  <div style={{ margin:"12px 0",textAlign:"center" }}>
+                    <span style={{ padding:"9px 20px",background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,borderRadius:7,color:"#fff",fontWeight:700,fontSize:13,boxShadow:`0 4px 14px ${T.indigo}50` }}>Aktivasi Akun →</span>
+                  </div>
+                  <div style={{ fontSize:11,color:T.textMute }}>Link berlaku 24 jam.</div>
+                </div>
+              </div>
+              <div style={{ display:"flex",gap:8,paddingTop:8,borderTop:`1px solid ${T.border}` }}>
+                <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={()=>setStep(2)}>← Kembali</Btn>
+                <Btn v="teal" style={{ flex:2,justifyContent:"center",opacity:busy?.65:1 }} onClick={send} disabled={busy}>{busy?"Mengirim...":"✉ Kirim Undangan"}</Btn>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, activities }) {
+  const [confirm,setC]=useState(false),[delC,setD]=useState(false);
+  const kpi = useMemo(()=>calcKPI(m,activities),[m,activities]);
+  const isSusp = m.status==="suspended";
+  return (
+    <Card style={{ opacity:isSusp?.75:1,position:"relative",overflow:"hidden" }} glow={isSusp?T.amber:undefined}>
+      {isSusp&&<div style={{ position:"absolute",top:0,left:0,right:0,height:2,background:`repeating-linear-gradient(90deg,${T.amber} 0,${T.amber} 7px,transparent 7px,transparent 14px)` }} />}
+      <div style={{ display:"flex",alignItems:"flex-start",gap:10,marginBottom:12 }}>
+        <div style={{ position:"relative" }}>
+          <Avi av={m.avatar} team={m.team} sz={40} />
+          {m.status==="active"&&<div style={{ position:"absolute",bottom:1,right:1,width:8,height:8,borderRadius:"50%",background:T.green,border:`2px solid ${T.surface}` }} />}
+        </div>
+        <div style={{ flex:1,minWidth:0 }}>
+          <div style={{ fontSize:13,fontWeight:700,color:isSusp?T.textMute:T.textPri }}>{m.name}</div>
+          <div style={{ fontSize:11,color:T.textMute,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.email}</div>
+          <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}><RoleBadge role={m.role} /></div>
+        </div>
+        {canManage&&!delC&&<button onClick={()=>setD(true)} style={{ width:24,height:24,borderRadius:5,border:`1px solid ${T.red}30`,background:T.redLo,color:T.red,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>🗑</button>}
+      </div>
+
+      {/* KPI mini — hanya untuk mgr/admin */}
+      {canSeeKPI && kpi && kpi.final!==null && (
+        <div style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,marginBottom:10 }}>
+          <ScoreRing score={kpi.final} size={34} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:10,color:T.textMute,marginBottom:2 }}>KPI Score</div>
+            <div style={{ fontSize:11,fontWeight:700,color:KPI.color(kpi.final) }}>{KPI.label(kpi.final)}</div>
+          </div>
+          {KPI.eligible(kpi.final)&&<Tag color={T.green} lo={T.greenLo} small>QB ✓</Tag>}
+        </div>
+      )}
+
+      {m.status==="invited"&&<div style={{ fontSize:11,color:T.jira,background:T.jiraLo,border:`1px solid ${T.jira}25`,borderRadius:6,padding:"6px 9px",marginBottom:8 }}>🔗 Undangan terkirim · 24 jam</div>}
+
+      {canManage&&delC&&(
+        <div style={{ background:T.redLo,border:`1px solid ${T.red}30`,borderRadius:7,padding:"10px 12px",marginBottom:8 }}>
+          <div style={{ fontSize:12,fontWeight:700,color:T.red,marginBottom:3 }}>Hapus permanen?</div>
+          <div style={{ fontSize:11,color:T.textSec,marginBottom:8 }}>Data {m.name} tidak bisa dikembalikan.</div>
+          <div style={{ display:"flex",gap:5 }}><Btn v="ghost" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={()=>setD(false)}>Batal</Btn><Btn v="danger" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={()=>onDelete(m.id)}>Hapus</Btn></div>
+        </div>
+      )}
+
+      {canManage&&m.status!=="invited"&&!delC&&(
+        <div style={{ borderTop:`1px solid ${T.border}`,paddingTop:10 }}>
+          {!confirm ? (
+            <Btn v={isSusp?"green":"amber"} sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>setC(true)}>{isSusp?"🔓 Aktifkan":"🔒 Suspend"}</Btn>
+          ) : (
+            <div>
+              <div style={{ fontSize:11,color:T.textSec,marginBottom:6,textAlign:"center" }}>{isSusp?"Aktifkan akun ini?":"Suspend akun ini?"}</div>
+              <div style={{ display:"flex",gap:5 }}><Btn v="ghost" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={()=>setC(false)}>Batal</Btn><Btn v={isSusp?"green":"amber"} sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={()=>{onToggle(m.id);setC(false);}}>Ya</Btn></div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function MembersView({ currentUser, members, onToggle, onDelete, onAdd, activities }) {
+  const [teamF,setTF]=useState("all");
+  const [inviteOpen,setInvite]=useState(false);
+  const canManage = isAdmin(currentUser.role);
+  // Admin sees all; Mgr sees direct reports only
+  const visBase = isAdmin(currentUser.role)
+    ? members
+    : members.filter(m=>m.supervisorId===currentUser.id||m.id===currentUser.id||["admin","mgr_dl","mgr_ps"].includes(m.role));
+  const filtered  = teamF==="all"?visBase:visBase.filter(m=>m.team===teamF);
+
+  // Group by role-group: PM terpisah dari SE biasa
+  const pmMembers      = filtered.filter(m=>m.role==="pm");
+  const dlSEMembers    = filtered.filter(m=>m.team==="delivery" && m.role!=="pm" && m.role!=="mgr_dl");
+  const dlMgrMembers   = filtered.filter(m=>m.role==="mgr_dl");
+  const psMembers      = filtered.filter(m=>m.team==="presales" && m.role!=="mgr_ps");
+  const psMgrMembers   = filtered.filter(m=>m.role==="mgr_ps");
+
+  const Section = ({ label, color, members: list }) => {
+    if(!list.length) return null;
+    return (
+      <div style={{ marginBottom:22 }}>
+        <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:12 }}>
+          <span style={{ fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:".07em" }}>{label}</span>
+          <span style={{ fontSize:11,color:T.textMute }}>{list.length} member</span>
+          <div style={{ flex:1,height:1,background:T.border }} />
+        </div>
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(265px,1fr))",gap:10 }}>
+          {list.map(m=><MemberCard key={m.id} m={m} canManage={canManage} canSeeKPI={isMgr(currentUser.role)} onToggle={onToggle} onDelete={onDelete} activities={activities} />)}
+        </div>
+      </div>
+    );
+  };
+
+  const showDelivery = teamF==="all"||teamF==="delivery";
+  const showPS       = teamF==="all"||teamF==="presales";
+
+  return (
+    <div>
+      <div style={{ display:"flex",gap:5,marginBottom:18,flexWrap:"wrap",alignItems:"center" }}>
+        {[["all","Semua Tim",T.indigoHi,T.indigoLo],["presales","Pre-Sales",T.violet,T.violetLo],["delivery","Delivery",T.teal,T.tealLo]].map(([v,l,col,lo])=>(
+          <Pill key={v} active={teamF===v} color={col} lo={lo} onClick={()=>setTF(v)}>{l}</Pill>
+        ))}
+        <span style={{ fontSize:11,color:T.textMute,marginLeft:4 }}>
+          {filtered.filter(m=>m.status==="active").length} aktif · {filtered.filter(m=>m.status==="suspended").length} suspended
+        </span>
+      </div>
+
+      {showDelivery && <>
+        <Section label="Project Manager" color={T.amber} members={pmMembers} />
+        <Section label="Service Engineer" color={T.teal} members={dlSEMembers} />
+        <Section label="Delivery Management" color={T.textSec} members={dlMgrMembers} />
+      </>}
+      {showPS && <>
+        <Section label="Sales Engineer" color={T.violet} members={psMembers} />
+        <Section label="Pre-Sales Management" color={T.textSec} members={psMgrMembers} />
+      </>}
+
+      {/* Invite modal + FAB — admin only */}
+      {canManage && (
+        <>
+          <InviteModal open={inviteOpen} onClose={()=>setInvite(false)} members={members} onAdd={m=>{onAdd(m);setInvite(false);}} />
+          <button onClick={()=>setInvite(true)}
+            title="Undang Member Baru"
+            style={{ position:"fixed",bottom:28,right:28,width:52,height:52,borderRadius:"50%",
+              background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,color:"#fff",border:"none",
+              fontSize:22,cursor:"pointer",boxShadow:`0 4px 20px ${T.indigo}60`,display:"flex",
+              alignItems:"center",justifyContent:"center",zIndex:100,transition:"transform .15s" }}
+            onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"}
+            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>+</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// EXPORT HELPERS
+// ─────────────────────────────────────────────
+function exportCSV(rows, members) {
+  const headers = [
+    "Tanggal","Member","Role","Tim","Source","Kategori",
+    "Ticket ID","Judul / Topik","Customer",
+    "Jam Mulai","Jam Selesai","Durasi (mnt)","Status","Catatan"
+  ];
+  const esc = v => {
+    const s = String(v == null ? "" : v);
+    return (s.includes(",") || s.includes('"') || s.includes("\n"))
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+  const lines = [headers.map(esc).join(",")];
+  rows.forEach(a => {
+    const m   = members.find(x => x.name === a.user);
+    const def = ACTS[a.actKey] || {};
+    lines.push([
+      a.date,
+      a.user,
+      ROLES[m && m.role] ? ROLES[m.role].label : "",
+      a.userTeam || "",
+      def.source === "jira" ? "Jira" : "App",
+      def.label  || a.actKey,
+      a.ticketId || "",
+      a.ticketTitle || a.topic || a.prName || def.label || "",
+      a.customerName || a.prName || "",
+      a.startTime || "",
+      a.endTime   || "",
+      a.dur       || 0,
+      a.status === "completed" ? "Selesai" : "In Progress",
+      (a.note || "").replace(/\n/g, " "),
+    ].map(esc).join(","));
+  });
+  const bom  = "\uFEFF";
+  const blob = new Blob([bom + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href     = url;
+  link.download = "engineer-report-" + new Date().toISOString().slice(0,10) + ".csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function exportPDF(rows, members) {
+  const dateStr   = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
+  const fmtDur    = m => { const h = Math.floor(m/60), mn = m%60; return h ? h+"j "+mn+"m" : mn+"m"; };
+  const totalMins = rows.reduce((s,a) => s + (a.dur||0), 0);
+  const doneCount = rows.filter(a => a.status === "completed").length;
+
+  const rowsHtml = rows.map((a, i) => {
+    const def    = ACTS[a.actKey] || {};
+    const title  = a.ticketTitle || a.topic || a.prName || def.label || "—";
+    const time   = (a.startTime && a.endTime) ? a.startTime+"–"+a.endTime : fmtDur(a.dur||0);
+    const badge  = a.ticketId
+      ? "<code style=\"background:#0D1F3C;color:#2684FF;padding:1px 5px;border-radius:3px;font-size:10px\">"
+        + a.ticketId + "</code> "
+      : "";
+    const srcDot = def.source === "jira"
+      ? "<span style=\"color:#2684FF;margin-right:3px\">◈</span>"
+      : "";
+    const statusColor = a.status === "completed" ? "#34D399" : "#F59E0B";
+    const statusLabel = a.status === "completed" ? "✓ Selesai" : "⏳ Progress";
+    const bg = i % 2 === 0 ? "#1a1f2e" : "#14181f";
+    return "<tr style=\"background:"+bg+"\">"
+      + "<td>"+a.date+"</td>"
+      + "<td>"+a.user+"</td>"
+      + "<td>"+srcDot+(def.label||a.actKey)+"</td>"
+      + "<td>"+badge+title+"</td>"
+      + "<td>"+(a.customerName||a.prName||"—")+"</td>"
+      + "<td style=\"font-family:monospace;white-space:nowrap\">"+time+"</td>"
+      + "<td style=\"color:"+statusColor+"\">"+statusLabel+"</td>"
+      + "</tr>";
+  }).join("");
+
+  const css = [
+    "*{margin:0;padding:0;box-sizing:border-box}",
+    "body{font-family:'Segoe UI',Arial,sans-serif;background:#0f1117;color:#f0f4ff;padding:32px;font-size:12px}",
+    "h1{font-size:22px;font-weight:800;color:#818CF8;margin-bottom:4px}",
+    ".sub{color:#4A5568;font-size:11px;margin-bottom:24px}",
+    ".stats{display:flex;gap:16px;margin-bottom:24px}",
+    ".stat{background:#171923;border:1px solid #252B3B;border-radius:8px;padding:12px 18px;flex:1}",
+    ".sv{font-size:20px;font-weight:800;color:#6366F1;font-family:monospace}",
+    ".sl{font-size:10px;color:#4A5568;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}",
+    "table{width:100%;border-collapse:collapse}",
+    "th{background:#1E2333;color:#8892AA;font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;text-align:left;border-bottom:1px solid #252B3B}",
+    "td{padding:7px 10px;color:#c8d0e0;border-bottom:1px solid #1a1f2e;font-size:11px}",
+    "@media print{",
+      "body{background:#fff;color:#111}",
+      "h1{color:#4338CA}",
+      "th{background:#eee;color:#333}",
+      "td{color:#222;border-color:#ddd}",
+      "tr{background:#fff!important}",
+      ".stat{background:#f4f4f8;border-color:#ddd}",
+      ".sv{color:#4338CA}",
+      ".sl{color:#888}",
+    "}",
+  ].join("");
+
+  const html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Engineer Daily Report</title>"
+    + "<style>"+css+"</style></head><body>"
+    + "<h1>&#128203; Engineer Daily Report</h1>"
+    + "<div class=\"sub\">Seraphim Digital Technology &nbsp;&middot;&nbsp; Dicetak: "+dateStr+"</div>"
+    + "<div class=\"stats\">"
+    +   "<div class=\"stat\"><div class=\"sv\">"+rows.length+"</div><div class=\"sl\">Total Aktivitas</div></div>"
+    +   "<div class=\"stat\"><div class=\"sv\">"+fmtDur(totalMins)+"</div><div class=\"sl\">Total Jam Kerja</div></div>"
+    +   "<div class=\"stat\"><div class=\"sv\">"+doneCount+"</div><div class=\"sl\">Selesai</div></div>"
+    +   "<div class=\"stat\"><div class=\"sv\">"+(rows.length-doneCount)+"</div><div class=\"sl\">In Progress</div></div>"
+    + "</div>"
+    + "<table><thead><tr>"
+    +   "<th>Tanggal</th><th>Member</th><th>Kategori</th>"
+    +   "<th>Aktivitas / Ticket</th><th>Customer</th><th>Waktu</th><th>Status</th>"
+    + "</tr></thead><tbody>"+rowsHtml+"</tbody></table>"
+    + "<div style=\"margin-top:20px;font-size:10px;color:#4A5568;text-align:center\">"
+    +   "Generated by EngineerLog &copy; Seraphim Digital Technology"
+    + "</div></body></html>";
+
+  const win = window.open("", "_blank", "width=1060,height=750");
+  if (!win) { alert("Pop-up diblokir browser. Izinkan pop-up untuk export PDF."); return; }
+  win.document.write(html);
+  win.document.close();
+  win.onload = function() { win.focus(); win.print(); };
+}
+
+// ─────────────────────────────────────────────
+// REPORTS VIEW
+// ─────────────────────────────────────────────
+function ReportsView({ activities, members, currentUser }) {
+  const [teamF,setTF]=useState("all");
+  const [userSel,setUS]=useState([]); // multi-select array of names
+  const [memberDDOpen,setMDD]=useState(false);
+  const [dateFrom,setDF]=useState("");
+  const [dateTo,setDT]=useState("");
+  const [srcF,setSrc]=useState("all");
+  const [custF,setCustF]=useState("");
+  const [sortCol,setSort]=useState("date");
+  const [sortDir,setSortDir]=useState("desc"); // asc | desc
+
+  const canSeeAll = isAdmin(currentUser.role) || isMgr(currentUser.role);
+
+  const toggleSort = (col) => {
+    if(sortCol===col) setSortDir(d=>d==="asc"?"desc":"asc");
+    else { setSort(col); setSortDir("asc"); }
+  };
+
+  const teamUsers = useMemo(()=>{
+    if(!canSeeAll) return members.filter(m=>m.name===currentUser.name);
+    // Mgr hanya bisa lihat direct reports; Admin bisa lihat semua
+    const base = isAdmin(currentUser.role)
+      ? members
+      : members.filter(m=>m.supervisorId===currentUser.id||m.id===currentUser.id);
+    return (teamF==="all"?base:base.filter(m=>m.team===teamF)).filter(m=>m.status!=="invited");
+  },[members,teamF,canSeeAll,currentUser]);
+  const visible = useMemo(()=>{
+    let l=activities;
+    // Non-admin/mgr: hanya lihat aktivitas sendiri
+    if(!canSeeAll) l=l.filter(a=>a.user===currentUser.name);
+    else {
+      if(teamF!=="all") l=l.filter(a=>a.userTeam===teamF);
+      if(userSel.length>0) l=l.filter(a=>userSel.includes(a.user));
+    }
+    if(custF.trim()) l=l.filter(a=>(a.customerName||a.prName||"").toLowerCase().includes(custF.trim().toLowerCase()));
+    if(srcF==="jira")    l=l.filter(a=>ACTS[a.actKey]?.source==="jira");
+    if(srcF==="nonjira") l=l.filter(a=>ACTS[a.actKey]?.source==="app");
+    if(dateFrom) l=l.filter(a=>a.date>=dateFrom);
+    if(dateTo)   l=l.filter(a=>a.date<=dateTo);
+    // Sort
+    l=[...l].sort((a,b)=>{
+      let va,vb;
+      if(sortCol==="date")     { va=a.date;    vb=b.date; }
+      else if(sortCol==="user"){ va=a.user;    vb=b.user; }
+      else if(sortCol==="dur") { va=a.dur;     vb=b.dur; }
+      else if(sortCol==="cat") { va=ACTS[a.actKey]?.label||""; vb=ACTS[b.actKey]?.label||""; }
+      else if(sortCol==="status"){ va=a.status; vb=b.status; }
+      else if(sortCol==="src") { va=ACTS[a.actKey]?.source||""; vb=ACTS[b.actKey]?.source||""; }
+      else { va=""; vb=""; }
+      if(va<vb) return sortDir==="asc"?-1:1;
+      if(va>vb) return sortDir==="asc"?1:-1;
+      return 0;
+    });
+    return l;
+  },[activities,teamF,userSel,srcF,custF,dateFrom,dateTo,sortCol,sortDir,canSeeAll,currentUser]);
+
+  const hasFilter = teamF!=="all"||userSel.length>0||srcF!=="all"||custF||dateFrom||dateTo;
+  const reset = ()=>{setTF("all");setUS([]);setSrc("all");setCustF("");setDF("");setDT("");};
+
+  return (
+    <div>
+      <div style={{ display:"grid",gridTemplateColumns:"240px 1fr",gap:14 }}>
+        {/* Filter sidebar */}
+        <Card p={16}>
+          <div style={{ fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:14 }}>Filter</div>
+          <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
+            {/* Tim */}
+            <div>
+              <Lbl>Tim</Lbl>
+              {[["all","Semua"],["delivery","Delivery"],["presales","Pre-Sales"]].map(([v,l])=>(
+                <button key={v} onClick={()=>{setTF(v);setUF("all");}} style={{ display:"block",width:"100%",padding:"6px 10px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:FONT,fontSize:12,textAlign:"left",marginBottom:3,
+                  background:teamF===v?T.indigoLo:T.surfaceHi,color:teamF===v?T.indigoHi:T.textSec,fontWeight:teamF===v?700:400,borderLeft:teamF===v?`2px solid ${T.indigo}`:"2px solid transparent" }}>{l}</button>
+              ))}
+            </div>
+            {/* Source */}
+            <div>
+              <Lbl>Source</Lbl>
+              {[["all","Semua"],["jira","Jira saja"],["nonjira","Non-Jira saja"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setSrc(v)} style={{ display:"block",width:"100%",padding:"6px 10px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:FONT,fontSize:12,textAlign:"left",marginBottom:3,
+                  background:srcF===v?T.jiraLo:T.surfaceHi,color:srcF===v?T.jira:T.textSec,fontWeight:srcF===v?700:400 }}>{v==="jira"?"◈ ":""}{l}</button>
+              ))}
+            </div>
+            {/* Member — multi-select dropdown */}
+            {canSeeAll && (
+              <div style={{ position:"relative" }}>
+                <Lbl>Member</Lbl>
+                <button onClick={()=>setMDD(v=>!v)}
+                  style={{ width:"100%",padding:"7px 10px",borderRadius:7,border:`1.5px solid ${memberDDOpen?T.indigo:T.border}`,cursor:"pointer",
+                    fontFamily:FONT,fontSize:12,textAlign:"left",background:T.surfaceHi,color:userSel.length>0?T.indigoHi:T.textSec,
+                    display:"flex",alignItems:"center",justifyContent:"space-between",transition:"border-color .15s" }}>
+                  <span>{userSel.length===0?"Semua member":`${userSel.length} dipilih`}</span>
+                  <span style={{ fontSize:10,opacity:.6 }}>{memberDDOpen?"▲":"▼"}</span>
+                </button>
+                {memberDDOpen && (
+                  <div style={{ position:"absolute",top:"100%",left:0,right:0,zIndex:50,marginTop:3,
+                    background:T.surface,border:`1.5px solid ${T.indigo}50`,borderRadius:9,
+                    boxShadow:"0 8px 24px rgba(0,0,0,.5)",overflow:"hidden" }}>
+                    <div style={{ padding:"7px 10px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                      <span style={{ fontSize:10,color:T.textMute,fontWeight:700 }}>PILIH MEMBER</span>
+                      {userSel.length>0&&<button onClick={()=>setUS([])} style={{ fontSize:10,color:T.red,background:"none",border:"none",cursor:"pointer",fontFamily:FONT }}>Reset</button>}
+                    </div>
+                    <div style={{ maxHeight:220,overflowY:"auto" }}>
+                      {teamUsers.map(m=>{
+                        const sel=userSel.includes(m.name);
+                        return (
+                          <button key={m.id} onClick={()=>setUS(p=>sel?p.filter(n=>n!==m.name):[...p,m.name])}
+                            style={{ width:"100%",display:"flex",alignItems:"center",gap:8,padding:"7px 10px",border:"none",
+                              cursor:"pointer",fontFamily:FONT,fontSize:12,textAlign:"left",
+                              background:sel?T.indigoLo:T.surface,color:sel?T.indigoHi:T.textSec,
+                              borderLeft:`3px solid ${sel?T.indigo:"transparent"}`,transition:"all .1s" }}>
+                            <Avi av={m.avatar} team={m.team} sz={20} />
+                            <div style={{ flex:1,overflow:"hidden" }}>
+                              <div style={{ fontSize:12,fontWeight:sel?700:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name}</div>
+                              <div style={{ fontSize:9,color:T.textMute }}>{ROLES[m.role]?.label}</div>
+                            </div>
+                            {sel&&<span style={{ fontSize:11,color:T.indigo,flexShrink:0 }}>✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ padding:"6px 10px",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"flex-end" }}>
+                      <button onClick={()=>setMDD(false)} style={{ fontSize:11,color:T.indigoHi,background:T.indigoLo,border:`1px solid ${T.indigo}30`,borderRadius:5,padding:"4px 12px",cursor:"pointer",fontFamily:FONT,fontWeight:600 }}>Tutup</button>
+                    </div>
+                  </div>
+                )}
+                {userSel.length>0&&(
+                  <div style={{ display:"flex",flexWrap:"wrap",gap:4,marginTop:6 }}>
+                    {userSel.map(n=>(
+                      <span key={n} style={{ fontSize:10,background:T.indigoLo,color:T.indigoHi,border:`1px solid ${T.indigo}30`,borderRadius:12,padding:"2px 8px",display:"inline-flex",alignItems:"center",gap:4 }}>
+                        {n.split(" ")[0]}
+                        <button onClick={()=>setUS(p=>p.filter(x=>x!==n))} style={{ background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:11,padding:0,lineHeight:1 }}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Customer search */}
+            <div>
+              <Lbl>Customer</Lbl>
+              <div style={{ position:"relative" }}>
+                <input value={custF} onChange={e=>setCustF(e.target.value)} placeholder="Cari nama customer..."
+                  style={{ width:"100%",padding:"6px 28px 6px 9px",borderRadius:7,border:`1.5px solid ${custF?T.indigo:T.border}`,
+                    background:T.surfaceHi,color:T.textPri,fontFamily:FONT,fontSize:12,outline:"none",boxSizing:"border-box" }} />
+                {custF&&<button onClick={()=>setCustF("")} style={{ position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.textMute,cursor:"pointer",fontSize:13,padding:0,lineHeight:1 }}>×</button>}
+              </div>
+            </div>
+            {/* Date */}
+            <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+              <Inp label="Dari" type="date" value={dateFrom} onChange={e=>setDF(e.target.value)} />
+              <Inp label="Sampai" type="date" value={dateTo} onChange={e=>setDT(e.target.value)} />
+            </div>
+            {hasFilter&&<Btn v="danger" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={reset}>× Reset Filter</Btn>}
+            <Divider my={4} />
+            <Btn v="teal" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>exportCSV(visible,members)}>↓ Export CSV</Btn>
+            <Btn v="ghost" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>exportPDF(visible,members)}>↓ Export PDF</Btn>
+          </div>
+        </Card>
+
+        {/* Table */}
+        <div>
+          <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
+            <span style={{ fontSize:12,fontWeight:700,color:T.textPri }}>{visible.length} baris</span>
+            {[teamF!=="all"&&teamF,...userSel.map(n=>n.split(" ")[0]),srcF!=="all"&&srcF,dateFrom&&`≥${dateFrom}`,dateTo&&`≤${dateTo}`].filter(Boolean).map((f,i)=>(
+              <Tag key={i} color={T.indigoHi} lo={T.indigoLo}>{f}</Tag>
+            ))}
+          </div>
+          <Card p={0} style={{ overflow:"hidden" }}>
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
+                <thead><tr style={{ background:T.surfaceHi }}>
+                  {[
+                    {label:"Tanggal",    col:"date"},
+                    {label:"Member",     col:"user"},
+                    {label:"Source",     col:"src"},
+                    {label:"Kategori",   col:"cat"},
+                    {label:"Aktivitas / Ticket", col:null},
+                    {label:"Customer",   col:"cust"},
+                    {label:"Waktu",      col:"dur"},
+                    {label:"Status",     col:"status"},
+                  ].map(({label,col})=>(
+                    <th key={label}
+                      onClick={col?()=>toggleSort(col):undefined}
+                      style={{ padding:"9px 12px",textAlign:"left",fontSize:10,fontWeight:700,textTransform:"uppercase",
+                        letterSpacing:".05em",whiteSpace:"nowrap",borderBottom:`1px solid ${T.border}`,
+                        cursor:col?"pointer":"default",userSelect:"none",
+                        color:col&&sortCol===col?T.indigoHi:T.textMute,
+                        background:col&&sortCol===col?`${T.indigo}10`:"transparent",
+                        transition:"all .15s" }}>
+                      <span style={{ display:"inline-flex",alignItems:"center",gap:4 }}>
+                        {label}
+                        {col && (
+                          <span style={{ fontSize:10,opacity:sortCol===col?1:.3,color:T.indigoHi }}>
+                            {sortCol===col?(sortDir==="asc"?"↑":"↓"):"↕"}
+                          </span>
+                        )}
+                      </span>
+                    </th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {visible.length===0&&<tr><td colSpan={8} style={{ padding:"36px",textAlign:"center",color:T.textMute }}>Tidak ada data.</td></tr>}
+                  {visible.map((a,i)=>{
+                    const def=ACTS[a.actKey]||{}; const done=a.status==="completed";
+                    const m=members.find(x=>x.name===a.user);
+                    return (
+                      <tr key={a.id} style={{ borderBottom:`1px solid ${T.border}`,background:i%2===0?T.surface:T.surfaceHi }}>
+                        <td style={{ padding:"8px 12px",color:T.textMute,fontFamily:MONO,fontSize:11 }}>{a.date}</td>
+                        <td style={{ padding:"8px 12px" }}><div style={{ display:"flex",alignItems:"center",gap:6 }}>{m&&<Avi av={m.avatar} team={m.team} sz={20} />}<span style={{ color:T.textSec }}>{a.user}</span></div></td>
+                        <td style={{ padding:"8px 12px" }}>
+                          {def.source==="jira"
+                            ? <span style={{ fontSize:11,fontWeight:700,color:T.jira,background:T.jiraLo,padding:"2px 7px",borderRadius:5,fontFamily:MONO }}>◈ Jira</span>
+                            : <span style={{ fontSize:11,color:T.textMute }}>App</span>}
+                        </td>
+                        <td style={{ padding:"8px 12px" }}><span style={{ fontSize:11,fontWeight:700,color:def.color }}>{def.icon} {def.label}</span></td>
+                        <td style={{ padding:"8px 12px",color:T.textPri,maxWidth:200 }}>
+                          <div style={{ overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
+                            {a.ticketId&&<span style={{ color:T.jira,fontFamily:MONO,fontSize:10,marginRight:5 }}>{a.ticketId}</span>}
+                            {a.ticketTitle||a.topic||a.prName||def.label}
+                          </div>
+                        </td>
+                        <td style={{ padding:"8px 12px",maxWidth:150 }}>
+                          {(a.customerName||a.prName) ? (
+                            <span style={{ fontSize:11,color:T.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block" }}>
+                              {a.customerName||a.prName}
+                            </span>
+                          ) : <span style={{ fontSize:10,color:T.textMute }}>—</span>}
+                        </td>
+                        <td style={{ padding:"8px 12px",color:T.textSec,fontFamily:MONO,fontSize:11,whiteSpace:"nowrap" }}>
+                          <div>{a.startTime&&a.endTime?`${a.startTime}–${a.endTime}`:""}</div>
+                          <div style={{ color:T.textMute,fontSize:10 }}>{fmtH(a.dur)}</div>
+                        </td>
+                        <td style={{ padding:"8px 12px" }}><span style={{ fontSize:11,fontWeight:600,color:done?T.green:T.amber }}>{done?"✓ Selesai":"⏳ Progress"}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PROFILE VIEW
+// ─────────────────────────────────────────────
+function ProfileView({ user, activities, onUpdate }) {
+  const [edit,setE]=useState(false);
+  const [draft,setD]=useState({...user});
+  const [saved,setSaved]=useState(false);
+  const save=()=>{onUpdate(draft);setE(false);setSaved(true);setTimeout(()=>setSaved(false),2500);};
+  return (
+    <div style={{ maxWidth:640 }}>
+      <Card p={22} style={{ marginBottom:14 }}>
+        <div style={{ display:"flex",alignItems:"flex-start",gap:14,marginBottom:18 }}>
+          <Avi av={user.avatar} team={user.team} sz={60} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:18,fontWeight:800,color:T.textPri,fontFamily:DISPLAY }}>{user.name}</div>
+            <div style={{ fontSize:12,color:T.textMute,marginTop:2 }}>{user.email}</div>
+            <div style={{ display:"flex",gap:6,marginTop:7,flexWrap:"wrap" }}><RoleBadge role={user.role} /><TeamBadge team={user.team} /></div>
+          </div>
+          <div>
+            {!edit ? <Btn v="sec" sz="sm" onClick={()=>setE(true)}>✏ Edit</Btn>
+            : <div style={{ display:"flex",gap:5 }}><Btn v="ghost" sz="sm" onClick={()=>{setE(false);setD({...user});}}>Batal</Btn><Btn v="teal" sz="sm" onClick={save}>Simpan</Btn></div>}
+          </div>
+        </div>
+        {saved&&<div style={{ marginBottom:12,padding:"7px 12px",background:T.greenLo,border:`1px solid ${T.green}30`,borderRadius:7,fontSize:12,color:T.green }}>✓ Profil berhasil diperbarui</div>}
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12 }}>
+          {[{k:"name",l:"Nama",e:true},{k:"email",l:"Email",e:false},{k:"position",l:"Jabatan",e:true},{k:"dept",l:"Departemen",e:true}].map(f=>(
+            <div key={f.k}>
+              <Lbl>{f.l}</Lbl>
+              {edit&&f.e ? <Inp value={draft[f.k]||""} onChange={e=>setD(p=>({...p,[f.k]:e.target.value}))} />
+              : <div style={{ fontSize:13,color:f.e?T.textPri:T.textMute,padding:"8px 0" }}>{user[f.k]||<span style={{ color:T.textMute,fontStyle:"italic" }}>Belum diisi</span>}</div>}
+            </div>
+          ))}
+        </div>
+      </Card>
+      <PersonalKPI user={user} activities={activities} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// LOGIN PAGE
+// ─────────────────────────────────────────────
+function LoginPage({ onLogin }) {
+  const [email,setEmail]=useState("");
+  const [pw,setPw]=useState("");
+  const [err,setErr]=useState("");
+  const [loading,setL]=useState(false);
+  const tryLogin=()=>{ setErr(""); setL(true); setTimeout(()=>{
+    const acc=INIT_MEMBERS.find(a=>a.password&&a.email.toLowerCase()===email.trim().toLowerCase()&&a.password===pw);
+    if(acc){ if(acc.status==="suspended"){setErr("Akun di-suspend.");setL(false);return;} onLogin(acc); }
+    else { setErr("Email atau password salah."); setL(false); }
+  },600); };
+  return (
+    <div style={{ minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:FONT,position:"relative",overflow:"hidden" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+      {/* Background grid */}
+      <div style={{ position:"absolute",inset:0,backgroundImage:`linear-gradient(${T.border} 1px,transparent 1px),linear-gradient(90deg,${T.border} 1px,transparent 1px)`,backgroundSize:"40px 40px",opacity:.3 }} />
+      {/* Glow orb */}
+      <div style={{ position:"absolute",width:500,height:500,borderRadius:"50%",background:`radial-gradient(circle,${T.indigo}20,transparent 70%)`,top:"50%",left:"50%",transform:"translate(-50%,-50%)",pointerEvents:"none" }} />
+      <div style={{ width:400,position:"relative",zIndex:1 }}>
+        <div style={{ textAlign:"center",marginBottom:28 }}>
+          <div style={{ width:44,height:44,borderRadius:12,background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:`0 8px 24px ${T.indigo}50` }}>
+            <span style={{ color:"#fff",fontWeight:800,fontSize:18,fontFamily:DISPLAY }}>S</span>
+          </div>
+          <div style={{ fontSize:20,fontWeight:800,color:T.textPri,fontFamily:DISPLAY,letterSpacing:"-.02em" }}>EngineerLog</div>
+          <div style={{ fontSize:10,color:T.textMute,marginTop:2,letterSpacing:".1em" }}>SERAPHIM DIGITAL TECHNOLOGY</div>
+        </div>
+        <Card p={28} glow={T.indigo}>
+          <div style={{ fontSize:16,fontWeight:700,color:T.textPri,marginBottom:3,fontFamily:DISPLAY }}>Selamat datang</div>
+          <p style={{ margin:"0 0 20px",fontSize:12,color:T.textMute }}>Masuk untuk catat aktivitas harian</p>
+          <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+            <Inp label="Email" type="email" placeholder="nama@seraphim.id" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}} />
+            <PwInp label="Password" value={pw} error={err} onChange={e=>{setPw(e.target.value);setErr("");}} />
+            {err&&<div style={{ background:T.redLo,border:`1px solid ${T.red}30`,borderRadius:7,padding:"8px 11px",fontSize:12,color:T.red }}>🚫 {err}</div>}
+            <Btn v="primary" sz="lg" style={{ width:"100%",justifyContent:"center",marginTop:4 }} onClick={tryLogin} disabled={loading||!email||!pw}>
+              {loading?"Memverifikasi...":"Masuk →"}
+            </Btn>
+          </div>
+          <Divider />
+          <div style={{ fontSize:10,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".07em",marginBottom:8 }}>Demo Accounts</div>
+          <div style={{ display:"flex",flexDirection:"column",gap:5 }}>
+            {DEMO_ACCOUNTS.map(a=>(
+              <button key={a.id} onClick={()=>{setEmail(a.email);setPw(a.password);setErr("");}}
+                style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:T.surfaceHi,border:`1px solid ${T.border}`,cursor:"pointer",fontFamily:FONT,width:"100%",transition:"border-color .15s" }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=T.indigo+"60"} onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+                <Avi av={a.avatar} team={a.team} sz={26} />
+                <div style={{ flex:1,textAlign:"left" }}>
+                  <div style={{ fontSize:12,fontWeight:600,color:T.textPri }}>{a.name}</div>
+                  <div style={{ fontSize:10,color:T.textMute,fontFamily:MONO }}>{a.password}</div>
+                </div>
+                <RoleBadge role={a.role} />
+              </button>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// SIDEBAR
+// ─────────────────────────────────────────────
+function Sidebar({ user, view, setView, onLogout }) {
+  const nav = ["dashboard","activities","members","reports"];
+  const NAV = {
+    dashboard: { icon:"▦", label:"Dashboard" },
+    activities:{ icon:"◈", label:"Activity Log" },
+    members:   { icon:"◉", label:"Team Members" },
+    reports:   { icon:"⊞", label:"Reports" },
+    profile:   { icon:"○", label:"Profil Saya" },
+  };
+  const team = teamOf(user.role);
+  const teamColor = team==="presales"?T.violet:team==="delivery"?T.teal:T.indigoHi;
+  return (
+    <aside style={{ width:220,background:T.surface,borderRight:`1px solid ${T.border}`,display:"flex",flexDirection:"column",position:"fixed",height:"100vh",zIndex:50 }}>
+      <div style={{ padding:"18px 14px 12px",borderBottom:`1px solid ${T.border}` }}>
+        <div style={{ display:"flex",alignItems:"center",gap:9,marginBottom:10 }}>
+          <div style={{ width:30,height:30,borderRadius:8,background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:"#fff",fontFamily:DISPLAY,boxShadow:`0 4px 12px ${T.indigo}40` }}>S</div>
+          <div><div style={{ fontWeight:800,fontSize:13,color:T.textPri,fontFamily:DISPLAY,letterSpacing:"-.02em" }}>EngineerLog</div><div style={{ fontSize:8,color:T.textMute,letterSpacing:".07em" }}>SERAPHIM</div></div>
+        </div>
+        <div style={{ padding:"3px 8px",borderRadius:5,fontSize:9,fontWeight:700,letterSpacing:".04em",display:"inline-flex",alignItems:"center",gap:4,background:`${teamColor}18`,color:teamColor,border:`1px solid ${teamColor}30` }}>
+          {team==="presales"?"🎯 Pre-Sales":team==="delivery"?"🗂 Delivery":"⚙ Admin"}
+        </div>
+      </div>
+      <nav style={{ padding:"8px 6px",flex:1 }}>
+        {nav.map(id=>{
+          const n=NAV[id];const active=view===id;
+          return <button key={id} onClick={()=>setView(id)} style={{ width:"100%",display:"flex",alignItems:"center",gap:9,padding:"7px 10px",borderRadius:8,border:"none",cursor:"pointer",marginBottom:1,textAlign:"left",fontFamily:FONT,fontSize:12,fontWeight:active?600:400,transition:"all .15s",background:active?T.indigoLo:"transparent",color:active?T.indigoHi:T.textSec,borderLeft:active?`2px solid ${T.indigo}`:"2px solid transparent" }}>
+            <span style={{ fontSize:12 }}>{n.icon}</span>{n.label}
+          </button>;})}
+      </nav>
+      <div style={{ padding:"8px 6px",borderTop:`1px solid ${T.border}` }}>
+        <button onClick={()=>setView("profile")} style={{ width:"100%",display:"flex",alignItems:"center",gap:9,padding:"8px 9px",borderRadius:9,cursor:"pointer",background:view==="profile"?T.indigoLo:T.surfaceHi,border:`1px solid ${view==="profile"?T.indigo+"40":T.border}`,fontFamily:FONT,transition:"all .15s",marginBottom:6 }}>
+          <Avi av={user.avatar} team={user.team} sz={30} />
+          <div style={{ flex:1,overflow:"hidden",textAlign:"left" }}>
+            <div style={{ fontSize:11,fontWeight:600,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.name}</div>
+            <div style={{ fontSize:9,color:T.textMute }}>Lihat profil</div>
+          </div>
+        </button>
+        <button onClick={onLogout} style={{ width:"100%",padding:"5px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMute,cursor:"pointer",fontFamily:FONT,fontSize:10 }}>⏻ Keluar</button>
+      </div>
+    </aside>
+  );
+}
+
+// ─────────────────────────────────────────────
+// APP ROOT
+// ─────────────────────────────────────────────
+
+
+export default function App() {
+  const [user,setUser]=useState(null);
+  const [view,setView]=useState("dashboard");
+  const [members,setMembers]=useState(INIT_MEMBERS);
+  const [acts,setActs]=useState(INIT_ACTS);
+
+  if(!user) return <LoginPage onLogin={u=>{setUser(u);setView("dashboard");}} />;
+
+  const TITLES={dashboard:"Dashboard",activities:"Activity Log",members:"Team Members",reports:"Reports",profile:"Profil Saya"};
+  return (
+    <div style={{ fontFamily:FONT,background:T.bg,minHeight:"100vh",color:T.textPri }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+      <div style={{ display:"flex",minHeight:"100vh" }}>
+        <Sidebar user={user} view={view} setView={setView} onLogout={()=>{setUser(null);setView("dashboard");}} />
+        <main style={{ marginLeft:220,flex:1,padding:"22px 26px",minWidth:0 }}>
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22 }}>
+            <div>
+              <div style={{ fontSize:9,color:T.textMute,letterSpacing:".08em",textTransform:"uppercase",marginBottom:3 }}>
+                {new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+              </div>
+              <h1 style={{ margin:0,fontSize:20,fontWeight:800,color:T.textPri,fontFamily:DISPLAY,letterSpacing:"-.02em" }}>{TITLES[view]}</h1>
+            </div>
+            <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+              <Avi av={user.avatar} team={user.team} sz={28} />
+              <RoleBadge role={user.role} />
+            </div>
+          </div>
+          {view==="dashboard"  && <DashboardView currentUser={user} activities={acts} members={members} onAdminEditNps={(actId,nps)=>setActs(p=>p.map(a=>a.id===actId?{...a,kpi:{...(a.kpi||{}),nps}}:a))} />}
+          {view==="activities" && <ActivitiesView currentUser={user} activities={acts} onAdd={a=>setActs(p=>[a,...p])} />}
+          {view==="members"    && <MembersView currentUser={user} members={members} onToggle={id=>setMembers(p=>p.map(m=>m.id===id?{...m,status:m.status==="active"?"suspended":"active"}:m))} onDelete={id=>setMembers(p=>p.filter(m=>m.id!==id))} onAdd={m=>setMembers(p=>[...p,m])} activities={acts} />}
+          {view==="reports"    && <ReportsView activities={acts} members={members} currentUser={user} />}
+          {view==="profile"    && <ProfileView user={user} activities={acts} onUpdate={u=>setUser(u)} />}
+        </main>
+      </div>
+    </div>
+  );
+}
