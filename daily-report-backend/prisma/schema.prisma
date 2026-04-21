@@ -3,23 +3,25 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id           String    @id @default(uuid())
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
   email        String    @unique
+  telegramId   String?   // Removed @unique due to Mongo treating multiple nulls as duplicates
   passwordHash String
   name         String
-  role         String    // Admin, Manager (Pre-Sales/Delivery), Staff (SE, PM, Sales)
-  status       String    @default("invited") // invited, active, suspended
   avatarUrl    String?
-  supervisorId String?
-  team         String?
-
-  supervisor   User?     @relation("SupervisorRelation", fields: [supervisorId], references: [id])
-  subordinates User[]    @relation("SupervisorRelation")
+  role         String    // "SE", "PM", "Head Delivery", "Sales Engineer", "Head Presales", "Admin"
+  team         String    // "Delivery", "Presales", "All"
+  status       String    @default("active")  // "active", "suspended", "invited"
+  
+  // Self-Relation untuk hierarki Atasan-Bawahan
+  supervisorId String?   @db.ObjectId
+  supervisor   User?     @relation("SupervisorRelation", fields: [supervisorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subordinates  User[]    @relation("SupervisorRelation")
 
   activities   Activity[]
   createdAt    DateTime  @default(now())
@@ -27,10 +29,11 @@ model User {
 }
 
 model Activity {
-  id             String   @id @default(uuid())
-  userId         String
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String   @db.ObjectId
   actKey         String   // Category/Type of activity
   topic          String?  // Title or topic
+  note           String?  // Detailed notes/progress
   dur            Float    // Duration in hours
   date           String   // YYYY-MM-DD
   startTime      String?  // HH:MM
@@ -56,8 +59,8 @@ model Activity {
 }
 
 model Attachment {
-  id         String   @id @default(uuid())
-  activityId String
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  activityId String   @db.ObjectId
   filename   String
   path       String
   mimetype   String
@@ -68,10 +71,26 @@ model Attachment {
 }
 
 model Setting {
-  id          String   @id @default(uuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   key         String   @unique
   value       String
   description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MasterActivity {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  actKey      String   @unique // Misal: jira_impl, internal
+  label       String   // "Implementation"
+  icon        String?  // "🗂"
+  color       String?  // "#0D9488"
+  colorLo     String?  // "#0D948820"
+  team        String   @default("all") // "delivery", "presales", "all"
+  source      String   @default("app") // "app", "jira"
+  kpiDomain   String?  // "impl", "pm", "enh" dll
+  desc        String?  // Penjelasan kecil
+  isActive    Boolean  @default(true) // Untuk on/off tanpa menghapus relasi
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

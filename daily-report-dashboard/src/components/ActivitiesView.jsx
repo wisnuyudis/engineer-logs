@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { T } from '../theme/tokens';
-import { actsFor, teamOf, isMgr, isAdmin, isPM, ACTS } from '../constants/taxonomy';
+import { actsFor, teamOf, isMgr, isAdmin, isPM } from '../constants/taxonomy';
+import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { Pill, Card, Modal, MHead } from './ui/Primitives';
 import { ActCard } from './shared/ActCard';
 import { LogForm } from './LogForm';
 
 export function ActivitiesView({ currentUser, activities, members, onAdd }) {
+  const ACTS = useTaxonomy();
   const [logOpen, setLog] = useState(false);
   const [filter, setFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");

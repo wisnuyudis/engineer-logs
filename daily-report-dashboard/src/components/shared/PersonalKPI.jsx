@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { T, FONT, MONO, DISPLAY } from '../../theme/tokens';
-import { ACTS, actsFor } from '../../constants/taxonomy';
+import { actsFor } from '../../constants/taxonomy';
+import { useTaxonomy } from '../../contexts/TaxonomyContext';
 import { KPI, calcKPI } from '../../utils/kpi';
 import { fmtH } from '../../utils/formatters';
 import { Card, Tag } from '../ui/Primitives';
@@ -76,6 +77,7 @@ function CatBox({ c }) {
 }
 
 export function PersonalKPI({ user, activities, isAdminView, onAdminEditNps }) {
+  const ACTS = useTaxonomy();
   const curYear = new Date().getFullYear();
   const [year, setYear]    = useState(curYear);
   const [quarter, setQuarter] = useState(() => {
@@ -90,12 +92,12 @@ export function PersonalKPI({ user, activities, isAdminView, onAdminEditNps }) {
 
   // Cat breakdown for selected quarter
   const catBreak = useMemo(() => {
-    const cats = actsFor(user.role);
+    const cats = actsFor(user.role, ACTS);
     return Object.entries(cats).map(([k,v]) => {
       const list = myActs.filter(a=>a.actKey===k);
       return { key:k, ...v, count:list.length, done:list.filter(a=>a.status==="completed").length, mins:list.reduce((s,a)=>s+a.dur,0) };
-    });
-  }, [myActs, user.role]);
+    }).sort((a,b)=>b.mins-a.mins);
+  }, [myActs, user.role, ACTS]);
 
   const jiraCats    = catBreak.filter(c => c.source === "jira");
   const nonJiraCats = catBreak.filter(c => c.source === "app");

@@ -7,6 +7,8 @@ import inviteRoutes from './routes/inviteRoutes';
 import activationRoutes from './routes/activationRoutes';
 import activityRoutes from './routes/activityRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
+import telegramRoutes from './routes/telegramRoutes';
+import taxonomyRoutes from './routes/taxonomyRoutes';
 import path from 'path';
 
 const app = express();
@@ -28,5 +30,7 @@ app.use('/api/invite', inviteRoutes);
 app.use('/api/activate', activationRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/telegram', telegramRoutes);
+app.use('/api/taxonomy', taxonomyRoutes);
 
 export default app;

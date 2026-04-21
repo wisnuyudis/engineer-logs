@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T, FONT, DISPLAY, MONO } from '../theme/tokens';
-import { DEMO_ACCOUNTS } from '../data/mockData';
+
 import { Card, Inp, PwInp, Btn, Divider, Avi, RoleBadge } from './ui/Primitives';
 
 import api from '../lib/api';
@@ -55,22 +55,6 @@ export function LoginPage({ onLogin }) {
             </Btn>
           </div>
           
-          <Divider />
-          <div style={{ fontSize:10,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".07em",marginBottom:8 }}>Demo Accounts</div>
-          <div style={{ display:"flex",flexDirection:"column",gap:5 }}>
-            {DEMO_ACCOUNTS.map(a=>(
-              <button key={a.id} onClick={()=>{setEmail(a.email);setPw(a.password);setErr("");}}
-                style={{ display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:T.surfaceHi,border:`1px solid ${T.border}`,cursor:"pointer",fontFamily:FONT,width:"100%",transition:"border-color .15s" }}
-                onMouseEnter={e=>e.currentTarget.style.borderColor=T.indigo+"60"} onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
-                <Avi av={a.avatar} team={a.team} sz={26} />
-                <div style={{ flex:1,textAlign:"left" }}>
-                  <div style={{ fontSize:12,fontWeight:600,color:T.textPri }}>{a.name}</div>
-                  <div style={{ fontSize:10,color:T.textMute,fontFamily:MONO }}>{a.password}</div>
-                </div>
-                <RoleBadge role={a.role} />
-              </button>
-            ))}
-          </div>
         </Card>
       </div>
     </div>

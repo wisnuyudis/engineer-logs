@@ -3,6 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import fs from 'fs';
 import path from 'path';
+import { ActivitySchema } from '../validators/zodSchemas';
+import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
@@ -39,7 +41,12 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const data = req.body;
+    // Zod Validation
+    const validation = ActivitySchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: validation.error.issues[0].message });
+    }
+    const data = validation.data;
     
     // Business Validation: Jam bentrok dan Durasi
     if (data.startTime && data.endTime) {
@@ -70,7 +77,7 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
         userId,
         actKey: data.actKey,
         topic: data.topic,
-        dur: parseFloat(data.dur),
+        dur: data.dur, // Zod already parses to number
         date: data.date,
         startTime: data.startTime || null,
         endTime: data.endTime || null,
@@ -80,9 +87,9 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
         ticketTitle: data.ticketTitle || null,
         customerName: data.customerName || null,
         prName: data.prName || null,
-        nps: data.nps ? parseInt(data.nps) : null,
+        nps: data.nps ?? null,
         leadId: data.leadId || null,
-        prospectValue: data.prospectValue ? parseFloat(data.prospectValue) : null,
+        prospectValue: data.prospectValue ?? null,
       },
       include: { attachments: true, user: { select: { id: true, name: true, role: true, team: true, avatarUrl: true } } }
     });
@@ -97,7 +104,12 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
 export const updateActivity = async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params.id);
-    const data = req.body;
+    // Zod Validation
+    const validation = ActivitySchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: validation.error.issues[0].message });
+    }
+    const data = validation.data;
     
     // Logic: allow update if owner or admin
     
@@ -106,7 +118,7 @@ export const updateActivity = async (req: AuthRequest, res: Response) => {
       data: {
         actKey: data.actKey,
         topic: data.topic,
-        dur: data.dur ? parseFloat(data.dur) : undefined,
+        dur: data.dur,
         date: data.date,
         startTime: data.startTime || null,
         endTime: data.endTime || null,
@@ -115,9 +127,9 @@ export const updateActivity = async (req: AuthRequest, res: Response) => {
         ticketTitle: data.ticketTitle || null,
         customerName: data.customerName || null,
         prName: data.prName || null,
-        nps: data.nps ? parseInt(data.nps) : null,
+        nps: data.nps ?? null,
         leadId: data.leadId || null,
-        prospectValue: data.prospectValue ? parseFloat(data.prospectValue) : null,
+        prospectValue: data.prospectValue ?? null,
       },
       include: { attachments: true, user: { select: { id: true, name: true, role: true, team: true, avatarUrl: true } } }
     });

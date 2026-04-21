@@ -1,101 +1,61 @@
-import { T } from '../theme/tokens';
-
-export const ACTS = {
-  // ── DELIVERY ──
-  jira_impl: {
-    label: "Implementation",   icon: "🗂",  color: T.teal,  colorLo: T.tealLo,
-    team: "delivery", source: "jira", kpiDomain: "impl",
-    desc: "Project task dari Jira (PROJ-xxx)",
-  },
-  jira_pm: {
-    label: "Preventive Maint.",icon: "🔧", color: T.amber, colorLo: T.amberLo,
-    team: "delivery", source: "jira", kpiDomain: "pm",
-    desc: "PM ticket dari Jira (MAINT-xxx)",
-  },
-  jira_cm: {
-    label: "Corrective Maint.",icon: "🚨", color: T.red,   colorLo: T.redLo,
-    team: "delivery", source: "jira", kpiDomain: "cm",
-    desc: "Incident/CM ticket dari Jira (CM-xxx / SUP-xxx)",
-  },
-  jira_enh: {
-    label: "Enhancement",      icon: "⚡", color: T.indigo, colorLo: T.indigoLo,
-    team: "delivery", source: "jira", kpiDomain: "enh",
-    desc: "Enhancement request dari Jira",
-  },
-  jira_ops: {
-    label: "Operational Svc",  icon: "⚙️", color: T.violet, colorLo: T.violetLo,
-    team: "delivery", source: "jira", kpiDomain: "ops",
-    desc: "Ops/KB4 task dari Jira",
-  },
-  pm_presentation: {
-    label: "Q PM Presentation", icon: "📊", color: "#F472B6", colorLo: "#2A0F1E",
-    team: "delivery", source: "app", kpiDomain: "pm",
-    desc: "Presentasi Quarterly PM ke Customer — wajib input Nama Customer dan Skor NPS (0–4)",
-  },
-  learning: {
-    label: "Learning & Dev",   icon: "📚", color: "#22D3EE", colorLo: "#0C2230",
-    team: "delivery", source: "app",
-    desc: "Belajar mandiri, baca artikel, ikut training, sertifikasi",
-  },
-  internal: {
-    label: "Internal Meeting", icon: "💬", color: "#94A3B8", colorLo: "#1A1F2E",
-    team: "delivery", source: "app",
-    desc: "Rapat internal, briefing tim, koordinasi non-klien",
-  },
-  koordinasi: {
-    label: "Koordinasi Klien", icon: "🤝", color: "#FB923C", colorLo: "#2A1800",
-    team: "delivery", source: "app",
-    desc: "Koordinasi dengan klien di luar Jira ticket aktif",
-  },
-  // ── PRE-SALES ──
-  prospecting: {
-    label: "Prospecting",      icon: "🔍", color: T.violet, colorLo: T.violetLo,
-    team: "presales", source: "app",
-  },
-  demo: {
-    label: "Demo & Presentasi",icon: "🎯", color: "#C084FC", colorLo: "#1E1030",
-    team: "presales", source: "app",
-  },
-  proposal: {
-    label: "Proposal / SOW",   icon: "📋", color: "#E879F9", colorLo: "#2A0F30",
-    team: "presales", source: "app",
-  },
-  negotiation: {
-    label: "Negosiasi",        icon: "🤝", color: T.teal,   colorLo: T.tealLo,
-    team: "presales", source: "app",
-  },
-  survey: {
-    label: "Site Survey",      icon: "📐", color: T.amber,  colorLo: T.amberLo,
-    team: "presales", source: "app",
-  },
-  ps_learning: {
-    label: "Learning & Dev",   icon: "📚", color: "#22D3EE", colorLo: "#0C2230",
-    team: "presales", source: "app",
-  },
-  ps_internal: {
-    label: "Internal Meeting", icon: "💬", color: "#94A3B8", colorLo: "#1A1F2E",
-    team: "presales", source: "app",
-  },
+export const TEAM_COLORS = {
+  delivery: "#14b8a6",
+  presales: "#8b5cf6",
+  all: "#6366f1"
 };
 
 export const PS_STAGES = ["Contacted","Demo Scheduled","Demo Done","Proposal Sent","Negotiation","Won","Lost"];
 
 export const ROLES = {
-  admin:   { label:"Admin",             color:T.red,    lo:T.redLo,    team:"all"      },
-  mgr_ps:  { label:"Mgr Pre-Sales",     color:T.violet, lo:T.violetLo, team:"presales" },
-  mgr_dl:  { label:"Mgr Delivery",      color:T.teal,   lo:T.tealLo,   team:"delivery" },
-  pm:      { label:"Project Manager",   color:T.amber,  lo:T.amberLo,  team:"delivery" },
-  presales:{ label:"Sales Engineer",    color:T.violet, lo:T.violetLo, team:"presales" },
-  delivery:{ label:"Service Engineer",  color:T.teal,   lo:T.tealLo,   team:"delivery" },
+  "SE":             { label:"System Engineer",     lvl:1, color:"#10B981", lo:"#10B98120" },
+  "PM":             { label:"Project Manager",     lvl:2, color:"#14B8A6", lo:"#14B8A620" },
+  "delivery":       { label:"Delivery Engineer",   lvl:1, color:"#10B981", lo:"#10B98120" },
+  "mgr_dl":         { label:"Head of Delivery",    lvl:3, color:"#14B8A6", lo:"#14B8A620" },
+  "Head Delivery":  { label:"Head of Delivery",    lvl:3, color:"#14B8A6", lo:"#14B8A620" },
+  
+  "Sales Engineer": { label:"Sales Engineer",      lvl:1, color:"#8B5CF6", lo:"#8B5CF620" },
+  "Presales":       { label:"Presales Engineer",   lvl:1, color:"#8B5CF6", lo:"#8B5CF620" },
+  "presales":       { label:"Presales Engineer",   lvl:1, color:"#8B5CF6", lo:"#8B5CF620" },
+  "mgr_ps":         { label:"Head of Presales",    lvl:3, color:"#6366F1", lo:"#6366F120" },
+  "Head Presales":  { label:"Head of Presales",    lvl:3, color:"#6366F1", lo:"#6366F120" },
+  
+  "Admin":          { label:"Administrator",       lvl:9, color:"#F59E0B", lo:"#F59E0B20" },
+  "admin":          { label:"Administrator",       lvl:9, color:"#F59E0B", lo:"#F59E0B20" }
 };
 
-export const teamOf  = r => ROLES[r]?.team || "all";
-export const isAdmin = r => r === "admin";
-export const isMgr   = r => ["admin","mgr_ps","mgr_dl"].includes(r);
-export const isPM    = r => r === "pm";
-export const actsFor = r => {
-  const t = teamOf(r);
-  return Object.entries(ACTS)
-    .filter(([,v]) => t === "all" || v.team === t)
-    .reduce((acc,[k,v]) => ({...acc,[k]:v}), {});
+export const teamOf = (role) => {
+  const r = (role || "").toLowerCase();
+  if (["se", "pm", "head delivery", "mgr_dl", "delivery", "engineer"].includes(r)) return "delivery";
+  if (["sales engineer", "presales", "head presales", "mgr_ps", "pre-sales"].includes(r)) return "presales";
+  return "all";
+};
+
+export const isPM = (role) => {
+  const r = (role || "").toLowerCase();
+  return r === "pm" || r === "manager";
+};
+
+export const isAdmin = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin"].includes(role);
+
+export const isMgr = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin", "Head Delivery", "Head Presales", "mgr_ps", "mgr_dl"].includes(role);
+
+export const getKpiTarget = (domainKey, user) => {
+  if (user?.role === "PM" && domainKey === "pm") return 30; // 30 jam target
+  const tgts = {
+    "SE": { "impl":40, "pm":15, "cm":15, "enh":10, "ops":5 },
+    "Head Delivery": { "impl":20, "pm":10, "cm":5, "enh":5, "ops":5 }
+  };
+  return tgts[user?.role]?.[domainKey] || 0;
+};
+
+export const actsFor = (role, ACTS) => {
+  if (!ACTS) return {};
+  if (isAdmin(role)) return ACTS; // Superadmin has access to ALL activities
+
+  const team = teamOf(role);
+  const allowed = {};
+  for (const [k,v] of Object.entries(ACTS)) {
+    if (v.team === team || v.team === "all") allowed[k] = v;
+  }
+  return allowed;
 };

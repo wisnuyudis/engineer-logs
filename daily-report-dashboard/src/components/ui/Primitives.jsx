@@ -52,9 +52,9 @@ export function Btn({ children, v="primary", sz="md", style:s={}, ...p }) {
     </button>
   );
 }
-export function Card({ children, p=20, style:s={}, glow }) {
+export function Card({ children, p=20, style:s={}, glow, onClick }) {
   return (
-    <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:14,
+    <div onClick={onClick} style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:14,
       boxShadow: glow ? `0 0 0 1px ${glow}30, 0 4px 24px ${glow}12` : "0 2px 16px rgba(0,0,0,.3)",
       padding:p, ...s }}>
       {children}

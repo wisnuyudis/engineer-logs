@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { T, MONO } from '../../theme/tokens';
-import { ACTS } from '../../constants/taxonomy';
+import { useTaxonomy } from '../../contexts/TaxonomyContext';
 import { Tag } from '../ui/Primitives';
 import { fmtH, fmtIDR } from '../../utils/formatters';
 
 export function ActCard({ act }) {
   const [exp, setExp] = useState(false);
+  const ACTS = useTaxonomy();
   const def = ACTS[act.actKey] || {};
   const isJira = def.source === "jira";
   const done   = act.status === "completed";

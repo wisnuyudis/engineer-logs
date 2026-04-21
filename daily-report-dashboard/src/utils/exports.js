@@ -1,6 +1,6 @@
-import { ACTS, ROLES } from '../constants/taxonomy';
+import { ROLES } from '../constants/taxonomy';
 
-export function exportCSV(rows, members) {
+export function exportCSV(rows, members, ACTS) {
   const headers = [
     "Tanggal","Member","Role","Tim","Source","Kategori",
     "Ticket ID","Judul / Topik","Customer",
@@ -45,7 +45,7 @@ export function exportCSV(rows, members) {
   URL.revokeObjectURL(url);
 }
 
-export function exportPDF(rows, members) {
+export function exportPDF(rows, members, ACTS) {
   const dateStr   = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
   const fmtDur    = m => { const h = Math.floor(m/60), mn = m%60; return h ? h+"j "+mn+"m" : mn+"m"; };
   const totalMins = rows.reduce((s,a) => s + (a.dur||0), 0);

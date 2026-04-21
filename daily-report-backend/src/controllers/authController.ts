@@ -3,17 +3,18 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { AuthRequest } from '../middlewares/authMiddleware';
+import { LoginSchema } from '../validators/zodSchemas';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email dan password harus diisi' });
+    const validation = LoginSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: validation.error.issues[0].message });
     }
+    const { email, password } = validation.data;
 
     // Find user
     const user = await prisma.user.findUnique({ where: { email } });

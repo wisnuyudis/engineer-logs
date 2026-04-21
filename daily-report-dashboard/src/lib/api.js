@@ -19,9 +19,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 403 || error.response?.status === 401) {
-      // Token might be expired or invalid
-      // localStorage.removeItem('token');
-      // window.location.href = '/';
+      if (typeof window !== 'undefined' && localStorage.getItem('token')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/';
+      }
     }
     return Promise.reject(error);
   }

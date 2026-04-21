@@ -1,13 +1,16 @@
 import { useState, useMemo, useRef } from 'react';
+import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { T, FONT, MONO } from '../theme/tokens';
-import { ACTS, teamOf, actsFor, PS_STAGES } from '../constants/taxonomy';
+import { teamOf, actsFor, PS_STAGES } from '../constants/taxonomy';
 import { Btn, Lbl, Inp } from './ui/Primitives';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
 export function LogForm({ user, onSave, onCancel }) {
-  const availActs = useMemo(() => actsFor(user.role), [user.role]);
-  const [actKey, setActKey] = useState(Object.keys(availActs)[0]);
+  const ACTS = useTaxonomy();
+  const myTeam = teamOf(user.role);
+  const availActs = useMemo(() => actsFor(user.role, ACTS), [user.role, ACTS]);
+  const [actKey, setActKey] = useState(Object.keys(availActs)[0] || "");
   const [startTime, setStart] = useState("09:00");
   const [endTime,   setEnd]   = useState("10:00");
   const [date,      setDate]  = useState(() => new Date().toISOString().split("T")[0]);

@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { T, FONT, MONO } from '../theme/tokens';
-import { ACTS, ROLES, isAdmin, isMgr } from '../constants/taxonomy';
+import { useTaxonomy } from '../contexts/TaxonomyContext';
+import { ROLES, isAdmin, isMgr } from '../constants/taxonomy';
 import { exportCSV, exportPDF } from '../utils/exports';
 import { Card, Pill, Lbl, Inp, Btn, Divider, Tag, Avi } from './ui/Primitives';
 import { fmtH } from '../utils/formatters';
 
 export function ReportsView({ activities, members, currentUser }) {
+  const ACTS = useTaxonomy();
   const [teamF,setTF]=useState("all");
   const [userSel,setUS]=useState([]); // multi-select array of names
   const [memberDDOpen,setMDD]=useState(false);
@@ -59,7 +61,7 @@ export function ReportsView({ activities, members, currentUser }) {
       return 0;
     });
     return l;
-  },[activities,teamF,userSel,srcF,custF,dateFrom,dateTo,sortCol,sortDir,canSeeAll,currentUser]);
+  },[activities,teamF,userSel,srcF,custF,dateFrom,dateTo,sortCol,sortDir,canSeeAll,currentUser,ACTS]);
 
   const hasFilter = teamF!=="all"||userSel.length>0||srcF!=="all"||custF||dateFrom||dateTo;
   const reset = ()=>{setTF("all");setUS([]);setSrc("all");setCustF("");setDF("");setDT("");};
@@ -159,8 +161,8 @@ export function ReportsView({ activities, members, currentUser }) {
             </div>
             {hasFilter&&<Btn v="danger" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={reset}>× Reset Filter</Btn>}
             <Divider my={4} />
-            <Btn v="teal" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>exportCSV(visible,members)}>↓ Export CSV</Btn>
-            <Btn v="ghost" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>exportPDF(visible,members)}>↓ Export PDF</Btn>
+            <Btn v="teal" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>exportCSV(visible,members,ACTS)}>↓ Export CSV</Btn>
+            <Btn v="ghost" sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>exportPDF(visible,members,ACTS)}>↓ Export PDF</Btn>
           </div>
         </Card>
 

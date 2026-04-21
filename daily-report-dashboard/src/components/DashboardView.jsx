@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { T, FONT, MONO, DISPLAY } from '../theme/tokens';
-import { ACTS, ROLES, isMgr, isAdmin, teamOf } from '../constants/taxonomy';
+import { ROLES, isMgr, isAdmin, teamOf } from '../constants/taxonomy';
+import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { WEEKLY } from '../data/mockData';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import { calcKPI } from '../utils/kpi';
@@ -10,6 +11,7 @@ import { PersonalKPI } from './shared/PersonalKPI';
 import api from '../lib/api';
 
 export function DashboardView({ currentUser, activities, members, onAdminEditNps }) {
+  const ACTS = useTaxonomy();
   const canSeeTeam = isMgr(currentUser.role);
   const myTeam = teamOf(currentUser.role);
   const isAdminRole = isAdmin(currentUser.role);

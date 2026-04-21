@@ -1,0 +1,19 @@
+
+> daily-report-backend@1.0.0 dev
+> ts-node-dev --respawn --transpile-only src/server.ts
+
+[INFO] 09:31:28 ts-node-dev ver. 2.0.0 (using ts-node ver. 10.9.2, typescript ver. 5.9.3)
+🚀 Server ready at http://localhost:4000
+🤖 Telegram Bot started!
+Ethereal Test Account generated: cpditemzai56jpri@ethereal.email
+[INFO] 09:58:44 Restarting: /Users/wisnu/Data/Dev/engineer-logs/daily-report-backend/src/bot/telegramBot.ts has been modified
+🚀 Server ready at http://localhost:4000
+🤖 Telegram Bot started!
+[INFO] 09:58:46 Restarting: /Users/wisnu/Data/Dev/engineer-logs/daily-report-backend/src/bot/scenes/logWizard.ts has been modified
+Error: Bot is not running!
+    at Telegraf.stop (/Users/wisnu/Data/Dev/engineer-logs/daily-report-backend/node_modules/telegraf/lib/telegraf.js:218:19)
+    at process.<anonymous> (/Users/wisnu/Data/Dev/engineer-logs/daily-report-backend/src/bot/telegramBot.ts:82:37)
+    at Object.onceWrapper (node:events:633:26)
+    at process.emit (node:events:530:35)
+    at process.emit (/Users/wisnu/Data/Dev/engineer-logs/daily-report-backend/node_modules/source-map-support/source-map-support.js:516:21)
+Ethereal Test Account generated: oetynmeqjplzjbxw@ethereal.email

@@ -1,16 +1,22 @@
 import { T, FONT, DISPLAY } from '../theme/tokens';
 import { teamOf } from '../constants/taxonomy';
 import { Avi } from './ui/Primitives';
+import { useNavigate, useLocation } from 'react-router-dom';
 
-export function Sidebar({ user, view, setView, onLogout }) {
-  const nav = ["dashboard","activities","members","reports"];
-  const NAV = {
-    dashboard: { icon:"▦", label:"Dashboard" },
-    activities:{ icon:"◈", label:"Activity Log" },
-    members:   { icon:"◉", label:"Team Members" },
-    reports:   { icon:"⊞", label:"Reports" },
-    profile:   { icon:"○", label:"Profil Saya" },
-  };
+export function Sidebar({ user, onLogout }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activePath = location.pathname;
+
+  const navItems = [
+    { id: "/", icon: "▦", label: "Dashboard" },
+    { id: "/activities", icon: "◈", label: "Activity Log" },
+    { id: "/members", icon: "◉", label: "Team Members" },
+    { id: "/reports", icon: "⊞", label: "Reports" },
+  ];
+  if (user.role === 'admin') {
+    navItems.push({ id: "/taxonomy", icon: "🗂", label: "Master Kategori" });
+  }
   
   const team = teamOf(user.role);
   const teamColor = team==="presales"?T.violet:team==="delivery"?T.teal:T.indigoHi;
@@ -28,15 +34,15 @@ export function Sidebar({ user, view, setView, onLogout }) {
       </div>
       
       <nav style={{ padding:"8px 6px",flex:1 }}>
-        {nav.map(id=>{
-          const n=NAV[id];const active=view===id;
-          return <button key={id} onClick={()=>setView(id)} style={{ width:"100%",display:"flex",alignItems:"center",gap:9,padding:"7px 10px",borderRadius:8,border:"none",cursor:"pointer",marginBottom:1,textAlign:"left",fontFamily:FONT,fontSize:12,fontWeight:active?600:400,transition:"all .15s",background:active?T.indigoLo:"transparent",color:active?T.indigoHi:T.textSec,borderLeft:active?`2px solid ${T.indigo}`:"2px solid transparent" }}>
+        {navItems.map(n=>{
+          const active = activePath === n.id;
+          return <button key={n.id} onClick={()=>navigate(n.id)} style={{ width:"100%",display:"flex",alignItems:"center",gap:9,padding:"7px 10px",borderRadius:8,border:"none",cursor:"pointer",marginBottom:1,textAlign:"left",fontFamily:FONT,fontSize:12,fontWeight:active?600:400,transition:"all .15s",background:active?T.indigoLo:"transparent",color:active?T.indigoHi:T.textSec,borderLeft:active?`2px solid ${T.indigo}`:"2px solid transparent" }}>
             <span style={{ fontSize:12 }}>{n.icon}</span>{n.label}
           </button>;})}
       </nav>
       
       <div style={{ padding:"8px 6px",borderTop:`1px solid ${T.border}` }}>
-        <button onClick={()=>setView("profile")} style={{ width:"100%",display:"flex",alignItems:"center",gap:9,padding:"8px 9px",borderRadius:9,cursor:"pointer",background:view==="profile"?T.indigoLo:T.surfaceHi,border:`1px solid ${view==="profile"?T.indigo+"40":T.border}`,fontFamily:FONT,transition:"all .15s",marginBottom:6 }}>
+        <button onClick={()=>navigate("/profile")} style={{ width:"100%",display:"flex",alignItems:"center",gap:9,padding:"8px 9px",borderRadius:9,cursor:"pointer",background:activePath==="/profile"?T.indigoLo:T.surfaceHi,border:`1px solid ${activePath==="/profile"?T.indigo+"40":T.border}`,fontFamily:FONT,transition:"all .15s",marginBottom:6 }}>
           <Avi av={user.avatar} team={user.team} sz={30} />
           <div style={{ flex:1,overflow:"hidden",textAlign:"left" }}>
             <div style={{ fontSize:11,fontWeight:600,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.name}</div>
