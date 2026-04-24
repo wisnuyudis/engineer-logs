@@ -9,6 +9,7 @@ import activityRoutes from './routes/activityRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import telegramRoutes from './routes/telegramRoutes';
 import taxonomyRoutes from './routes/taxonomyRoutes';
+import jiraRoutes from './routes/jiraRoutes';
 import path from 'path';
 
 const app = express();
@@ -32,5 +33,6 @@ app.use('/api/activities', activityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/taxonomy', taxonomyRoutes);
+app.use('/api/jira', jiraRoutes);
 
 export default app;

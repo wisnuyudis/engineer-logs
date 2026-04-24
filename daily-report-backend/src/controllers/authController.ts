@@ -48,7 +48,12 @@ export const login = async (req: Request, res: Response) => {
         role: user.role,
         team: user.team,
         avatarUrl: user.avatarUrl,
-        status: user.status
+        status: user.status,
+        jiraAccountId: user.jiraAccountId,
+        jiraCloudId: user.jiraCloudId,
+        jiraDisplayName: user.jiraDisplayName,
+        jiraAvatarUrl: user.jiraAvatarUrl,
+        jiraConnectedAt: user.jiraConnectedAt,
       }
     });
 
@@ -62,7 +67,20 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user?.userId },
-      select: { id: true, email: true, name: true, role: true, team: true, avatarUrl: true, supervisorId: true }
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        team: true,
+        avatarUrl: true,
+        supervisorId: true,
+        jiraAccountId: true,
+        jiraCloudId: true,
+        jiraDisplayName: true,
+        jiraAvatarUrl: true,
+        jiraConnectedAt: true,
+      }
     });
     if (!user) return res.status(404).json({ error: 'Not found' });
     

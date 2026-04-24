@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { T, DISPLAY } from '../theme/tokens';
 import { Card, Avi, RoleBadge, TeamBadge, Btn, Lbl, Inp } from './ui/Primitives';
 import { PersonalKPI } from './shared/PersonalKPI';
@@ -40,8 +40,98 @@ export function ProfileView({ user, activities, onUpdate }) {
         </div>
       </Card>
       <PersonalKPI user={user} activities={activities} />
+      <JiraIntegrator />
       <TelegramIntegrator />
     </div>
+  );
+}
+
+function JiraIntegrator() {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const { data: status, refetch } = useQuery({
+    queryKey: ['jiraStatus'],
+    queryFn: async () => {
+      const { data } = await api.get('/jira/status');
+      return data;
+    }
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const jiraStatus = params.get('jira');
+    const message = params.get('message');
+    if (!jiraStatus) return;
+
+    if (jiraStatus === 'connected') {
+      setNotice("Akun Jira berhasil terhubung.");
+      refetch();
+    } else if (jiraStatus === 'failed') {
+      setErr(message || "Koneksi Jira gagal.");
+    }
+
+    params.delete('jira');
+    params.delete('message');
+    const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+    window.history.replaceState({}, '', next);
+  }, [refetch]);
+
+  const beginConnect = async () => {
+    setBusy(true); setErr(""); setNotice("");
+    try {
+      const { data } = await api.post('/jira/connect');
+      window.location.href = data.authUrl;
+    } catch (e) {
+      setErr(e.response?.data?.error || "Gagal memulai koneksi Jira");
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true); setErr(""); setNotice("");
+    try {
+      await api.post('/jira/disconnect');
+      setNotice("Koneksi Jira diputus.");
+      refetch();
+    } catch (e) {
+      setErr(e.response?.data?.error || "Gagal memutus koneksi Jira");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isLinked = status?.isLinked;
+
+  return (
+    <Card p={22} style={{ marginTop: 14 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+        <div style={{ width:28, height:28, borderRadius:"50%", background:T.jiraLo || T.indigoLo, color:T.jira || T.indigoHi, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🔗</div>
+        <div style={{ fontSize:15, fontWeight:700, color:T.textPri }}>Integrasi Jira</div>
+        {isLinked && <div style={{ marginLeft:"auto", fontSize:11, color:T.green, background:T.greenLo, padding:"4px 10px", borderRadius:20, fontWeight:700 }}>✓ Terhubung</div>}
+      </div>
+
+      <p style={{ fontSize:12, color:T.textMute, margin:"0 0 16px", lineHeight:1.5 }}>
+        Hubungkan akun Jira Anda sekali saja agar app bisa mengenali <strong>accountId</strong> Jira dan menyiapkan sinkronisasi worklog otomatis.
+      </p>
+
+      {err && <div style={{ background:T.redLo, color:T.red, fontSize:12, padding:"8px 12px", borderRadius:8, marginBottom:10 }}>{err}</div>}
+      {notice && <div style={{ background:T.greenLo, color:T.green, fontSize:12, padding:"8px 12px", borderRadius:8, marginBottom:10 }}>{notice}</div>}
+
+      {isLinked ? (
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <div style={{ background:T.surfaceHi, border:`1px solid ${T.border}`, borderRadius:8, padding:14, fontSize:13 }}>
+            <div style={{ color:T.textPri, fontWeight:700 }}>{status?.displayName || "Jira User"}</div>
+            <div style={{ color:T.textMute, marginTop:4 }}>accountId: {status?.accountId || "—"}</div>
+            <div style={{ color:T.textMute, marginTop:2 }}>cloudId: {status?.cloudId || "—"}</div>
+          </div>
+          <div><Btn v="ghost" onClick={disconnect} disabled={busy}>{busy ? "Memproses..." : "Putuskan Koneksi Jira"}</Btn></div>
+        </div>
+      ) : (
+        <Btn v="primary" onClick={beginConnect} disabled={busy}>{busy ? "Memproses..." : "Hubungkan ke Jira →"}</Btn>
+      )}
+    </Card>
   );
 }
 

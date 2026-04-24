@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
+  timeout: 15000,
 });
 
 api.interceptors.request.use(
@@ -18,6 +19,12 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.code === 'ECONNABORTED') {
+      error.response = {
+        data: { error: 'Request timeout. Server terlalu lama merespons.' }
+      };
+    }
+
     if (error.response?.status === 403 || error.response?.status === 401) {
       if (typeof window !== 'undefined' && localStorage.getItem('token')) {
         localStorage.removeItem('token');

@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const jiraController_1 = require("../controllers/jiraController");
+const router = (0, express_1.Router)();
+router.post('/webhooks/worklog', jiraController_1.handleJiraWorklogWebhook);
+router.get('/callback', jiraController_1.handleJiraCallback);
+router.use(authMiddleware_1.authenticateToken);
+router.get('/status', jiraController_1.getJiraStatus);
+router.post('/connect', jiraController_1.beginJiraConnect);
+router.post('/disconnect', jiraController_1.disconnectJira);
+exports.default = router;

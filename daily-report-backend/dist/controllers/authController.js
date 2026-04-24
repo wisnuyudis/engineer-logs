@@ -7,14 +7,16 @@ exports.changePassword = exports.updateProfile = exports.getProfile = exports.lo
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const zodSchemas_1 = require("../validators/zodSchemas");
 const prisma = new client_1.PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email dan password harus diisi' });
+        const validation = zodSchemas_1.LoginSchema.safeParse(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ error: validation.error.issues[0].message });
         }
+        const { email, password } = validation.data;
         // Find user
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) {
@@ -39,7 +41,12 @@ const login = async (req, res) => {
                 role: user.role,
                 team: user.team,
                 avatarUrl: user.avatarUrl,
-                status: user.status
+                status: user.status,
+                jiraAccountId: user.jiraAccountId,
+                jiraCloudId: user.jiraCloudId,
+                jiraDisplayName: user.jiraDisplayName,
+                jiraAvatarUrl: user.jiraAvatarUrl,
+                jiraConnectedAt: user.jiraConnectedAt,
             }
         });
     }
@@ -54,7 +61,20 @@ const getProfile = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({
             where: { id: req.user?.userId },
-            select: { id: true, email: true, name: true, role: true, team: true, avatarUrl: true, supervisorId: true }
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                team: true,
+                avatarUrl: true,
+                supervisorId: true,
+                jiraAccountId: true,
+                jiraCloudId: true,
+                jiraDisplayName: true,
+                jiraAvatarUrl: true,
+                jiraConnectedAt: true,
+            }
         });
         if (!user)
             return res.status(404).json({ error: 'Not found' });

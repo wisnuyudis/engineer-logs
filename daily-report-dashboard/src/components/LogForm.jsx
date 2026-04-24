@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { T, FONT, MONO } from '../theme/tokens';
 import { teamOf, actsFor, PS_STAGES } from '../constants/taxonomy';
@@ -10,6 +10,7 @@ export function LogForm({ user, onSave, onCancel }) {
   const ACTS = useTaxonomy();
   const myTeam = teamOf(user.role);
   const availActs = useMemo(() => actsFor(user.role, ACTS), [user.role, ACTS]);
+  const firstActKey = Object.keys(availActs)[0] || "";
   const [actKey, setActKey] = useState(Object.keys(availActs)[0] || "");
   const [startTime, setStart] = useState("09:00");
   const [endTime,   setEnd]   = useState("10:00");
@@ -40,11 +41,16 @@ export function LogForm({ user, onSave, onCancel }) {
   const def = availActs[actKey] || {};
   const isJira = def.source === "jira";
   const isPS   = def.team === "presales" && def.source === "app";
-  const needsContact    = actKey === "koordinasi";
   const needsCustomer   = ["jira_impl","jira_pm","jira_cm","jira_enh","pm_presentation"].includes(actKey);
   const needsPmNps      = actKey === "pm_presentation";
+  const needsContact    = actKey === "koordinasi";
+  const needsTopic      = def.source === "app" && !isPS && !needsContact;
 
   const todayStr = new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+  useEffect(() => {
+    if (!actKey && firstActKey) setActKey(firstActKey);
+  }, [actKey, firstActKey]);
 
   // Compute duration in minutes from time range
   const calcDur = (s, e) => {
@@ -74,7 +80,9 @@ export function LogForm({ user, onSave, onCancel }) {
 
   const save = async () => {
     const e = {};
+    const selectedActKey = actKey || firstActKey;
     if(dur<=0) e.time="Jam selesai harus setelah jam mulai";
+    if(!selectedActKey) e.actKey="Jenis aktivitas wajib";
     if(isJira && !ticketId.trim()) e.ticketId="Ticket ID wajib";
     if(needsCustomer && !customerName.trim()) e.customerName="Nama Customer wajib";
     if(needsPmNps && (pmNps<0||pmNps>4)) e.pmNps="NPS harus 0-4";
@@ -86,12 +94,17 @@ export function LogForm({ user, onSave, onCancel }) {
     try {
       // 1. Create main activity record
       const payload = {
-        actKey, date,
-        startTime, endTime, dur, status, note,
+        actKey: selectedActKey,
+        date: date || new Date().toISOString().slice(0, 10),
+        startTime: startTime || null,
+        endTime: endTime || null,
+        dur,
+        status: status || "completed",
+        note: note || "",
         ...(isJira ? { ticketId: ticketId.trim(), ticketTitle: ticketTitle.trim() } : {}),
         ...(needsCustomer ? { customerName: customerName.trim() } : {}),
         ...(needsPmNps ? { nps: pmNps } : {}),
-        ...(actKey==="learning"||actKey==="ps_learning"||actKey==="internal"||actKey==="ps_internal" ? { topic } : {}),
+        ...(needsTopic ? { topic } : {}),
         ...(needsContact ? { topic: contact } : {}), // Map contact to topic for simplicity
         ...(isPS ? { prName, leadId: prId, prospectValue: Number(value)||0 } : {}) // Note: backend schema mapped prId to leadId
       };
@@ -235,9 +248,9 @@ export function LogForm({ user, onSave, onCancel }) {
         </div>
       )}
 
-      {/* Topic for learning/internal/koordinasi */}
-      {["learning","ps_learning","internal","ps_internal"].includes(actKey) && (
-        <Inp label="Topik / Agenda" value={topic} placeholder={actKey.includes("learning")?"CISSP Module 4, Webinar Elastic...":"Agenda rapat, nama meeting..."} onChange={e=>setTopic(e.target.value)} />
+      {/* Topic for generic app activities */}
+      {needsTopic && (
+        <Inp label="Topik / Judul Aktivitas" required value={topic} error={err.topic} placeholder="Deskripsi aktivitas..." onChange={e=>{setTopic(e.target.value);setErr(p=>({...p,topic:""}));}} />
       )}
       {needsContact && (
         <Inp label="Kontak / Klien" value={contact} placeholder="PT. BRI – Pak Hendro IT" onChange={e=>setContact(e.target.value)} />

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.inviteUser = void 0;
 const client_1 = require("@prisma/client");
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const crypto_1 = __importDefault(require("crypto"));
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const prisma = new client_1.PrismaClient();
@@ -44,57 +45,73 @@ if (process.env.NODE_ENV !== 'test') {
 }
 const inviteUser = async (req, res) => {
     try {
-        const { name, email, role, team, supervisorId } = req.body;
+        const { name, email, role, team, supervisorId, bypassSmtp, manualPassword } = req.body;
         // Check if email exist
         const exist = await prisma.user.findUnique({ where: { email } });
         if (exist)
             return res.status(400).json({ error: 'Email already exists' });
-        // Generate Magic Link Token (Valid 24 Hour)
-        const rawToken = crypto_1.default.randomBytes(32).toString('hex');
-        // Store temporarily in User DB with 'invited' status and token as passwordHash for now (hack)
-        // Or better: store in a separate table/column. Since we have no magicToken column, 
-        // let's use the Setting table to store ephemeral tokens.
-        const tokenKey = `invite_${rawToken}`;
-        const user = await prisma.user.create({
-            data: {
-                email,
-                name,
-                role,
-                team,
-                supervisorId,
-                status: 'invited',
-                passwordHash: 'pending' // Will be updated on activation
-            }
-        });
-        await prisma.setting.create({
-            data: {
-                key: tokenKey,
-                value: user.id,
-                description: 'Invite token, expires 24h'
-            }
-        });
-        const frontEndUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
-        const link = `${frontEndUrl}/activate?token=${rawToken}`;
-        // Send Email
-        const info = await transporter.sendMail({
-            from: '"EngineerLog Admin" <admin@seraphim.id>',
-            to: email,
-            subject: "Invitation to EngineerLog Dashboard",
-            html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-          <h2 style="color: #4f46e5;">Welcome to EngineerLog, ${name}!</h2>
-          <p>You have been invited to join the Seraphim Digital Technology Daily Report Dashboard as a <strong>${role}</strong>.</p>
-          <p>Please click the button below to set up your password and activate your account:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${link}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Activate Account</a>
+        if (bypassSmtp) {
+            // BYPASS SMTP: Generate customized / default password
+            const passToHash = manualPassword || 'password123';
+            const hashedPassword = await bcryptjs_1.default.hash(passToHash, 10);
+            const user = await prisma.user.create({
+                data: {
+                    email,
+                    name,
+                    role,
+                    team,
+                    supervisorId,
+                    status: 'active',
+                    passwordHash: hashedPassword
+                }
+            });
+            return res.status(200).json({ message: 'Aktivasi langsung berhasil. Member aktif.' });
+        }
+        else {
+            // NORMAL SMTP FLOW
+            const rawToken = crypto_1.default.randomBytes(32).toString('hex');
+            const tokenKey = `invite_${rawToken}`;
+            const user = await prisma.user.create({
+                data: {
+                    email,
+                    name,
+                    role,
+                    team,
+                    supervisorId,
+                    status: 'invited',
+                    passwordHash: 'pending' // Will be updated on activation
+                }
+            });
+            await prisma.setting.create({
+                data: {
+                    key: tokenKey,
+                    value: user.id,
+                    description: 'Invite token, expires 24h'
+                }
+            });
+            const frontEndUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+            const link = `${frontEndUrl}/activate?token=${rawToken}`;
+            // Send Email
+            const info = await transporter.sendMail({
+                from: '"EngineerLog Admin" <admin@seraphim.id>',
+                to: email,
+                subject: "Invitation to EngineerLog Dashboard",
+                html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <h2 style="color: #4f46e5;">Welcome to EngineerLog, ${name}!</h2>
+            <p>You have been invited to join the Seraphim Digital Technology Daily Report Dashboard as a <strong>${role}</strong>.</p>
+            <p>Please click the button below to set up your password and activate your account:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${link}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Activate Account</a>
+            </div>
+            <p style="font-size: 12px; color: #6b7280;">This link is valid for 24 hours.</p>
           </div>
-          <p style="font-size: 12px; color: #6b7280;">This link is valid for 24 hours.</p>
-        </div>
-      `,
-        });
-        console.log("Message sent: %s", info.messageId);
-        console.log("Preview URL: %s", nodemailer_1.default.getTestMessageUrl(info));
-        res.status(200).json({ message: 'Invitation sent', previewUrl: nodemailer_1.default.getTestMessageUrl(info) });
+        `,
+            });
+            console.log("Message sent: %s", info.messageId);
+            console.log("Preview URL: %s", nodemailer_1.default.getTestMessageUrl(info));
+            return res.status(200).json({ message: 'Invitation sent', previewUrl: nodemailer_1.default.getTestMessageUrl(info) });
+        }
     }
     catch (error) {
         if (req.log)

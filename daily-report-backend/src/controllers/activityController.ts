@@ -8,6 +8,9 @@ import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
+const normalizeIdentity = (value: string | null | undefined) =>
+  (value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
 export const getActivities = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
@@ -44,7 +47,9 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
     // Zod Validation
     const validation = ActivitySchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ error: validation.error.issues[0].message });
+      const issue = validation.error.issues[0];
+      const field = issue.path.join('.') || 'payload';
+      return res.status(400).json({ error: `${field}: ${issue.message}` });
     }
     const data = validation.data;
     
@@ -72,19 +77,58 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    const masterAct = await prisma.masterActivity.findUnique({ where: { actKey: data.actKey } });
+    if (!masterAct) return res.status(400).json({ error: 'Kategori aktivitas tidak valid' });
+
+    let finalTicketTitle = data.ticketTitle || null;
+
+    if (masterAct.source === 'jira') {
+      if (!data.ticketId) return res.status(400).json({ error: 'Ticket ID wajib diisi untuk kategori ini' });
+      
+      try {
+        const { fetchJiraTicket } = await import('../services/jiraService');
+        const jiraData = await fetchJiraTicket(data.ticketId);
+        
+        const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+        const appEmail = currentUser?.email.toLowerCase() || '';
+        const appName = normalizeIdentity(currentUser?.name);
+        const jiraEmail = jiraData.assigneeEmail ? jiraData.assigneeEmail.toLowerCase() : '';
+        const jiraDisplayName = normalizeIdentity(jiraData.assigneeDisplayName);
+        
+        if (!jiraEmail && !jiraDisplayName && !jiraData.assigneeAccountId) {
+          return res.status(400).json({ error: 'Tiket JIRA belum di-assign (Unassigned). Silakan assign ke email Anda di Jira terlebih dahulu.' });
+        }
+        
+        if (jiraEmail && jiraEmail !== appEmail) {
+          return res.status(400).json({ error: `Tiket ${data.ticketId} ditugaskan ke ${jiraEmail}, bukan ke email Anda (${appEmail}). Akses ditolak!` });
+        }
+
+        if (!jiraEmail && jiraDisplayName && jiraDisplayName !== appName) {
+          return res.status(400).json({
+            error: `Tiket ${data.ticketId} ditugaskan ke ${jiraData.assigneeDisplayName}, bukan ke user Anda (${currentUser?.name}). Email assignee disembunyikan oleh Jira.`
+          });
+        }
+        
+        finalTicketTitle = jiraData.summary;
+      } catch (e: any) {
+        return res.status(400).json({ error: e.message || 'Gagal terhubung ke Jira' });
+      }
+    }
+
     const activity = await prisma.activity.create({
       data: {
         userId,
         actKey: data.actKey,
-        topic: data.topic,
+        topic: data.topic || null,
+        note: data.note || null,
         dur: data.dur, // Zod already parses to number
         date: data.date,
         startTime: data.startTime || null,
         endTime: data.endTime || null,
         status: data.status || 'completed',
-        source: 'app',
+        source: masterAct.source,
         ticketId: data.ticketId || null,
-        ticketTitle: data.ticketTitle || null,
+        ticketTitle: finalTicketTitle,
         customerName: data.customerName || null,
         prName: data.prName || null,
         nps: data.nps ?? null,
@@ -107,7 +151,9 @@ export const updateActivity = async (req: AuthRequest, res: Response) => {
     // Zod Validation
     const validation = ActivitySchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ error: validation.error.issues[0].message });
+      const issue = validation.error.issues[0];
+      const field = issue.path.join('.') || 'payload';
+      return res.status(400).json({ error: `${field}: ${issue.message}` });
     }
     const data = validation.data;
     
@@ -117,7 +163,8 @@ export const updateActivity = async (req: AuthRequest, res: Response) => {
       where: { id },
       data: {
         actKey: data.actKey,
-        topic: data.topic,
+        topic: data.topic || null,
+        note: data.note || null,
         dur: data.dur,
         date: data.date,
         startTime: data.startTime || null,

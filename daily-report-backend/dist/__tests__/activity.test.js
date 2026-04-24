@@ -18,6 +18,9 @@ jest.mock('@prisma/client', () => {
         },
         user: {
             findUnique: jest.fn()
+        },
+        masterActivity: {
+            findUnique: jest.fn()
         }
     };
     return { PrismaClient: jest.fn(() => mPrismaClient) };
@@ -43,7 +46,7 @@ describe('Activity API Endpoints', () => {
                 date: '2023-11-20',
                 startTime: '10:00',
                 endTime: '10:00',
-                dur: 0,
+                dur: 1,
                 ticketId: 'PROJ-1',
                 customerName: 'Customer X'
             });
@@ -70,6 +73,7 @@ describe('Activity API Endpoints', () => {
         });
         it('should pass and create activity if no overlap', async () => {
             prisma.activity.findMany.mockResolvedValue([]);
+            prisma.masterActivity.findUnique.mockResolvedValue({ actKey: 'jira_impl', source: 'app' });
             prisma.activity.create.mockResolvedValue({
                 id: 'new_act',
                 startTime: '09:00',

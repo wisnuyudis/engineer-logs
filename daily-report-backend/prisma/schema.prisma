@@ -11,6 +11,11 @@ model User {
   id           String    @id @default(auto()) @map("_id") @db.ObjectId
   email        String    @unique
   telegramId   String?   // Removed @unique due to Mongo treating multiple nulls as duplicates
+  jiraAccountId String?
+  jiraCloudId   String?
+  jiraDisplayName String?
+  jiraAvatarUrl String?
+  jiraConnectedAt DateTime?
   passwordHash String
   name         String
   avatarUrl    String?
@@ -43,6 +48,10 @@ model Activity {
   // Jira specific
   source         String   @default("app") // app, jira
   ticketId       String?
+  jiraIssueId    String?
+  jiraWorklogId  String?
+  jiraAuthorAccountId String?
+  jiraUpdatedAt  DateTime?
   ticketTitle    String?
   
   // Pre-Sales/PM specific
