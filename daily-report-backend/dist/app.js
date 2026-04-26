@@ -15,10 +15,15 @@ const dashboardRoutes_1 = __importDefault(require("./routes/dashboardRoutes"));
 const telegramRoutes_1 = __importDefault(require("./routes/telegramRoutes"));
 const taxonomyRoutes_1 = __importDefault(require("./routes/taxonomyRoutes"));
 const jiraRoutes_1 = __importDefault(require("./routes/jiraRoutes"));
+const kpiRoutes_1 = __importDefault(require("./routes/kpiRoutes"));
 const path_1 = __importDefault(require("path"));
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
-app.use(express_1.default.json());
+app.use(express_1.default.json({
+    verify: (req, _res, buf) => {
+        req.rawBody = buf.toString('utf8');
+    }
+}));
 app.use((0, pino_http_1.default)());
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', time: new Date() });
@@ -34,4 +39,5 @@ app.use('/api/dashboard', dashboardRoutes_1.default);
 app.use('/api/telegram', telegramRoutes_1.default);
 app.use('/api/taxonomy', taxonomyRoutes_1.default);
 app.use('/api/jira', jiraRoutes_1.default);
+app.use('/api/kpi', kpiRoutes_1.default);
 exports.default = app;

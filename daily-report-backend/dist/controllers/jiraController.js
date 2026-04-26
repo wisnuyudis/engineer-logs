@@ -198,9 +198,22 @@ const handleJiraWorklogWebhook = async (req, res) => {
     try {
         const expectedSecret = process.env.JIRA_WEBHOOK_SECRET;
         if (expectedSecret) {
+            const signatureHeader = req.headers['x-hub-signature'];
             const providedSecret = req.headers['x-jira-webhook-secret'] || req.headers['authorization'];
             const normalized = typeof providedSecret === 'string' ? providedSecret.replace(/^Bearer\s+/i, '') : '';
-            if (normalized !== expectedSecret) {
+            if (typeof signatureHeader === 'string') {
+                const digest = crypto_1.default
+                    .createHmac('sha256', expectedSecret)
+                    .update(req.rawBody || '')
+                    .digest('hex');
+                const expectedSignature = `sha256=${digest}`;
+                const isValid = signatureHeader.length === expectedSignature.length
+                    && crypto_1.default.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expectedSignature));
+                if (!isValid) {
+                    return res.status(401).json({ error: 'Invalid Jira webhook signature' });
+                }
+            }
+            else if (normalized !== expectedSecret) {
                 return res.status(401).json({ error: 'Invalid Jira webhook secret' });
             }
         }

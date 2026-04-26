@@ -7,21 +7,30 @@ export const TEAM_COLORS = {
 export const PS_STAGES = ["Contacted","Demo Scheduled","Demo Done","Proposal Sent","Negotiation","Won","Lost"];
 
 export const ROLES = {
-  "SE":             { label:"System Engineer",     lvl:1, color:"#10B981", lo:"#10B98120" },
-  "PM":             { label:"Project Manager",     lvl:2, color:"#14B8A6", lo:"#14B8A620" },
-  "delivery":       { label:"Delivery Engineer",   lvl:1, color:"#10B981", lo:"#10B98120" },
-  "mgr_dl":         { label:"Head of Delivery",    lvl:3, color:"#14B8A6", lo:"#14B8A620" },
-  "Head Delivery":  { label:"Head of Delivery",    lvl:3, color:"#14B8A6", lo:"#14B8A620" },
+  "SE":             { label:"System Engineer",     lvl:1, color:"#10B981", lo:"#10B98120", team:"delivery" },
+  "PM":             { label:"Project Manager",     lvl:2, color:"#14B8A6", lo:"#14B8A620", team:"delivery" },
+  "delivery":       { label:"Delivery Engineer",   lvl:1, color:"#10B981", lo:"#10B98120", team:"delivery" },
+  "mgr_dl":         { label:"Head of Delivery",    lvl:3, color:"#14B8A6", lo:"#14B8A620", team:"delivery" },
+  "Head Delivery":  { label:"Head of Delivery",    lvl:3, color:"#14B8A6", lo:"#14B8A620", team:"delivery" },
   
-  "Sales Engineer": { label:"Sales Engineer",      lvl:1, color:"#8B5CF6", lo:"#8B5CF620" },
-  "Presales":       { label:"Presales Engineer",   lvl:1, color:"#8B5CF6", lo:"#8B5CF620" },
-  "presales":       { label:"Presales Engineer",   lvl:1, color:"#8B5CF6", lo:"#8B5CF620" },
-  "mgr_ps":         { label:"Head of Presales",    lvl:3, color:"#6366F1", lo:"#6366F120" },
-  "Head Presales":  { label:"Head of Presales",    lvl:3, color:"#6366F1", lo:"#6366F120" },
+  "Sales Engineer": { label:"Sales Engineer",      lvl:1, color:"#8B5CF6", lo:"#8B5CF620", team:"presales" },
+  "Presales":       { label:"Presales Engineer",   lvl:1, color:"#8B5CF6", lo:"#8B5CF620", team:"presales" },
+  "presales":       { label:"Presales Engineer",   lvl:1, color:"#8B5CF6", lo:"#8B5CF620", team:"presales" },
+  "mgr_ps":         { label:"Head of Presales",    lvl:3, color:"#6366F1", lo:"#6366F120", team:"presales" },
+  "Head Presales":  { label:"Head of Presales",    lvl:3, color:"#6366F1", lo:"#6366F120", team:"presales" },
   
-  "Admin":          { label:"Administrator",       lvl:9, color:"#F59E0B", lo:"#F59E0B20" },
-  "admin":          { label:"Administrator",       lvl:9, color:"#F59E0B", lo:"#F59E0B20" }
+  "Admin":          { label:"Administrator",       lvl:9, color:"#F59E0B", lo:"#F59E0B20", team:"all" },
+  "admin":          { label:"Administrator",       lvl:9, color:"#F59E0B", lo:"#F59E0B20", team:"all" }
 };
+
+export const ROLE_OPTIONS = [
+  { value: "delivery", label: "Delivery Engineer" },
+  { value: "PM", label: "Project Manager" },
+  { value: "mgr_dl", label: "Head of Delivery" },
+  { value: "presales", label: "Presales Engineer" },
+  { value: "mgr_ps", label: "Head of Presales" },
+  { value: "admin", label: "Administrator" },
+];
 
 export const teamOf = (role) => {
   const r = (role || "").toLowerCase();
@@ -38,6 +47,8 @@ export const isPM = (role) => {
 export const isAdmin = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin"].includes(role);
 
 export const isMgr = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin", "Head Delivery", "Head Presales", "mgr_ps", "mgr_dl"].includes(role);
+export const canManageKpi = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery"].includes(role);
+export const hasKpiProfile = (role) => ["delivery", "SE", "mgr_dl", "Head Delivery", "PM", "pm"].includes(role);
 
 export const getKpiTarget = (domainKey, user) => {
   if (user?.role === "PM" && domainKey === "pm") return 30; // 30 jam target

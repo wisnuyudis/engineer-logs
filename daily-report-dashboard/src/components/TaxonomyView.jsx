@@ -83,7 +83,7 @@ export function TaxonomyView({ currentUser }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <p style={{ color: T.textMute, fontSize: 13, marginBottom: 12 }}>
-        Atur jenis-jenis pekerjaan yang dapat dipilih oleh para Engineer saat login aktivitas harian mereka.
+        Atur kategori pekerjaan yang dipakai aplikasi. Kategori sinkron otomatis tetap muncul di master, tetapi tidak dipilih manual dari web atau bot.
       </p>
 
       {isLoading ? (
@@ -125,7 +125,7 @@ export function TaxonomyView({ currentUser }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
                 <div style={{ display: "flex", gap: 8, fontSize: 10, flexWrap: "wrap" }}>
                   <span style={{ padding: "3px 8px", background: T.surfaceHi, borderRadius: 4, color: T.textSec }}>
-                    <strong style={{ color: t.source === 'jira' ? T.jira : T.textPri }}>{t.source.toUpperCase()}</strong>
+                    <strong style={{ color: t.source === 'jira' ? T.jira : T.textPri }}>{t.source === 'jira' ? 'SYNC' : 'MANUAL'}</strong>
                   </span>
                   <span style={{ padding: "3px 8px", background: T.surfaceHi, borderRadius: 4, color: T.textSec }}>
                     <strong>{t.team}</strong>
@@ -178,8 +178,8 @@ export function TaxonomyView({ currentUser }) {
             <div style={{ flex: 1 }}>
               <Lbl>Sumber Tugas</Lbl>
               <select name="source" value={formData.source} onChange={handleChange} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, background: T.surfaceHi, border: `1px solid ${T.border}`, color: T.textPri, outline: "none", fontSize: 13 }}>
-                <option value="app">Native App</option>
-                <option value="jira">JIRA Ticket</option>
+                <option value="app">Input Manual</option>
+                <option value="jira">Sinkron Otomatis</option>
               </select>
             </div>
           </div>

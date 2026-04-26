@@ -73,3 +73,70 @@ export const updateUser = async (req: Request<{ id: string }>, res: Response) =>
     res.status(500).json({ error: 'Failed to update user' });
   }
 };
+
+export const deleteUser = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const authUserId = (req as any).user?.id ? String((req as any).user.id) : null;
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true }
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (authUserId && authUserId === id) {
+      return res.status(400).json({ error: 'Tidak bisa menghapus akun yang sedang dipakai login' });
+    }
+
+    const activityIds = await prisma.activity.findMany({
+      where: { userId: id },
+      select: { id: true }
+    });
+
+    const idsToDelete = activityIds.map((activity) => activity.id);
+
+    await prisma.$transaction(async (tx) => {
+      if (idsToDelete.length) {
+        await tx.attachment.deleteMany({
+          where: { activityId: { in: idsToDelete } }
+        });
+      }
+
+      await tx.activity.deleteMany({
+        where: { userId: id }
+      });
+
+      await tx.kpiScorecard.deleteMany({
+        where: { userId: id }
+      });
+
+      await tx.kpiScorecard.updateMany({
+        where: { enteredById: id },
+        data: { enteredById: null }
+      });
+
+      await tx.user.updateMany({
+        where: { supervisorId: id },
+        data: { supervisorId: null }
+      });
+
+      await tx.user.delete({
+        where: { id }
+      });
+    });
+
+    res.json({
+      success: true,
+      deletedUserId: id,
+      name: existingUser.name
+    });
+  } catch (error) {
+    if (req.log) req.log.error(error, 'Error deleting user');
+    else console.error(error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+};

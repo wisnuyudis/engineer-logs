@@ -50,7 +50,12 @@ export const syncJiraWorklogToActivity = async (issueKeyOrId: string, worklogId:
   const { date, startTime } = toDateParts(worklog.started);
   const durMinutes = Math.max(1, Math.round(worklog.timeSpentSeconds / 60));
   const endTime = addMinutes(startTime, durMinutes);
-  const actKey = resolveJiraActKey(issue.key, issue.issueTypeName);
+  const actKey = resolveJiraActKey(
+    issue.key,
+    issue.issueTypeName,
+    issue.projectName,
+    issue.workTypeName
+  );
   const topic = `${issue.key} - ${issue.summary || 'No Summary'}`;
   const note = worklog.commentText || `Synced from Jira worklog ${worklog.id}`;
 

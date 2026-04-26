@@ -10,6 +10,7 @@ export interface AuthRequest extends Request {
     role: string;
     team: string | null;
   };
+  rawBody?: string;
 }
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {

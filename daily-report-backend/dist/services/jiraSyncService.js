@@ -45,7 +45,7 @@ const syncJiraWorklogToActivity = async (issueKeyOrId, worklogId) => {
     const { date, startTime } = toDateParts(worklog.started);
     const durMinutes = Math.max(1, Math.round(worklog.timeSpentSeconds / 60));
     const endTime = addMinutes(startTime, durMinutes);
-    const actKey = (0, jiraService_1.resolveJiraActKey)(issue.key, issue.issueTypeName);
+    const actKey = (0, jiraService_1.resolveJiraActKey)(issue.key, issue.issueTypeName, issue.projectName, issue.workTypeName);
     const topic = `${issue.key} - ${issue.summary || 'No Summary'}`;
     const note = worklog.commentText || `Synced from Jira worklog ${worklog.id}`;
     const existing = await prisma.activity.findFirst({

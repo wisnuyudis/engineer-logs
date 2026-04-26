@@ -29,6 +29,8 @@ model User {
   subordinates  User[]    @relation("SupervisorRelation")
 
   activities   Activity[]
+  kpiScorecards KpiScorecard[] @relation("KpiSubject")
+  kpiEntered   KpiScorecard[] @relation("KpiEnteredBy")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -102,4 +104,29 @@ model MasterActivity {
   isActive    Boolean  @default(true) // Untuk on/off tanpa menghapus relasi
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model KpiScorecard {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String   @db.ObjectId
+  year             Int
+  quarter          String
+  profileKey       String
+  scores           Json
+  notes            Json?
+  finalScore       Float?
+  activeDomainCount Int     @default(0)
+  hasViolation     Boolean  @default(false)
+  eligibleBonus    Boolean  @default(false)
+  completedJiraTaskCount Int @default(0)
+  qbMultiplier     Float    @default(0)
+  qbLastCalculatedAt DateTime?
+  enteredById      String?  @db.ObjectId
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation("KpiSubject", fields: [userId], references: [id])
+  enteredBy        User?    @relation("KpiEnteredBy", fields: [enteredById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([userId, year, quarter], name: "userId_year_quarter")
 }

@@ -4,11 +4,11 @@ const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 const ACTS = [
     // ── DELIVERY ──
-    { actKey: "jira_impl", label: "Implementation", icon: "🗂", color: "#0D9488", colorLo: "#0D948820", team: "delivery", source: "jira", kpiDomain: "impl", desc: "Project task dari Jira (PROJ-xxx)" },
-    { actKey: "jira_pm", label: "Preventive Maint.", icon: "🔧", color: "#D97706", colorLo: "#D9770620", team: "delivery", source: "jira", kpiDomain: "pm", desc: "PM ticket dari Jira (MAINT-xxx)" },
-    { actKey: "jira_cm", label: "Corrective Maint.", icon: "🚨", color: "#DC2626", colorLo: "#DC262620", team: "delivery", source: "jira", kpiDomain: "cm", desc: "Incident/CM ticket dari Jira (CM-xxx / SUP-xxx)" },
-    { actKey: "jira_enh", label: "Enhancement", icon: "⚡", color: "#4F46E5", colorLo: "#4F46E520", team: "delivery", source: "jira", kpiDomain: "enh", desc: "Enhancement request dari Jira" },
-    { actKey: "jira_ops", label: "Operational Svc", icon: "⚙️", color: "#7C3AED", colorLo: "#7C3AED20", team: "delivery", source: "jira", kpiDomain: "ops", desc: "Ops/KB4 task dari Jira" },
+    { actKey: "jira_impl", label: "Implementation", icon: "🗂", color: "#0D9488", colorLo: "#0D948820", team: "delivery", source: "jira", kpiDomain: "impl", desc: "Pekerjaan implementasi yang tersinkron otomatis dari worklog project." },
+    { actKey: "jira_pm", label: "Preventive Maint.", icon: "🔧", color: "#D97706", colorLo: "#D9770620", team: "delivery", source: "jira", kpiDomain: "pm", desc: "Pekerjaan preventive maintenance yang tersinkron otomatis dari worklog." },
+    { actKey: "jira_cm", label: "Corrective Maint.", icon: "🚨", color: "#DC2626", colorLo: "#DC262620", team: "delivery", source: "jira", kpiDomain: "cm", desc: "Penanganan problem/incident yang tersinkron otomatis dari worklog." },
+    { actKey: "jira_enh", label: "Enhancement", icon: "⚡", color: "#4F46E5", colorLo: "#4F46E520", team: "delivery", source: "jira", kpiDomain: "enh", desc: "Permintaan enhancement yang tersinkron otomatis dari worklog." },
+    { actKey: "jira_ops", label: "Operational Svc", icon: "⚙️", color: "#7C3AED", colorLo: "#7C3AED20", team: "delivery", source: "jira", kpiDomain: "ops", desc: "Layanan operasional yang tersinkron otomatis dari worklog." },
     { actKey: "pm_presentation", label: "Q PM Presentation", icon: "📊", color: "#F472B6", colorLo: "#2A0F1E", team: "delivery", source: "app", kpiDomain: "pm", desc: "Presentasi Quarterly PM ke Customer" },
     { actKey: "learning", label: "Learning & Dev", icon: "📚", color: "#22D3EE", colorLo: "#0C2230", team: "delivery", source: "app", desc: "Belajar mandiri, sertifikasi" },
     { actKey: "internal", label: "Internal Meeting", icon: "💬", color: "#94A3B8", colorLo: "#1A1F2E", team: "delivery", source: "app", desc: "Rapat internal" },

@@ -1,5 +1,5 @@
 import { T, FONT, DISPLAY } from '../theme/tokens';
-import { teamOf } from '../constants/taxonomy';
+import { canManageKpi, teamOf } from '../constants/taxonomy';
 import { Avi } from './ui/Primitives';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -14,6 +14,9 @@ export function Sidebar({ user, onLogout }) {
     { id: "/members", icon: "◉", label: "Team Members" },
     { id: "/reports", icon: "⊞", label: "Reports" },
   ];
+  if (canManageKpi(user.role)) {
+    navItems.push({ id: "/kpi-admin", icon: "◌", label: "KPI" });
+  }
   if (user.role === 'admin') {
     navItems.push({ id: "/taxonomy", icon: "🗂", label: "Master Kategori" });
   }

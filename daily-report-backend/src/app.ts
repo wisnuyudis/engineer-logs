@@ -10,12 +10,17 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import telegramRoutes from './routes/telegramRoutes';
 import taxonomyRoutes from './routes/taxonomyRoutes';
 import jiraRoutes from './routes/jiraRoutes';
+import kpiRoutes from './routes/kpiRoutes';
 import path from 'path';
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf.toString('utf8');
+  }
+}));
 app.use(pinoHttp());
 
 app.get('/health', (req, res) => {
@@ -34,5 +39,6 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/taxonomy', taxonomyRoutes);
 app.use('/api/jira', jiraRoutes);
+app.use('/api/kpi', kpiRoutes);
 
 export default app;

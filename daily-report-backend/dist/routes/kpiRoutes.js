@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const kpiController_1 = require("../controllers/kpiController");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.authenticateToken);
+router.get('/profiles', kpiController_1.getKpiProfiles);
+router.get('/users', kpiController_1.getKpiAssignableUsers);
+router.get('/scorecards/:userId', kpiController_1.getUserKpiScorecard);
+router.put('/scorecards/:userId', kpiController_1.upsertUserKpiScorecard);
+router.post('/scorecards/:userId/recalculate-qb', kpiController_1.recalculateQbMetrics);
+exports.default = router;

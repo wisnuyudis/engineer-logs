@@ -9,6 +9,7 @@ import { MembersView } from './components/MembersView';
 import { ReportsView } from './components/ReportsView';
 import { ProfileView } from './components/ProfileView';
 import { TaxonomyView } from './components/TaxonomyView';
+import { KpiManagementView } from './components/KpiManagementView';
 import { TaxonomyContext } from './contexts/TaxonomyContext';
 import { T, FONT, DISPLAY } from './theme/tokens';
 import { RoleBadge, Avi } from './components/ui/Primitives';
@@ -40,7 +41,7 @@ export default function App() {
   const { data: acts = [], isLoading: loadingActs } = useQuery({
     queryKey: ['activities'],
     queryFn: async () => {
-      const res = await api.get('/activities');
+      const res = await api.get('/activities', { params: { paginate: false } });
       return res.data.map(a => ({
         ...a,
         user: a.user?.name,
@@ -48,7 +49,7 @@ export default function App() {
         kpi: { nps: a.nps }
       }));
     },
-    enabled: !!user
+    enabled: !!user && location.pathname !== '/activities'
   });
 
   const { data: taxRaw = [], isLoading: loadingTax } = useQuery({
@@ -74,10 +75,19 @@ export default function App() {
   }
 
   // Define optimisic mutation callbacks to replace Prop Drilling useState
-  const handleAddAct = (a) => queryClient.setQueryData(['activities'], (old) => [a, ...(old || [])]);
+  const handleAddAct = () => {
+    queryClient.invalidateQueries({ queryKey: ['activities-log'] });
+    queryClient.invalidateQueries({ queryKey: ['activities'] });
+  };
   const handleAdminEditNps = (actId, nps) => queryClient.setQueryData(['activities'], old => old.map(a => a.id === actId ? { ...a, kpi: { ...(a.kpi || {}), nps } } : a));
   const handleToggleMember = (id) => queryClient.setQueryData(['members'], old => old.map(m => m.id === id ? { ...m, status: m.status === "active" ? "suspended" : "active" } : m));
-  const handleDeleteMember = (id) => queryClient.setQueryData(['members'], old => old.filter(m => m.id !== id));
+  const handleDeleteMember = async (id) => {
+    await api.delete(`/users/${id}`);
+    queryClient.setQueryData(['members'], old => (old || []).filter(m => m.id !== id));
+    queryClient.invalidateQueries({ queryKey: ['members'] });
+    queryClient.invalidateQueries({ queryKey: ['activities'] });
+    queryClient.invalidateQueries({ queryKey: ['activities-log'] });
+  };
   const handleAddMember = (m) => queryClient.setQueryData(['members'], old => [...(old || []), m]);
 
   const TITLES = {
@@ -85,7 +95,8 @@ export default function App() {
     "/activities": "Activity Log",
     "/members": "Team Members",
     "/reports": "Reports",
-    "/profile": "Profil Saya"
+    "/profile": "Profil Saya",
+    "/kpi-admin": "KPI"
   };
 
   const view = location.pathname;
@@ -132,10 +143,11 @@ export default function App() {
             <TaxonomyContext.Provider value={ACTS}>
               <Routes>
                 <Route path="/" element={<DashboardView currentUser={user} activities={acts} members={members} onAdminEditNps={handleAdminEditNps} />} />
-                <Route path="/activities" element={<ActivitiesView currentUser={user} activities={acts} members={members} onAdd={handleAddAct} />} />
+                <Route path="/activities" element={<ActivitiesView currentUser={user} members={members} onAdd={handleAddAct} />} />
                 <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} activities={acts} />} />
                 <Route path="/reports" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
                 <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={u => setUser(u)} />} />
+                <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
                 <Route path="/taxonomy" element={<TaxonomyView currentUser={user} />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

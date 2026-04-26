@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -43,15 +10,76 @@ const path_1 = __importDefault(require("path"));
 const zodSchemas_1 = require("../validators/zodSchemas");
 const prisma = new client_1.PrismaClient();
 const normalizeIdentity = (value) => (value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const SORT_FIELDS = {
+    date: 'date',
+    dur: 'dur',
+    status: 'status',
+    actKey: 'actKey',
+    source: 'source',
+    topic: 'topic',
+    ticketId: 'ticketId',
+    ticketTitle: 'ticketTitle',
+    customerName: 'customerName',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
+};
+const toPositiveInt = (value, fallback, min = 1, max = 100) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed))
+        return fallback;
+    return Math.min(max, Math.max(min, Math.floor(parsed)));
+};
 const getActivities = async (req, res) => {
     try {
         const userId = req.user?.userId;
         const role = req.user?.role;
-        // Admin, PM, mgr_dl, mgr_ps can view all activities (or team specific)
-        // For simplicity, let's fetch all (in production you would filter by team/subordinates)
+        const { page = '1', pageSize = '10', paginate = 'true', search = '', sortBy = 'date', sortDir = 'desc', actKey, status, userId: filterUserId, team, source, sourceGroup, dateFrom, dateTo, } = req.query;
         const isAdminOrMgr = ['admin', 'mgr_dl', 'mgr_ps'].includes(role || '');
+        const shouldPaginate = paginate !== 'false';
+        const currentPage = toPositiveInt(page, 1, 1, 100000);
+        const currentPageSize = toPositiveInt(pageSize, 10, 1, 100);
+        const normalizedSearch = search.trim();
+        const normalizedSortBy = SORT_FIELDS[sortBy] || 'date';
+        const normalizedSortDir = sortDir === 'asc' ? 'asc' : 'desc';
         const whereClause = isAdminOrMgr ? {} : { userId };
-        const activities = await prisma.activity.findMany({
+        if (actKey)
+            whereClause.actKey = actKey;
+        if (status)
+            whereClause.status = status;
+        if (dateFrom || dateTo) {
+            whereClause.date = {};
+            if (dateFrom)
+                whereClause.date.gte = dateFrom;
+            if (dateTo)
+                whereClause.date.lte = dateTo;
+        }
+        if (isAdminOrMgr && filterUserId && filterUserId !== 'all') {
+            whereClause.userId = filterUserId;
+        }
+        if (team && team !== 'all') {
+            whereClause.user = { is: { team } };
+        }
+        if (sourceGroup === 'synced') {
+            whereClause.source = 'jira';
+        }
+        else if (sourceGroup === 'manual') {
+            whereClause.source = { in: ['app', 'telegram'] };
+        }
+        else if (source && source !== 'all') {
+            whereClause.source = source;
+        }
+        if (normalizedSearch) {
+            whereClause.OR = [
+                { topic: { contains: normalizedSearch, mode: 'insensitive' } },
+                { note: { contains: normalizedSearch, mode: 'insensitive' } },
+                { ticketId: { contains: normalizedSearch, mode: 'insensitive' } },
+                { ticketTitle: { contains: normalizedSearch, mode: 'insensitive' } },
+                { customerName: { contains: normalizedSearch, mode: 'insensitive' } },
+                { prName: { contains: normalizedSearch, mode: 'insensitive' } },
+                { user: { is: { name: { contains: normalizedSearch, mode: 'insensitive' } } } },
+            ];
+        }
+        const queryOptions = {
             where: whereClause,
             include: {
                 attachments: true,
@@ -59,9 +87,32 @@ const getActivities = async (req, res) => {
                     select: { name: true, role: true, team: true, id: true, avatarUrl: true }
                 }
             },
-            orderBy: { date: 'desc' }
+            orderBy: [
+                { [normalizedSortBy]: normalizedSortDir },
+                { createdAt: 'desc' }
+            ],
+        };
+        if (!shouldPaginate) {
+            const activities = await prisma.activity.findMany(queryOptions);
+            return res.json(activities);
+        }
+        queryOptions.skip = (currentPage - 1) * currentPageSize;
+        queryOptions.take = currentPageSize;
+        const [items, total] = await Promise.all([
+            prisma.activity.findMany(queryOptions),
+            prisma.activity.count({ where: whereClause }),
+        ]);
+        return res.json({
+            items,
+            meta: {
+                page: currentPage,
+                pageSize: currentPageSize,
+                total,
+                totalPages: Math.max(1, Math.ceil(total / currentPageSize)),
+                sortBy: normalizedSortBy,
+                sortDir: normalizedSortDir,
+            }
         });
-        res.json(activities);
     }
     catch (error) {
         res.status(500).json({ error: 'Gagal memuat log aktivitas' });
@@ -106,35 +157,10 @@ const createActivity = async (req, res) => {
         const masterAct = await prisma.masterActivity.findUnique({ where: { actKey: data.actKey } });
         if (!masterAct)
             return res.status(400).json({ error: 'Kategori aktivitas tidak valid' });
-        let finalTicketTitle = data.ticketTitle || null;
         if (masterAct.source === 'jira') {
-            if (!data.ticketId)
-                return res.status(400).json({ error: 'Ticket ID wajib diisi untuk kategori ini' });
-            try {
-                const { fetchJiraTicket } = await Promise.resolve().then(() => __importStar(require('../services/jiraService')));
-                const jiraData = await fetchJiraTicket(data.ticketId);
-                const currentUser = await prisma.user.findUnique({ where: { id: userId } });
-                const appEmail = currentUser?.email.toLowerCase() || '';
-                const appName = normalizeIdentity(currentUser?.name);
-                const jiraEmail = jiraData.assigneeEmail ? jiraData.assigneeEmail.toLowerCase() : '';
-                const jiraDisplayName = normalizeIdentity(jiraData.assigneeDisplayName);
-                if (!jiraEmail && !jiraDisplayName && !jiraData.assigneeAccountId) {
-                    return res.status(400).json({ error: 'Tiket JIRA belum di-assign (Unassigned). Silakan assign ke email Anda di Jira terlebih dahulu.' });
-                }
-                if (jiraEmail && jiraEmail !== appEmail) {
-                    return res.status(400).json({ error: `Tiket ${data.ticketId} ditugaskan ke ${jiraEmail}, bukan ke email Anda (${appEmail}). Akses ditolak!` });
-                }
-                if (!jiraEmail && jiraDisplayName && jiraDisplayName !== appName) {
-                    return res.status(400).json({
-                        error: `Tiket ${data.ticketId} ditugaskan ke ${jiraData.assigneeDisplayName}, bukan ke user Anda (${currentUser?.name}). Email assignee disembunyikan oleh Jira.`
-                    });
-                }
-                finalTicketTitle = jiraData.summary;
-            }
-            catch (e) {
-                return res.status(400).json({ error: e.message || 'Gagal terhubung ke Jira' });
-            }
+            return res.status(400).json({ error: 'Kategori sinkron otomatis tidak bisa diinput manual. Tambahkan worklog langsung di Jira.' });
         }
+        let finalTicketTitle = data.ticketTitle || null;
         const activity = await prisma.activity.create({
             data: {
                 userId,
@@ -177,6 +203,18 @@ const updateActivity = async (req, res) => {
             return res.status(400).json({ error: `${field}: ${issue.message}` });
         }
         const data = validation.data;
+        const current = await prisma.activity.findUnique({ where: { id } });
+        if (!current)
+            return res.status(404).json({ error: 'Activity not found' });
+        if (current.source === 'jira') {
+            return res.status(400).json({ error: 'Aktivitas sinkron otomatis hanya bisa diubah dari Jira.' });
+        }
+        const masterAct = await prisma.masterActivity.findUnique({ where: { actKey: data.actKey } });
+        if (!masterAct)
+            return res.status(400).json({ error: 'Kategori aktivitas tidak valid' });
+        if (masterAct.source === 'jira') {
+            return res.status(400).json({ error: 'Kategori sinkron otomatis tidak bisa dipilih untuk input manual.' });
+        }
         // Logic: allow update if owner or admin
         const activity = await prisma.activity.update({
             where: { id },
@@ -218,6 +256,9 @@ const deleteActivity = async (req, res) => {
         });
         if (!activity)
             return res.status(404).json({ error: 'Activity not found' });
+        if (activity.source === 'jira') {
+            return res.status(400).json({ error: 'Aktivitas sinkron otomatis hanya bisa dihapus dari Jira.' });
+        }
         // Clean up files
         for (const att of activity.attachments) {
             const p = path_1.default.join(__dirname, '../../uploads', att.filename);

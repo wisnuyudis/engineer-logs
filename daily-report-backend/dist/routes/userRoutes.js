@@ -6,4 +6,5 @@ const router = (0, express_1.Router)();
 router.get('/', userController_1.getUsers);
 router.post('/', userController_1.createUser);
 router.patch('/:id', userController_1.updateUser);
+router.delete('/:id', userController_1.deleteUser);
 exports.default = router;

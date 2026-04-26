@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateUser = exports.createUser = exports.getUsers = void 0;
+exports.deleteUser = exports.updateUser = exports.createUser = exports.getUsers = void 0;
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const prisma = new client_1.PrismaClient();
@@ -82,3 +82,61 @@ const updateUser = async (req, res) => {
     }
 };
 exports.updateUser = updateUser;
+const deleteUser = async (req, res) => {
+    try {
+        const id = String(req.params.id);
+        const authUserId = req.user?.id ? String(req.user.id) : null;
+        const existingUser = await prisma.user.findUnique({
+            where: { id },
+            select: { id: true, name: true }
+        });
+        if (!existingUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        if (authUserId && authUserId === id) {
+            return res.status(400).json({ error: 'Tidak bisa menghapus akun yang sedang dipakai login' });
+        }
+        const activityIds = await prisma.activity.findMany({
+            where: { userId: id },
+            select: { id: true }
+        });
+        const idsToDelete = activityIds.map((activity) => activity.id);
+        await prisma.$transaction(async (tx) => {
+            if (idsToDelete.length) {
+                await tx.attachment.deleteMany({
+                    where: { activityId: { in: idsToDelete } }
+                });
+            }
+            await tx.activity.deleteMany({
+                where: { userId: id }
+            });
+            await tx.kpiScorecard.deleteMany({
+                where: { userId: id }
+            });
+            await tx.kpiScorecard.updateMany({
+                where: { enteredById: id },
+                data: { enteredById: null }
+            });
+            await tx.user.updateMany({
+                where: { supervisorId: id },
+                data: { supervisorId: null }
+            });
+            await tx.user.delete({
+                where: { id }
+            });
+        });
+        res.json({
+            success: true,
+            deletedUserId: id,
+            name: existingUser.name
+        });
+    }
+    catch (error) {
+        if (req.log)
+            req.log.error(error, 'Error deleting user');
+        else
+            console.error(error);
+        res.status(500).json({ error: 'Failed to delete user' });
+    }
+};
+exports.deleteUser = deleteUser;

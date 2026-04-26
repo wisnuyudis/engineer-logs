@@ -3,13 +3,24 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const TAXONOMY_PRESENTATION: Record<string, Partial<{ label: string; desc: string }>> = {
+  jira_impl: { label: 'Implementation', desc: 'Pekerjaan implementasi yang tersinkron otomatis dari worklog project.' },
+  jira_pm: { label: 'Preventive Maint.', desc: 'Pekerjaan preventive maintenance yang tersinkron otomatis dari worklog.' },
+  jira_cm: { label: 'Corrective Maint.', desc: 'Penanganan problem/incident yang tersinkron otomatis dari worklog.' },
+  jira_enh: { label: 'Enhancement', desc: 'Permintaan enhancement yang tersinkron otomatis dari worklog.' },
+  jira_ops: { label: 'Operational Svc', desc: 'Layanan operasional yang tersinkron otomatis dari worklog.' },
+};
+
 // Get all taxonomies
 export const getAllTaxonomies = async (req: Request, res: Response) => {
   try {
     const data = await prisma.masterActivity.findMany({
       orderBy: { createdAt: 'asc' }
     });
-    res.json(data);
+    res.json(data.map((item) => ({
+      ...item,
+      ...TAXONOMY_PRESENTATION[item.actKey],
+    })));
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

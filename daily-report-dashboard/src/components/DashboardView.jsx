@@ -270,7 +270,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                   </div>
                 </div>
               </Card>
-              <PersonalKPI user={memberDetailUser} activities={activities} isAdminView={true} onAdminEditNps={canSeeTeam?onAdminEditNps:null} />
+              <PersonalKPI user={memberDetailUser} activities={activities} />
             </div>
           ) : (
             <Card p={30}><div style={{ textAlign:"center",color:T.textMute }}>Tidak ada member yang bisa dilihat.</div></Card>

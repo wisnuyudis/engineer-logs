@@ -47,9 +47,44 @@ const flattenJiraComment = (node: any): string => {
   return flattenJiraComment(node.content);
 };
 
-export const resolveJiraActKey = (issueKey: string, issueTypeName?: string | null) => {
+const extractNamedFieldValue = (fields: Record<string, any> | undefined, names: Record<string, string> | undefined, fieldName: string) => {
+  if (!fields || !names) return null;
+
+  const entry = Object.entries(names).find(([, name]) => name?.toLowerCase() === fieldName.toLowerCase());
+  if (!entry) return null;
+
+  const [fieldKey] = entry;
+  const value = fields[fieldKey];
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value?.value === 'string') return value.value;
+  if (Array.isArray(value)) {
+    const first = value.find((item) => typeof item === 'string' || typeof item?.value === 'string');
+    if (typeof first === 'string') return first;
+    if (typeof first?.value === 'string') return first.value;
+  }
+
+  return null;
+};
+
+export const resolveJiraActKey = (
+  issueKey: string,
+  issueTypeName?: string | null,
+  projectName?: string | null,
+  workTypeName?: string | null
+) => {
   const key = (issueKey || '').toUpperCase();
   const issueType = (issueTypeName || '').toLowerCase();
+  const project = (projectName || '').toUpperCase();
+  const workType = (workTypeName || '').toLowerCase();
+
+  if (project.startsWith('[MA]')) return 'jira_pm';
+  if (project.startsWith('[IMP]')) return 'jira_impl';
+  if (project.startsWith('[OPS]')) return 'jira_ops';
+  if (project.startsWith('(SUP)')) {
+    if (workType === '[system] problem') return 'jira_cm';
+    if (workType === '[system] change' || workType === '[system] service request') return 'jira_ops';
+  }
 
   if (key.startsWith('MAINT-') || issueType.includes('preventive')) return 'jira_pm';
   if (key.startsWith('CM-') || key.startsWith('SUP-') || issueType.includes('incident') || issueType.includes('bug')) return 'jira_cm';
@@ -85,7 +120,7 @@ export const fetchJiraTicket = async (ticketId: string) => {
 };
 
 export const fetchJiraIssue = async (issueKeyOrId: string) => {
-  const res = await jiraFetch(`/rest/api/3/issue/${issueKeyOrId}?fields=summary,issuetype,project`);
+  const res = await jiraFetch(`/rest/api/3/issue/${issueKeyOrId}?fields=summary,issuetype,project&expand=names`);
 
   if (!res.ok) {
     if (res.status === 404) {
@@ -101,6 +136,8 @@ export const fetchJiraIssue = async (issueKeyOrId: string) => {
     summary: data.fields?.summary || null,
     issueTypeName: data.fields?.issuetype?.name || null,
     projectKey: data.fields?.project?.key || null,
+    projectName: data.fields?.project?.name || null,
+    workTypeName: extractNamedFieldValue(data.fields, data.names, 'Work Type'),
   };
 };
 
@@ -124,5 +161,73 @@ export const fetchJiraWorklog = async (issueKeyOrId: string, worklogId: string) 
     timeSpentSeconds: Number(data.timeSpentSeconds || 0),
     commentText: flattenJiraComment(data.comment),
     updated: data.updated || null,
+  };
+};
+
+export const fetchCompletedJiraTasksForQuarter = async (
+  assigneeAccountId: string,
+  startDate: string,
+  endDate: string
+) => {
+  const conditions = [
+    `assignee = "${assigneeAccountId}"`,
+    `statusCategory = Done`,
+    `statusCategoryChangedDate >= "${startDate}"`,
+    `statusCategoryChangedDate <= "${endDate}"`,
+    `issuetype not in subTaskIssueTypes()`,
+    `issuetype != Epic`,
+  ];
+  const jql = `${conditions.join(' AND ')} ORDER BY statusCategoryChangedDate DESC`;
+
+  const matchedIssues: Array<{ key: string; actKey: string }> = [];
+  let nextPageToken: string | undefined;
+  const maxResults = 50;
+
+  while (true) {
+    const payload = {
+      jql,
+      maxResults,
+      nextPageToken,
+      fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate'],
+    };
+    const res = await jiraFetch('/rest/api/3/search/jql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Gagal mengambil issue Jira untuk QB. Status: ${res.status}`);
+    }
+
+    const data: any = await res.json();
+    const issues = Array.isArray(data.issues) ? data.issues : [];
+
+    for (const issue of issues) {
+      const issueTypeName = issue.fields?.issuetype?.name || null;
+      const isSubtask = Boolean(issue.fields?.issuetype?.subtask);
+      if (isSubtask || String(issueTypeName || '').toLowerCase() === 'epic') continue;
+
+      const actKey = resolveJiraActKey(
+        issue.key,
+        issueTypeName,
+        issue.fields?.project?.name || null,
+        null
+      );
+
+      if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_ops'].includes(actKey)) {
+        matchedIssues.push({ key: issue.key, actKey });
+      }
+    }
+
+    nextPageToken = data.nextPageToken || undefined;
+    if (!nextPageToken || data.isLast || issues.length === 0) break;
+  }
+
+  return {
+    count: matchedIssues.length,
+    issues: matchedIssues,
   };
 };

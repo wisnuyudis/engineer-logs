@@ -4,9 +4,6 @@ import { parseFlexibleDuration, getOffsetDate } from '../utils';
 
 const prisma = new PrismaClient();
 
-const normalizeIdentity = (value: string | null | undefined) =>
-  (value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-
 const cancelKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback("Batalkan input log", "cancel_log")]
 ]);
@@ -71,41 +68,30 @@ export const logWizard = new Scenes.WizardScene(
       const user = await prisma.user.findFirst({ where: { telegramId: tgId } });
       const isAdmin = ["admin", "superadmin", "super_admin"].includes((user?.role || "").toLowerCase());
       
-      // Ambil aktivitas dinamis dari DB
+      // Ambil aktivitas manual dari DB
       const acts = await prisma.masterActivity.findMany({ where: { isActive: true }, orderBy: { actKey: 'asc' } });
       
-      let filteredActs = acts;
+      let filteredActs = acts.filter((a: any) => a.source !== 'jira');
       if (!isAdmin) {
-          filteredActs = acts.filter((a: any) => a.team === 'all' || a.team === (user?.team || ''));
+          filteredActs = filteredActs.filter((a: any) => a.team === 'all' || a.team === (user?.team || ''));
       }
 
       (ctx.wizard.state as any).report.actList = filteredActs;
       
-      const jiraActs = filteredActs.filter((a: any) => a.source === 'jira');
       const appActs = filteredActs.filter((a: any) => a.source === 'app');
 
-      if (jiraActs.length === 0 && appActs.length === 0) {
+      if (appActs.length === 0) {
         await ctx.reply(`🗓 Tanggal diset: ${dateStr}\n\n⚠ Sedang tidak ada daftar aktivitas tersedia untuk Anda. Silahkan hubungi administrator.`);
         return ctx.scene.leave();
       }
 
       await ctx.reply(`🗓 Tanggal diset: ${dateStr}\n\nPilih kategori pekerjaan Anda di bawah ini:`);
 
-      if (jiraActs.length > 0) {
-        const btns = jiraActs.map((a: any) => Markup.button.callback(`${a.icon || ''} ${a.label}`, `act_${a.actKey}`));
-        const jRows = [];
-        for(let i=0; i<btns.length; i+=2) jRows.push(btns.slice(i, i+2));
-        jRows.push([Markup.button.callback("Batalkan input log", "cancel_log")]);
-        await ctx.reply("🛠 TUGAS JIRA", Markup.inlineKeyboard(jRows));
-      }
-
-      if (appActs.length > 0) {
-        const btns = appActs.map((a: any) => Markup.button.callback(`${a.icon || ''} ${a.label}`, `act_${a.actKey}`));
-        const aRows = [];
-        for(let i=0; i<btns.length; i+=2) aRows.push(btns.slice(i, i+2));
-        aRows.push([Markup.button.callback("Batalkan input log", "cancel_log")]);
-        await ctx.reply("📝 NON JIRA", Markup.inlineKeyboard(aRows));
-      }
+      const btns = appActs.map((a: any) => Markup.button.callback(`${a.icon || ''} ${a.label}`, `act_${a.actKey}`));
+      const aRows = [];
+      for(let i=0; i<btns.length; i+=2) aRows.push(btns.slice(i, i+2));
+      aRows.push([Markup.button.callback("Batalkan input log", "cancel_log")]);
+      await ctx.reply("📝 INPUT MANUAL", Markup.inlineKeyboard(aRows));
 
       return ctx.wizard.next();
     }
@@ -123,11 +109,7 @@ export const logWizard = new Scenes.WizardScene(
     (ctx.wizard.state as any).report.actKey = actKey;
     const actList = (ctx.wizard.state as any).report.actList || [];
     const actDef = actList.find((a: any) => a.actKey === actKey);
-    const isJira = actDef?.source === 'jira';
-
-    const promptMsg = isJira 
-      ? `Sebutkan *Ticket ID JIRA* (Contoh: PROJ-123).\n\nKetik /cancel untuk batal.`
-      : `Sebutkan *Nama Pekerjaan / Topik / Agenda*.\n\nKetik /cancel untuk batal.`;
+    const promptMsg = `Sebutkan *Nama Pekerjaan / Topik / Agenda*.\n\nKetik /cancel untuk batal.`;
 
     await ctx.reply(promptMsg, { parse_mode: 'Markdown', ...cancelKeyboard });
     return ctx.wizard.next();
@@ -138,49 +120,7 @@ export const logWizard = new Scenes.WizardScene(
     if (await cancelIfRequested(ctx)) return;
     if (!ctx.message || !('text' in ctx.message)) return;
     const text = (ctx.message as any).text;
-
-    const { actKey, actList } = (ctx.wizard.state as any).report;
-    const actDef = actList?.find((a: any) => a.actKey === actKey);
-    
-    if (actDef?.source === 'jira') {
-      const ticketId = text;
-      
-      try {
-        const { fetchJiraTicket } = await import('../../services/jiraService');
-        const jiraData = await fetchJiraTicket(ticketId);
-        
-        const tgId = String(ctx.from?.id || "");
-        const currentUser = await prisma.user.findFirst({ where: { telegramId: tgId } });
-        const appEmail = currentUser?.email.toLowerCase() || '';
-        const appName = normalizeIdentity(currentUser?.name);
-        const jiraEmail = jiraData.assigneeEmail ? jiraData.assigneeEmail.toLowerCase() : '';
-        const jiraDisplayName = normalizeIdentity(jiraData.assigneeDisplayName);
-
-        if (!jiraEmail && !jiraDisplayName && !jiraData.assigneeAccountId) {
-          await ctx.reply(`⚠ Tiket JIRA *${ticketId}* belum di-assign (Unassigned). Silakan assign ke email Anda di Jira terlebih dahulu.\n\nKetik ulang ID Tiket JIRA Anda:`, { parse_mode: 'Markdown' });
-          return;
-        }
-
-        if (jiraEmail && jiraEmail !== appEmail) {
-          await ctx.reply(`⚠ Tiket *${ticketId}* ditugaskan ke *${jiraEmail}*, bukan ke email Anda (*${appEmail}*).\n\nKetik ulang ID Tiket JIRA Anda yang valid:`, { parse_mode: 'Markdown' });
-          return;
-        }
-
-        if (!jiraEmail && jiraDisplayName && jiraDisplayName !== appName) {
-          await ctx.reply(`⚠ Tiket ${ticketId} ditugaskan ke ${jiraData.assigneeDisplayName}, bukan ke user Anda (${currentUser?.name}). Email assignee disembunyikan oleh Jira.\n\nKetik ulang ID Tiket JIRA Anda yang valid, atau ketik /cancel untuk batal.`);
-          return;
-        }
-        
-        (ctx.wizard.state as any).report.ticketId = ticketId;
-        (ctx.wizard.state as any).report.ticketTitle = jiraData.summary;
-        (ctx.wizard.state as any).report.topic = `${ticketId} - ${jiraData.summary}`;
-      } catch (e: any) {
-        await ctx.reply(`⚠ ${e.message || 'Gagal memvalidasi tiket Jira'}.\n\nKetik ulang ID Tiket JIRA Anda:`, { parse_mode: 'Markdown' });
-        return;
-      }
-    } else {
-      (ctx.wizard.state as any).report.topic = text;
-    }
+    (ctx.wizard.state as any).report.topic = text;
 
     await ctx.reply("📝 Tuliskan *Catatan Progress* / Hambatan Anda (Ketik sekilas saja, akan masuk ke Note log).\n\nKetik /cancel untuk batal.", { parse_mode: 'Markdown', ...cancelKeyboard });
     return ctx.wizard.next();
@@ -247,13 +187,11 @@ export const logWizard = new Scenes.WizardScene(
           date: r.date,
           status: r.status,
           source: 'telegram',
-          ticketId: r.ticketId || null,
-          ticketTitle: r.ticketTitle || null,
         }
       });
 
       const labelDur = `${Math.floor(r.dur / 60)}j ${r.dur % 60}m`.trim();
-      await ctx.reply(`🎉 Fantastis! Log berhasil dicatat di Server.\n\n📅 Tgl: ${r.date}\n🗂 Info: ${r.ticketId || r.topic}\n📝 Note: ${r.note}\n⏱ Dur: ${labelDur}\n✅ Status: ${r.status}`);
+      await ctx.reply(`🎉 Fantastis! Log berhasil dicatat di Server.\n\n📅 Tgl: ${r.date}\n🗂 Info: ${r.topic}\n📝 Note: ${r.note}\n⏱ Dur: ${labelDur}\n✅ Status: ${r.status}`);
       
     } catch (e) {
       console.log(e);

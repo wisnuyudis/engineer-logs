@@ -9,7 +9,10 @@ import api from '../lib/api';
 export function LogForm({ user, onSave, onCancel }) {
   const ACTS = useTaxonomy();
   const myTeam = teamOf(user.role);
-  const availActs = useMemo(() => actsFor(user.role, ACTS), [user.role, ACTS]);
+  const availActs = useMemo(
+    () => Object.fromEntries(Object.entries(actsFor(user.role, ACTS)).filter(([, value]) => value.source !== "jira")),
+    [user.role, ACTS]
+  );
   const firstActKey = Object.keys(availActs)[0] || "";
   const [actKey, setActKey] = useState(Object.keys(availActs)[0] || "");
   const [startTime, setStart] = useState("09:00");
@@ -19,9 +22,6 @@ export function LogForm({ user, onSave, onCancel }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState({});
-  // Jira fields
-  const [ticketId, setTicketId] = useState("");
-  const [ticketTitle, setTicketTitle] = useState("");
   const [customerName, setCustomer] = useState("");
   // PM Presentation NPS
   const [pmNps, setPmNps] = useState(3);
@@ -39,9 +39,8 @@ export function LogForm({ user, onSave, onCancel }) {
   const fileRef = useRef(null);
 
   const def = availActs[actKey] || {};
-  const isJira = def.source === "jira";
   const isPS   = def.team === "presales" && def.source === "app";
-  const needsCustomer   = ["jira_impl","jira_pm","jira_cm","jira_enh","pm_presentation"].includes(actKey);
+  const needsCustomer   = ["pm_presentation"].includes(actKey);
   const needsPmNps      = actKey === "pm_presentation";
   const needsContact    = actKey === "koordinasi";
   const needsTopic      = def.source === "app" && !isPS && !needsContact;
@@ -83,7 +82,6 @@ export function LogForm({ user, onSave, onCancel }) {
     const selectedActKey = actKey || firstActKey;
     if(dur<=0) e.time="Jam selesai harus setelah jam mulai";
     if(!selectedActKey) e.actKey="Jenis aktivitas wajib";
-    if(isJira && !ticketId.trim()) e.ticketId="Ticket ID wajib";
     if(needsCustomer && !customerName.trim()) e.customerName="Nama Customer wajib";
     if(needsPmNps && (pmNps<0||pmNps>4)) e.pmNps="NPS harus 0-4";
     if(isPS && !prId.trim()) e.prId="Prospect ID wajib";
@@ -101,7 +99,6 @@ export function LogForm({ user, onSave, onCancel }) {
         dur,
         status: status || "completed",
         note: note || "",
-        ...(isJira ? { ticketId: ticketId.trim(), ticketTitle: ticketTitle.trim() } : {}),
         ...(needsCustomer ? { customerName: customerName.trim() } : {}),
         ...(needsPmNps ? { nps: pmNps } : {}),
         ...(needsTopic ? { topic } : {}),
@@ -138,7 +135,6 @@ export function LogForm({ user, onSave, onCancel }) {
     }
   };
 
-  const jiraGroup = Object.entries(availActs).filter(([,v])=>v.source==="jira");
   const appGroup  = Object.entries(availActs).filter(([,v])=>v.source==="app");
 
   return (
@@ -148,28 +144,11 @@ export function LogForm({ user, onSave, onCancel }) {
       {/* Activity type picker */}
       <div>
         <Lbl>Jenis Aktivitas</Lbl>
-        {jiraGroup.length > 0 && (
-          <div style={{ marginBottom:8 }}>
-            <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:6 }}>
-              <div style={{ width:10,height:10,borderRadius:2,background:T.jira,boxShadow:`0 0 6px ${T.jira}` }} />
-              <span style={{ fontSize:10,color:T.jira,fontWeight:700,letterSpacing:".05em" }}>DARI JIRA — cukup ticket ID + jam</span>
-            </div>
-            <div style={{ display:"flex",flexWrap:"wrap",gap:5 }}>
-              {jiraGroup.map(([k,v]) => (
-                <button key={k} onClick={()=>setActKey(k)} style={{ padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:FONT,fontSize:12,fontWeight:actKey===k?700:400,
-                  border:`1.5px solid ${actKey===k?v.color:T.border}`,
-                  background:actKey===k?v.colorLo:T.surfaceHi,color:actKey===k?v.color:T.textSec,transition:"all .15s",display:"flex",alignItems:"center",gap:5 }}>
-                  <span>{v.icon}</span>{v.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         {appGroup.length > 0 && (
           <div>
             <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:6 }}>
               <div style={{ width:10,height:10,borderRadius:2,background:T.textMute }} />
-              <span style={{ fontSize:10,color:T.textMute,fontWeight:700,letterSpacing:".05em" }}>NON-JIRA — aktivitas di luar tiket</span>
+              <span style={{ fontSize:10,color:T.textMute,fontWeight:700,letterSpacing:".05em" }}>INPUT MANUAL</span>
             </div>
             <div style={{ display:"flex",flexWrap:"wrap",gap:5 }}>
               {appGroup.map(([k,v]) => (
@@ -185,46 +164,28 @@ export function LogForm({ user, onSave, onCancel }) {
         {def.desc && <div style={{ marginTop:7,fontSize:11,color:T.textMute,background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 10px" }}>ℹ {def.desc}</div>}
       </div>
 
-      {/* Jira fields */}
-      {isJira && (
-        <div style={{ background:T.jiraLo,border:`1.5px solid ${T.jira}30`,borderRadius:10,padding:"14px 16px" }}>
-          <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:12 }}>
-            <div style={{ width:12,height:12,borderRadius:2,background:T.jira }} />
-            <span style={{ fontSize:11,fontWeight:700,color:T.jira,letterSpacing:".04em" }}>JIRA TICKET</span>
+      {needsCustomer && (
+        <Inp label="Nama Customer / Klien" required value={customerName} error={err.customerName}
+          placeholder="PT. Tokobagus, PT. BRI..." onChange={e=>{setCustomer(e.target.value);setErr(p=>({...p,customerName:""}));}} />
+      )}
+      {needsPmNps && (
+        <div style={{ background:T.surfaceHi,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"14px 16px" }}>
+          <Lbl>Skor NPS Customer (0–4) <span style={{ color:T.red }}>*</span></Lbl>
+          <div style={{ display:"flex",gap:6,marginTop:6 }}>
+            {[0,1,2,3,4].map(n=>(
+              <button key={n} type="button" onClick={()=>setPmNps(n)}
+                style={{ flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${pmNps===n?T.indigo:T.border}`,
+                  cursor:"pointer",fontFamily:MONO,fontSize:16,fontWeight:700,
+                  background:pmNps===n?T.indigoLo:T.surfaceHi,
+                  color:pmNps===n?T.indigoHi:T.textMute,transition:"all .15s" }}>
+                {n}
+              </button>
+            ))}
           </div>
-          <div style={{ display:"grid",gridTemplateColumns:"140px 1fr",gap:10 }}>
-            <Inp label="Ticket ID" required mono value={ticketId} error={err.ticketId}
-              placeholder="PROJ-101" onChange={e=>{setTicketId(e.target.value);setErr(p=>({...p,ticketId:""}));}} />
-            <Inp label="Judul Ticket (opsional)" value={ticketTitle}
-              placeholder="Deskripsi singkat..." onChange={e=>setTicketTitle(e.target.value)} />
+          <div style={{ fontSize:10,color:T.textMute,marginTop:5 }}>
+            {pmNps===4?"😄 Sangat Puas":pmNps===3?"🙂 Puas":pmNps===2?"😐 Cukup":pmNps===1?"😕 Kurang":"😞 Sangat Kurang"}
           </div>
-          {needsCustomer && (
-            <div style={{ marginTop:10 }}>
-              <Inp label="Nama Customer / Klien" required value={customerName} error={err.customerName}
-                placeholder="PT. Tokobagus, PT. BRI..." onChange={e=>{setCustomer(e.target.value);setErr(p=>({...p,customerName:""}));}} />
-            </div>
-          )}
-          {needsPmNps && (
-            <div style={{ marginTop:12,paddingTop:12,borderTop:`1px solid ${T.jira}20` }}>
-              <Lbl>Skor NPS Customer (0–4) <span style={{ color:T.red }}>*</span></Lbl>
-              <div style={{ display:"flex",gap:6,marginTop:6 }}>
-                {[0,1,2,3,4].map(n=>(
-                  <button key={n} type="button" onClick={()=>setPmNps(n)}
-                    style={{ flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${pmNps===n?T.indigo:T.border}`,
-                      cursor:"pointer",fontFamily:MONO,fontSize:16,fontWeight:700,
-                      background:pmNps===n?T.indigoLo:T.surfaceHi,
-                      color:pmNps===n?T.indigoHi:T.textMute,transition:"all .15s" }}>
-                    {n}
-                  </button>
-                ))}
-              </div>
-              <div style={{ fontSize:10,color:T.textMute,marginTop:5 }}>
-                {pmNps===4?"😄 Sangat Puas":pmNps===3?"🙂 Puas":pmNps===2?"😐 Cukup":pmNps===1?"😕 Kurang":"😞 Sangat Kurang"}
-                {" "}&nbsp;· NPS masuk ke perhitungan KPI domain Preventive Maintenance
-              </div>
-              {err.pmNps&&<div style={{ fontSize:11,color:T.red,marginTop:3 }}>{err.pmNps}</div>}
-            </div>
-          )}
+          {err.pmNps&&<div style={{ fontSize:11,color:T.red,marginTop:3 }}>{err.pmNps}</div>}
         </div>
       )}
 

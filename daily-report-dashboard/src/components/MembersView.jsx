@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { T, FONT, DISPLAY } from '../theme/tokens';
-import { ROLES, isAdmin, isMgr } from '../constants/taxonomy';
+import { ROLES, ROLE_OPTIONS, isAdmin, isMgr, hasKpiProfile } from '../constants/taxonomy';
 import { calcKPI } from '../utils/kpi';
 import { Pill, Card, Avi, RoleBadge, Btn, Modal, MHead, Inp, Lbl, PwInp, Tag } from './ui/Primitives';
 import { ScoreRing } from './ui/Score';
@@ -24,12 +24,15 @@ function InviteModal({ open, onClose, members, onAdd }) {
   const [busy,setBusy]=useState(false);
 
   const sf=(k,v)=>{setF(p=>({...p,[k]:v}));setE(p=>({...p,[k]:""}));};
+  const needsSupervisor = ["delivery", "PM", "presales"].includes(form.role);
+  const supervisorRoleOptions = form.role === "presales" ? ["mgr_ps"] : ["mgr_dl"];
 
   const validateStep1=()=>{
     const e={};
     if(!form.name.trim()) e.name="Nama wajib";
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email="Format email tidak valid";
     if(members.find(m=>m.email.toLowerCase()===form.email.toLowerCase())) e.email="Email sudah terdaftar";
+    if(needsSupervisor && !form.supervisorId) e.supervisorId="Atasan langsung wajib dipilih";
     if(bypassSmtp && !manualPassword.trim()) e.manualPassword="Password manual wajib diisi";
     setE(e); return !Object.keys(e).length;
   };
@@ -170,22 +173,23 @@ function InviteModal({ open, onClose, members, onAdd }) {
               <div>
                 <Lbl>Role</Lbl>
                 <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
-                  {Object.entries(ROLES).map(([k,r])=>{
-                    const active=form.role===k;
-                    return <button key={k} onClick={()=>sf("role",k)} style={{ padding:"8px 10px",borderRadius:8,cursor:"pointer",textAlign:"left",fontFamily:FONT,border:`1.5px solid ${active?r.color+"60":T.border}`,background:active?r.lo:T.surfaceHi,transition:"all .15s" }}>
-                      <div style={{ fontSize:11,fontWeight:700,color:active?r.color:T.textPri }}>{r.label}</div>
+                  {ROLE_OPTIONS.map(({ value, label })=>{
+                    const r = ROLES[value];
+                    const active=form.role===value;
+                    return <button key={value} onClick={()=>sf("role",value)} style={{ padding:"8px 10px",borderRadius:8,cursor:"pointer",textAlign:"left",fontFamily:FONT,border:`1.5px solid ${active?r.color+"60":T.border}`,background:active?r.lo:T.surfaceHi,transition:"all .15s" }}>
+                      <div style={{ fontSize:11,fontWeight:700,color:active?r.color:T.textPri }}>{label}</div>
                       <div style={{ fontSize:10,color:T.textMute,marginTop:1 }}>{r.team==="all"?"All Teams":r.team==="presales"?"Pre-Sales":"Delivery"}</div>
                     </button>;
                   })}
                 </div>
               </div>
-              {["delivery","pm","presales"].includes(form.role) && (
+              {needsSupervisor && (
                 <div>
                   <Lbl>Atasan Langsung <span style={{ color:T.red }}>*</span></Lbl>
                   <select value={form.supervisorId||""} onChange={e=>sf("supervisorId",e.target.value?String(e.target.value):null)}
                     style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${errs.supervisorId?T.red:T.border}`,borderRadius:8,padding:"8px 12px",color:form.supervisorId?T.textPri:T.textMute,fontSize:12,outline:"none",fontFamily:FONT }}>
                     <option value="">-- Pilih atasan langsung --</option>
-                    {(members||[]).filter(m=>["mgr_dl","mgr_ps"].includes(m.role)&&m.status==="active").map(m=>(
+                    {(members||[]).filter(m=>supervisorRoleOptions.includes(m.role)&&m.status==="active").map(m=>(
                       <option key={m.id} value={m.id}>{m.name} ({ROLES[m.role]?.label})</option>
                     ))}
                   </select>
@@ -280,6 +284,7 @@ function InviteModal({ open, onClose, members, onAdd }) {
 
 function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, activities }) {
   const [confirm,setC]=useState(false),[delC,setD]=useState(false);
+  const [deleting,setDeleting]=useState(false);
   const kpi = useMemo(()=>calcKPI(m,activities),[m,activities]);
   const isSusp = m.status==="suspended";
   return (
@@ -315,7 +320,27 @@ function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, activities })
         <div style={{ background:T.redLo,border:`1px solid ${T.red}30`,borderRadius:7,padding:"10px 12px",marginBottom:8 }}>
           <div style={{ fontSize:12,fontWeight:700,color:T.red,marginBottom:3 }}>Hapus permanen?</div>
           <div style={{ fontSize:11,color:T.textSec,marginBottom:8 }}>Data {m.name} tidak bisa dikembalikan.</div>
-          <div style={{ display:"flex",gap:5 }}><Btn v="ghost" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={()=>setD(false)}>Batal</Btn><Btn v="danger" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={()=>onDelete(m.id)}>Hapus</Btn></div>
+          <div style={{ display:"flex",gap:5 }}>
+            <Btn v="ghost" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={()=>setD(false)} disabled={deleting}>Batal</Btn>
+            <Btn
+              v="danger"
+              sz="sm"
+              style={{ flex:1,justifyContent:"center" }}
+              disabled={deleting}
+              onClick={async ()=>{
+                try {
+                  setDeleting(true);
+                  await onDelete(m.id);
+                  toast.success(`Member ${m.name} berhasil dihapus`);
+                } catch (err) {
+                  toast.error(err.response?.data?.error || 'Gagal menghapus member');
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? 'Menghapus...' : 'Hapus'}
+            </Btn>
+          </div>
         </div>
       )}
 
@@ -370,7 +395,7 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, a
           <div style={{ flex:1,height:1,background:T.border }} />
         </div>
         <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(265px,1fr))",gap:10 }}>
-          {list.map(m=><MemberCard key={m.id} m={m} canManage={canManage} canSeeKPI={isMgr(currentUser.role)} onToggle={onToggle} onDelete={onDelete} activities={activities} />)}
+          {list.map(m=><MemberCard key={m.id} m={m} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} activities={activities} />)}
         </div>
       </div>
     );
