@@ -12,6 +12,7 @@ import {
   resolveKpiProfile,
 } from '../utils/kpiManual';
 import { fetchCompletedJiraTasksForQuarter } from '../services/jiraService';
+import { writeAudit } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
@@ -255,6 +256,14 @@ export const upsertUserKpiScorecard = async (req: AuthRequest, res: Response) =>
       },
     });
 
+    await writeAudit(req, {
+      action: 'kpi.manual_save',
+      entityType: 'kpi_scorecard',
+      entityId: scorecard.id,
+      after: scorecard,
+      metadata: { year, quarter, userId: user.id },
+    });
+
     res.json(mapScorecardResponse(user, profile, scorecard, year, quarter));
   } catch (error: any) {
     req.log?.error(error, 'Failed to save KPI scorecard');
@@ -354,6 +363,19 @@ export const recalculateQbMetrics = async (req: AuthRequest, res: Response) => {
         completedJiraTaskCount: summary.completedJiraTaskCount,
         qbMultiplier: summary.qbMultiplier,
         qbLastCalculatedAt: new Date(),
+      },
+    });
+
+    await writeAudit(req, {
+      action: 'kpi.qb_recalculate',
+      entityType: 'kpi_scorecard',
+      entityId: scorecard.id,
+      after: scorecard,
+      metadata: {
+        year,
+        quarter,
+        userId: user.id,
+        qbCount: jiraResult.count,
       },
     });
 

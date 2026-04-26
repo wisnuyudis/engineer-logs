@@ -7,6 +7,7 @@ exports.handleJiraWorklogWebhook = exports.disconnectJira = exports.handleJiraCa
 const crypto_1 = __importDefault(require("crypto"));
 const client_1 = require("@prisma/client");
 const jiraSyncService_1 = require("../services/jiraSyncService");
+const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const authBaseUrl = 'https://auth.atlassian.com/authorize';
 const tokenUrl = 'https://auth.atlassian.com/oauth/token';
@@ -164,6 +165,19 @@ const handleJiraCallback = async (req, res) => {
                 jiraConnectedAt: new Date(),
             }
         });
+        await (0, auditTrail_1.writeAuditSystem)({
+            userId: setting.value,
+            action: 'jira.connect',
+            entityType: 'jira_account',
+            entityId: resource.id,
+            after: {
+                jiraAccountId: myself.accountId || null,
+                jiraCloudId: resource.id,
+                jiraDisplayName: myself.displayName || null,
+            },
+            ipAddress: req.ip || null,
+            userAgent: req.headers['user-agent'] || null,
+        });
         await prisma.setting.delete({ where: { key: setting.key } }).catch(() => null);
         return res.redirect(createFrontendRedirect('connected'));
     }
@@ -186,6 +200,12 @@ const disconnectJira = async (req, res) => {
                 jiraAvatarUrl: null,
                 jiraConnectedAt: null,
             }
+        });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'jira.disconnect',
+            entityType: 'jira_account',
+            entityId: userId,
+            after: { connected: false },
         });
         res.json({ message: 'Koneksi Jira diputus' });
     }

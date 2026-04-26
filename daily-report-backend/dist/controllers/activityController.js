@@ -8,6 +8,7 @@ const client_1 = require("@prisma/client");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const zodSchemas_1 = require("../validators/zodSchemas");
+const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const normalizeIdentity = (value) => (value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 const SORT_FIELDS = {
@@ -183,6 +184,12 @@ const createActivity = async (req, res) => {
             },
             include: { attachments: true, user: { select: { id: true, name: true, role: true, team: true, avatarUrl: true } } }
         });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'activity.create',
+            entityType: 'activity',
+            entityId: activity.id,
+            after: activity,
+        });
         res.status(201).json(activity);
     }
     catch (error) {
@@ -237,6 +244,13 @@ const updateActivity = async (req, res) => {
             },
             include: { attachments: true, user: { select: { id: true, name: true, role: true, team: true, avatarUrl: true } } }
         });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'activity.update',
+            entityType: 'activity',
+            entityId: activity.id,
+            before: current,
+            after: activity,
+        });
         res.json(activity);
     }
     catch (error) {
@@ -266,6 +280,12 @@ const deleteActivity = async (req, res) => {
                 fs_1.default.unlinkSync(p);
         }
         await prisma.activity.delete({ where: { id } });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'activity.delete',
+            entityType: 'activity',
+            entityId: id,
+            before: activity,
+        });
         res.json({ message: 'Aktivitas berhasil dihapus' });
     }
     catch (error) {
@@ -288,6 +308,13 @@ const uploadAttachment = async (req, res) => {
                 size: file.size
             }
         });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'activity.attachment_upload',
+            entityType: 'attachment',
+            entityId: attachment.id,
+            after: attachment,
+            metadata: { activityId },
+        });
         res.json(attachment);
     }
     catch (error) {
@@ -305,6 +332,12 @@ const deleteAttachment = async (req, res) => {
         if (fs_1.default.existsSync(p))
             fs_1.default.unlinkSync(p);
         await prisma.attachment.delete({ where: { id: attId } });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'activity.attachment_delete',
+            entityType: 'attachment',
+            entityId: attId,
+            before: attachment,
+        });
         res.json({ message: 'File dihapus' });
     }
     catch (error) {

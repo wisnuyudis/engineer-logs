@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import pinoHttp from 'pino-http';
 import userRoutes from './routes/userRoutes';
 import authRoutes from './routes/authRoutes';
@@ -11,11 +10,32 @@ import telegramRoutes from './routes/telegramRoutes';
 import taxonomyRoutes from './routes/taxonomyRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import kpiRoutes from './routes/kpiRoutes';
+import auditRoutes from './routes/auditRoutes';
 import path from 'path';
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = new Set(
+  [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://[::1]:5173'].filter(Boolean) as string[]
+);
+const isLocalDevOrigin = (origin: string) =>
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(origin);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (typeof origin === 'string' && (allowedOrigins.has(origin) || isLocalDevOrigin(origin))) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,PUT,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json({
   verify: (req, _res, buf) => {
     (req as any).rawBody = buf.toString('utf8');
@@ -40,5 +60,6 @@ app.use('/api/telegram', telegramRoutes);
 app.use('/api/taxonomy', taxonomyRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/kpi', kpiRoutes);
+app.use('/api/audit', auditRoutes);
 
 export default app;

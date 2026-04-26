@@ -4,6 +4,7 @@ exports.recalculateQbMetrics = exports.getKpiProfiles = exports.upsertUserKpiSco
 const client_1 = require("@prisma/client");
 const kpiManual_1 = require("../utils/kpiManual");
 const jiraService_1 = require("../services/jiraService");
+const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const getQuarterDateRange = (year, quarter) => {
     switch (quarter) {
@@ -228,6 +229,13 @@ const upsertUserKpiScorecard = async (req, res) => {
                 enteredById: req.user?.userId,
             },
         });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'kpi.manual_save',
+            entityType: 'kpi_scorecard',
+            entityId: scorecard.id,
+            after: scorecard,
+            metadata: { year, quarter, userId: user.id },
+        });
         res.json(mapScorecardResponse(user, profile, scorecard, year, quarter));
     }
     catch (error) {
@@ -322,6 +330,18 @@ const recalculateQbMetrics = async (req, res) => {
                 completedJiraTaskCount: summary.completedJiraTaskCount,
                 qbMultiplier: summary.qbMultiplier,
                 qbLastCalculatedAt: new Date(),
+            },
+        });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'kpi.qb_recalculate',
+            entityType: 'kpi_scorecard',
+            entityId: scorecard.id,
+            after: scorecard,
+            metadata: {
+                year,
+                quarter,
+                userId: user.id,
+                qbCount: jiraResult.count,
             },
         });
         res.json({

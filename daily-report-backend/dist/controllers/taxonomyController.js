@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateTaxonomy = exports.createTaxonomy = exports.toggleTaxonomy = exports.getAllTaxonomies = void 0;
 const client_1 = require("@prisma/client");
+const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const TAXONOMY_PRESENTATION = {
     jira_impl: { label: 'Implementation', desc: 'Pekerjaan implementasi yang tersinkron otomatis dari worklog project.' },
@@ -31,9 +32,17 @@ const toggleTaxonomy = async (req, res) => {
     try {
         const id = req.params.id;
         const { isActive } = req.body;
+        const current = await prisma.masterActivity.findUnique({ where: { id } });
         const data = await prisma.masterActivity.update({
             where: { id },
             data: { isActive }
+        });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'taxonomy.toggle',
+            entityType: 'master_activity',
+            entityId: id,
+            before: current,
+            after: data,
         });
         res.json(data);
     }
@@ -52,6 +61,12 @@ const createTaxonomy = async (req, res) => {
         const created = await prisma.masterActivity.create({
             data: { actKey, ...rest }
         });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'taxonomy.create',
+            entityType: 'master_activity',
+            entityId: created.id,
+            after: created,
+        });
         res.json(created);
     }
     catch (error) {
@@ -63,9 +78,17 @@ exports.createTaxonomy = createTaxonomy;
 const updateTaxonomy = async (req, res) => {
     try {
         const id = req.params.id;
+        const current = await prisma.masterActivity.findUnique({ where: { id } });
         const updated = await prisma.masterActivity.update({
             where: { id },
             data: req.body
+        });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'taxonomy.update',
+            entityType: 'master_activity',
+            entityId: id,
+            before: current,
+            after: updated,
         });
         res.json(updated);
     }

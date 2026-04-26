@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import crypto from 'crypto';
+import { writeAudit } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +30,13 @@ export const generateLinkToken = async (req: AuthRequest, res: Response) => {
       create: { key: `tghost_${userId}`, value: token, description: 'Telegram Handshake Token' }
     });
 
+    await writeAudit(req, {
+      action: 'telegram.link_token_generate',
+      entityType: 'telegram_link',
+      entityId: userId,
+      after: { tokenGenerated: true },
+    });
+
     res.json({ token, message: 'Gunakan token ini di Bot Telegram Anda: /link ' + token });
   } catch (error) {
     res.status(500).json({ error: 'Gagal membuat token tautan' });
@@ -40,6 +48,13 @@ export const getTelegramStatus = async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user?.userId } });
     const isLinked = !!user?.telegramId;
+
+    await writeAudit(req, {
+      action: 'telegram.status_view',
+      entityType: 'telegram_link',
+      entityId: req.user?.userId || null,
+      metadata: { isLinked },
+    });
     res.json({ isLinked });
   } catch (error) {
     res.status(500).json({ error: 'Gagal mendapatkan status' });

@@ -28,6 +28,6 @@ export const T = {
   jiraLo:   "#0D1F3C",
 };
 
-export const FONT   = "'DM Sans', 'Plus Jakarta Sans', sans-serif";
-export const DISPLAY= "'Syne', 'DM Sans', sans-serif";
+export const FONT   = "'Inter', 'Manrope', sans-serif";
+export const DISPLAY= "'Inter Tight', 'Inter', sans-serif";
 export const MONO   = "'JetBrains Mono', 'Fira Code', monospace";

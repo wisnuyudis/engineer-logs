@@ -16,8 +16,11 @@ export function LoginPage({ onLogin }) {
     setL(true);
     try {
       const { data } = await api.post('/auth/login', { email: email.trim(), password: pw });
-      localStorage.setItem('token', data.token);
+      localStorage.setItem('token', data.accessToken || data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:updated', { detail: { user: data.user, token: data.accessToken || data.token } }));
+      }
       onLogin(data.user);
     } catch (error) {
       setErr(error.response?.data?.error || "Koneksi ke server gagal.");
@@ -28,7 +31,7 @@ export function LoginPage({ onLogin }) {
 
   return (
     <div style={{ minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:FONT,position:"relative",overflow:"hidden" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
       {/* Background grid */}
       <div style={{ position:"absolute",inset:0,backgroundImage:`linear-gradient(${T.border} 1px,transparent 1px),linear-gradient(90deg,${T.border} 1px,transparent 1px)`,backgroundSize:"40px 40px",opacity:.3 }} />
       {/* Glow orb */}

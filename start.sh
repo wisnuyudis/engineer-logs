@@ -52,7 +52,7 @@ BACKEND_PID=$!
 
 echo -e "${GREEN}▶ Starting Frontend (React/Vite)...${NC}"
 cd "$ROOT_DIR/daily-report-dashboard" || exit
-npm run dev &
+npm run dev -- --host 127.0.0.1 &
 FRONTEND_PID=$!
 
 echo -e "${GREEN}✔ Backend restarting on http://localhost:${BACKEND_PORT}${NC}"

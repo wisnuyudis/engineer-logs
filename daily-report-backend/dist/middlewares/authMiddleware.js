@@ -10,10 +10,10 @@ const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
     if (!token)
-        return res.status(401).json({ error: 'Acceess token missing' });
+        return res.status(401).json({ error: 'Access token missing' });
     jsonwebtoken_1.default.verify(token, JWT_SECRET, (err, decoded) => {
         if (err)
-            return res.status(403).json({ error: 'Invalid or expired token' });
+            return res.status(401).json({ error: 'Invalid or expired token' });
         req.user = decoded;
         next();
     });

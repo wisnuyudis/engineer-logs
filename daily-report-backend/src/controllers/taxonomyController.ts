@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { AuthRequest } from '../middlewares/authMiddleware';
+import { writeAudit } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
@@ -31,9 +33,17 @@ export const toggleTaxonomy = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
     const { isActive } = req.body;
+    const current = await prisma.masterActivity.findUnique({ where: { id } });
     const data = await prisma.masterActivity.update({
       where: { id },
       data: { isActive }
+    });
+    await writeAudit(req as AuthRequest, {
+      action: 'taxonomy.toggle',
+      entityType: 'master_activity',
+      entityId: id,
+      before: current,
+      after: data,
     });
     res.json(data);
   } catch (error) {
@@ -51,6 +61,12 @@ export const createTaxonomy = async (req: Request, res: Response) => {
     const created = await prisma.masterActivity.create({
       data: { actKey, ...rest }
     });
+    await writeAudit(req as AuthRequest, {
+      action: 'taxonomy.create',
+      entityType: 'master_activity',
+      entityId: created.id,
+      after: created,
+    });
     res.json(created);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create taxonomy' });
@@ -61,9 +77,17 @@ export const createTaxonomy = async (req: Request, res: Response) => {
 export const updateTaxonomy = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
+    const current = await prisma.masterActivity.findUnique({ where: { id } });
     const updated = await prisma.masterActivity.update({
       where: { id },
       data: req.body
+    });
+    await writeAudit(req as AuthRequest, {
+      action: 'taxonomy.update',
+      entityType: 'master_activity',
+      entityId: id,
+      before: current,
+      after: updated,
     });
     res.json(updated);
   } catch (error) {

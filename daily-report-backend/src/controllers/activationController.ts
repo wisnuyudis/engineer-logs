@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { writeAuditSystem } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
@@ -38,6 +39,16 @@ export const activateUser = async (req: Request, res: Response) => {
         passwordHash,
         status: 'active'
       }
+    });
+
+    await writeAuditSystem({
+      userId,
+      action: 'account.activate',
+      entityType: 'user',
+      entityId: userId,
+      after: { status: 'active' },
+      ipAddress: req.ip || null,
+      userAgent: req.headers['user-agent'] || null,
     });
 
     // Clean up used token

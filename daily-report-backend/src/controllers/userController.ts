@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { writeAudit } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
@@ -48,6 +49,13 @@ export const createUser = async (req: Request, res: Response) => {
       select: { id: true, email: true, name: true, role: true }
     });
 
+    await writeAudit(req as any, {
+      action: 'user.create',
+      entityType: 'user',
+      entityId: user.id,
+      after: user,
+    });
+
     res.status(201).json(user);
   } catch (error) {
     if (req.log) req.log.error(error, 'Error creating user');
@@ -66,6 +74,14 @@ export const updateUser = async (req: Request<{ id: string }>, res: Response) =>
       data: { name, role, team, status },
       select: { id: true, email: true, name: true, role: true, status: true }
     });
+
+    await writeAudit(req as any, {
+      action: 'user.update',
+      entityType: 'user',
+      entityId: user.id,
+      after: user,
+    });
+
     res.json(user);
   } catch (error) {
     if (req.log) req.log.error(error, 'Error updating user');
@@ -127,6 +143,14 @@ export const deleteUser = async (req: Request<{ id: string }>, res: Response) =>
       await tx.user.delete({
         where: { id }
       });
+    });
+
+    await writeAudit(req as any, {
+      action: 'user.delete',
+      entityType: 'user',
+      entityId: id,
+      before: existingUser,
+      metadata: { name: existingUser.name },
     });
 
     res.json({

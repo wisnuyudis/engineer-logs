@@ -4,14 +4,16 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { AuthRequest } from '../middlewares/authMiddleware';
+import { writeAudit } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
-// Setup Nodemailer Transporter
-// This uses ethereal for testing if no real SMTP provided, or you can supply real config.
-let transporter: nodemailer.Transporter;
+// Setup Nodemailer Transporter lazily so backend startup does not depend on SMTP/DNS.
+let transporter: nodemailer.Transporter | null = null;
 
 async function setupTransporter() {
+  if (transporter) return transporter;
+
   const host = process.env.SMTP_HOST || 'smtp.ethereal.email';
   const port = parseInt(process.env.SMTP_PORT || '587');
   const user = process.env.SMTP_USER;
@@ -38,10 +40,8 @@ async function setupTransporter() {
     });
     console.log(`Ethereal Test Account generated: ${testAccount.user}`);
   }
-}
 
-if (process.env.NODE_ENV !== 'test') {
-  setupTransporter();
+  return transporter;
 }
 
 export const inviteUser = async (req: AuthRequest, res: Response) => {
@@ -68,9 +68,16 @@ export const inviteUser = async (req: AuthRequest, res: Response) => {
           passwordHash: hashedPassword
         }
       });
+      await writeAudit(req, {
+        action: 'invite.create',
+        entityType: 'user',
+        entityId: user.id,
+        after: { email, name, role, team, supervisorId, status: 'active', bypassSmtp: true },
+      });
       return res.status(200).json({ message: 'Aktivasi langsung berhasil. Member aktif.' });
     } else {
       // NORMAL SMTP FLOW
+      const mailTransporter = await setupTransporter();
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenKey = `invite_${rawToken}`;
       
@@ -85,6 +92,12 @@ export const inviteUser = async (req: AuthRequest, res: Response) => {
           passwordHash: 'pending' // Will be updated on activation
         }
       });
+      await writeAudit(req, {
+        action: 'invite.create',
+        entityType: 'user',
+        entityId: user.id,
+        after: { email, name, role, team, supervisorId, status: 'invited', bypassSmtp: false },
+      });
 
       await prisma.setting.create({
         data: {
@@ -98,7 +111,7 @@ export const inviteUser = async (req: AuthRequest, res: Response) => {
       const link = `${frontEndUrl}/activate?token=${rawToken}`;
 
       // Send Email
-      const info = await transporter.sendMail({
+      const info = await mailTransporter.sendMail({
         from: '"EngineerLog Admin" <admin@seraphim.id>',
         to: email,
         subject: "Invitation to EngineerLog Dashboard",

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteUser = exports.updateUser = exports.createUser = exports.getUsers = void 0;
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const getUsers = async (req, res) => {
     try {
@@ -51,6 +52,12 @@ const createUser = async (req, res) => {
             },
             select: { id: true, email: true, name: true, role: true }
         });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'user.create',
+            entityType: 'user',
+            entityId: user.id,
+            after: user,
+        });
         res.status(201).json(user);
     }
     catch (error) {
@@ -70,6 +77,12 @@ const updateUser = async (req, res) => {
             where: { id: String(id) },
             data: { name, role, team, status },
             select: { id: true, email: true, name: true, role: true, status: true }
+        });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'user.update',
+            entityType: 'user',
+            entityId: user.id,
+            after: user,
         });
         res.json(user);
     }
@@ -124,6 +137,13 @@ const deleteUser = async (req, res) => {
             await tx.user.delete({
                 where: { id }
             });
+        });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'user.delete',
+            entityType: 'user',
+            entityId: id,
+            before: existingUser,
+            metadata: { name: existingUser.name },
         });
         res.json({
             success: true,

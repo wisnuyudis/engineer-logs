@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getTelegramStatus = exports.generateLinkToken = void 0;
 const client_1 = require("@prisma/client");
 const crypto_1 = __importDefault(require("crypto"));
+const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 // Endpoint: POST /api/telegram/generate-link
 // Menghasilkan kode tautan berumur pendek untuk ditaruh di ProfileView
@@ -28,6 +29,12 @@ const generateLinkToken = async (req, res) => {
             update: { value: token },
             create: { key: `tghost_${userId}`, value: token, description: 'Telegram Handshake Token' }
         });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'telegram.link_token_generate',
+            entityType: 'telegram_link',
+            entityId: userId,
+            after: { tokenGenerated: true },
+        });
         res.json({ token, message: 'Gunakan token ini di Bot Telegram Anda: /link ' + token });
     }
     catch (error) {
@@ -40,6 +47,12 @@ const getTelegramStatus = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({ where: { id: req.user?.userId } });
         const isLinked = !!user?.telegramId;
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'telegram.status_view',
+            entityType: 'telegram_link',
+            entityId: req.user?.userId || null,
+            metadata: { isLinked },
+        });
         res.json({ isLinked });
     }
     catch (error) {

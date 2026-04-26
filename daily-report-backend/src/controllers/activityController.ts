@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { ActivitySchema } from '../validators/zodSchemas';
 import { z } from 'zod';
+import { writeAudit } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
@@ -206,6 +207,13 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
       include: { attachments: true, user: { select: { id: true, name: true, role: true, team: true, avatarUrl: true } } }
     });
 
+    await writeAudit(req, {
+      action: 'activity.create',
+      entityType: 'activity',
+      entityId: activity.id,
+      after: activity,
+    });
+
     res.status(201).json(activity);
   } catch (error) {
     if (req.log) req.log.error(error, "Create activity error");
@@ -261,6 +269,14 @@ export const updateActivity = async (req: AuthRequest, res: Response) => {
       include: { attachments: true, user: { select: { id: true, name: true, role: true, team: true, avatarUrl: true } } }
     });
 
+    await writeAudit(req, {
+      action: 'activity.update',
+      entityType: 'activity',
+      entityId: activity.id,
+      before: current,
+      after: activity,
+    });
+
     res.json(activity);
   } catch (error) {
     if (req.log) req.log.error(error, "Update activity error");
@@ -290,6 +306,13 @@ export const deleteActivity = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.activity.delete({ where: { id } });
+
+    await writeAudit(req, {
+      action: 'activity.delete',
+      entityType: 'activity',
+      entityId: id,
+      before: activity,
+    });
     
     res.json({ message: 'Aktivitas berhasil dihapus' });
   } catch (error) {
@@ -314,6 +337,14 @@ export const uploadAttachment = async (req: AuthRequest, res: Response) => {
       }
     });
 
+    await writeAudit(req, {
+      action: 'activity.attachment_upload',
+      entityType: 'attachment',
+      entityId: attachment.id,
+      after: attachment,
+      metadata: { activityId },
+    });
+
     res.json(attachment);
   } catch (error) {
     res.status(500).json({ error: 'Gagal mengunggah file' });
@@ -331,6 +362,13 @@ export const deleteAttachment = async (req: AuthRequest, res: Response) => {
     if (fs.existsSync(p)) fs.unlinkSync(p);
 
     await prisma.attachment.delete({ where: { id: attId } });
+
+    await writeAudit(req, {
+      action: 'activity.attachment_delete',
+      entityType: 'attachment',
+      entityId: attId,
+      before: attachment,
+    });
 
     res.json({ message: 'File dihapus' });
   } catch (error) {

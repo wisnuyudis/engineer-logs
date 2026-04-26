@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { T, FONT, DISPLAY } from '../theme/tokens';
+import { T, FONT, DISPLAY, MONO } from '../theme/tokens';
 import { ROLES, ROLE_OPTIONS, isAdmin, isMgr, hasKpiProfile } from '../constants/taxonomy';
 import { calcKPI } from '../utils/kpi';
 import { Pill, Card, Avi, RoleBadge, Btn, Modal, MHead, Inp, Lbl, PwInp, Tag } from './ui/Primitives';
@@ -394,7 +394,7 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, a
           <span style={{ fontSize:11,color:T.textMute }}>{list.length} member</span>
           <div style={{ flex:1,height:1,background:T.border }} />
         </div>
-        <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(265px,1fr))",gap:10 }}>
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12 }}>
           {list.map(m=><MemberCard key={m.id} m={m} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} activities={activities} />)}
         </div>
       </div>
@@ -403,15 +403,39 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, a
 
   const showDelivery = teamF==="all"||teamF==="delivery";
   const showPS       = teamF==="all"||teamF==="presales";
+  const totalActive = filtered.filter(m=>m.status==="active").length;
+  const totalSuspended = filtered.filter(m=>m.status==="suspended").length;
+  const totalInvited = filtered.filter(m=>m.status==="invited").length;
 
   return (
     <div>
+      <Card p={16} style={{ marginBottom:16 }}>
+        <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap" }}>
+          <div>
+            <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4 }}>Team Members</div>
+            <div style={{ fontSize:13,color:T.textMute }}>Kelola hierarki tim, status akun, dan supervisor dari satu layar.</div>
+          </div>
+          <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
+            {[
+              { l:"Aktif", v:totalActive, c:T.green },
+              { l:"Suspended", v:totalSuspended, c:T.amber },
+              { l:"Invited", v:totalInvited, c:T.indigoHi },
+            ].map((item) => (
+              <div key={item.l} style={{ minWidth:92,padding:"8px 10px",borderRadius:10,border:`1px solid ${item.c}25`,background:T.surfaceHi }}>
+                <div style={{ fontSize:9,color:T.textMute,textTransform:"uppercase",letterSpacing:".06em" }}>{item.l}</div>
+                <div style={{ fontSize:18,fontWeight:800,color:item.c,fontFamily:MONO }}>{item.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
       <div style={{ display:"flex",gap:5,marginBottom:18,flexWrap:"wrap",alignItems:"center" }}>
         {[["all","Semua Tim",T.indigoHi,T.indigoLo],["presales","Pre-Sales",T.violet,T.violetLo],["delivery","Delivery",T.teal,T.tealLo]].map(([v,l,col,lo])=>(
           <Pill key={v} active={teamF===v} color={col} lo={lo} onClick={()=>setTF(v)}>{l}</Pill>
         ))}
         <span style={{ fontSize:11,color:T.textMute,marginLeft:4 }}>
-          {filtered.filter(m=>m.status==="active").length} aktif · {filtered.filter(m=>m.status==="suspended").length} suspended
+          {totalActive} aktif · {totalSuspended} suspended
         </span>
       </div>
 

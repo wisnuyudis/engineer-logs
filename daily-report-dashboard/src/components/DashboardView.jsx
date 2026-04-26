@@ -3,9 +3,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { T, FONT, MONO, DISPLAY } from '../theme/tokens';
 import { ROLES, isMgr, isAdmin, teamOf } from '../constants/taxonomy';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
-import { WEEKLY } from '../data/mockData';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import { calcKPI } from '../utils/kpi';
+import { currentQuarter } from '../utils/kpiManual';
 import { Card, Avi, RoleBadge, TeamBadge, Tag } from './ui/Primitives';
 import { PersonalKPI } from './shared/PersonalKPI';
 import api from '../lib/api';
@@ -24,6 +24,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
 
   const [metrics, setMetrics] = useState(null);
   const [apilb, setApilb] = useState([]);
+  const [topKpi, setTopKpi] = useState(null);
   
   useEffect(() => {
     api.get('/dashboard/metrics').then(res => setMetrics(res.data)).catch(console.error);
@@ -48,6 +49,66 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
   },[apilb,activities,visibleMembers,canSeeTeam]);
 
   const maxMins = leaderboard[0]?.totalHours*60 || 1;
+  const activeMembers = members.filter((m) => m.status !== "invited");
+  const deliveryCount = activeMembers.filter((m) => m.team === "delivery").length;
+  const presalesCount = activeMembers.filter((m) => m.team === "presales").length;
+  const topMember = leaderboard[0] || null;
+  const avgHours = leaderboard.length ? leaderboard.reduce((sum, row) => sum + (row.totalHours || 0), 0) / leaderboard.length : 0;
+  const avgHoursLabel = Number(avgHours || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadTopKpi = async () => {
+      if (!topMember?.id) {
+        setTopKpi(null);
+        return;
+      }
+      try {
+        const { data } = await api.get(`/kpi/scorecards/${topMember.id}`, {
+          params: { year: new Date().getFullYear(), quarter: currentQuarter() },
+        });
+        if (!cancelled) {
+          setTopKpi(data?.scorecard?.finalScore ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setTopKpi(topMember?.kpi ?? null);
+        }
+      }
+    };
+    loadTopKpi();
+    return () => { cancelled = true; };
+  }, [topMember?.id, topMember?.kpi]);
+
+  const weeklySeries = useMemo(() => {
+    const today = new Date();
+    const dayMs = 86400000;
+    const days = Array.from({ length: 7 }, (_, idx) => {
+      const date = new Date(today.getTime() - (6 - idx) * dayMs);
+      const key = date.toISOString().slice(0, 10);
+      return {
+        key,
+        label: date.toLocaleDateString('id-ID', { weekday: 'short' }),
+        delivery: 0,
+        presales: 0,
+      };
+    });
+    const byKey = new Map(days.map((d) => [d.key, d]));
+    for (const act of activities) {
+      const slot = byKey.get(act.date);
+      if (!slot) continue;
+      const hours = (act.dur || 0) / 60;
+      if (act.userTeam === 'delivery') slot.delivery += hours;
+      if (act.userTeam === 'presales') slot.presales += hours;
+    }
+    return days.map((d) => ({
+      ...d,
+      delivery: Number(d.delivery.toFixed(1)),
+      presales: Number(d.presales.toFixed(1)),
+    }));
+  }, [activities]);
+
+  const maxWeekly = Math.max(...weeklySeries.flatMap((d) => [d.delivery, d.presales]), 1);
 
   const tabs = canSeeTeam
     ? isAdminRole
@@ -57,8 +118,15 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
 
   const memberDetailUser = visibleMembers.find(m=>m.id===memberDetailId) || visibleMembers[0] || null;
 
+  const overviewStats = [
+    { l:"Total Aktivitas",  v:metrics?.totalActivities || 0, s:"seluruh tim", col:T.indigoHi },
+    { l:"Total Jam Kerja",  v:metrics ? fmtH(metrics.totalHours*60) : "0j 0m", s:"seluruh karyawan", col:T.teal },
+    { l:"Pipeline Value",    v:metrics ? fmtIDR(metrics.pipelineValue) : "Rp 0", s:"Prospek Pre-Sales", col:T.violet },
+    { l:"Avg NPS",           v:metrics?.avgNps || 0, s:"Capaian PM", col:T.amber },
+  ];
+
   return (
-    <div>
+    <div style={{ position:"relative" }}>
       <div style={{ display:"flex",gap:3,marginBottom:22,background:T.surfaceHi,padding:3,borderRadius:10,border:`1px solid ${T.border}`,width:"fit-content" }}>
         {tabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"6px 16px",borderRadius:8,fontFamily:FONT,fontSize:12,fontWeight:tab===t.id?700:400,cursor:"pointer",border:"none",
@@ -70,13 +138,18 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
 
       {tab==="overview" && (
         <div>
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20 }}>
-            {[
-              {l:"Total Aktivitas",  v:metrics?.totalActivities || 0, s:"seluruh tim", col:T.indigoHi},
-              {l:"Total Jam Kerja",  v:metrics ? fmtH(metrics.totalHours*60) : "0j 0m",s:"seluruh karyawan", col:T.teal},
-              {l:"Pipeline Value",   v:metrics ? fmtIDR(metrics.pipelineValue) : "Rp 0", s:"Prospek Pre-Sales", col:T.violet},
-              {l:"Avg NPS",          v:metrics?.avgNps || 0,s:"Capaian PM",col:T.amber},
-            ].map((k,i)=>(
+          <Card p={18} style={{ marginBottom:14 }}>
+            <div style={{ display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:12,flexWrap:"wrap" }}>
+              <div>
+                <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4 }}>Dashboard</div>
+                <div style={{ fontSize:16,fontWeight:800,color:T.textPri,fontFamily:DISPLAY }}>Ringkasan operasional tim</div>
+              </div>
+              <div style={{ fontSize:11,color:T.textMute }}>Klik tab untuk berpindah konteks analitik</div>
+            </div>
+          </Card>
+
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:14 }}>
+            {overviewStats.map((k,i)=>(
               <Card key={i} p={0} glow={k.col} style={{ overflow:"hidden" }}>
                 <div style={{ padding:"15px 17px" }}>
                   <div style={{ fontSize:9,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6 }}>{k.l}</div>
@@ -88,56 +161,111 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
             ))}
           </div>
 
-          <Card p={18} style={{ marginBottom:14 }}>
-            <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:14 }}>Komposisi Aktivitas — Jira vs Non-Jira</div>
-            <div style={{ display:"flex",gap:14 }}>
-              {leaderboard.slice(0,6).map(m => {
-                // Approximate jira vs app ratio for visual
-                const jiraPct = m.totalHours ? Math.round((m.totalHours * 0.7) / m.totalHours * 100) : 0;
-                return (
-                  <div key={m.id} style={{ flex:1,minWidth:0 }}>
-                    <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5 }}>
-                      <Avi av={m.avatar} team={m.team} sz={22} />
-                      <span style={{ fontSize:11,color:T.textPri,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name.split(" ")[0]}</span>
-                    </div>
-                    <div style={{ height:60,background:T.surfaceHi,borderRadius:6,overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"flex-end" }}>
-                      <div style={{ height:`${jiraPct}%`,background:T.jira,opacity:.85 }} />
-                      <div style={{ height:`${100-jiraPct}%`,background:T.textMute,opacity:.3 }} />
-                    </div>
-                    <div style={{ fontSize:9,color:T.jira,fontWeight:700,marginTop:3,textAlign:"center",fontFamily:MONO }}>~{jiraPct}% Jira</div>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ display:"flex",gap:14,marginTop:8 }}>
-              <div style={{ display:"flex",alignItems:"center",gap:5,fontSize:10,color:T.textMute }}><div style={{ width:10,height:10,borderRadius:2,background:T.jira,opacity:.85 }} /> Jira ticket hours</div>
-              <div style={{ display:"flex",alignItems:"center",gap:5,fontSize:10,color:T.textMute }}><div style={{ width:10,height:10,borderRadius:2,background:T.textMute,opacity:.5 }} /> Non-Jira (learning, meeting, koordinasi)</div>
-            </div>
-          </Card>
+          <div style={{ display:"grid",gridTemplateColumns:"minmax(0,1.35fr) minmax(320px,0.65fr)",gap:14,alignItems:"start" }}>
+            <div style={{ display:"flex",flexDirection:"column",gap:14, minWidth:0 }}>
+              <Card p={18}>
+                <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Komposisi Aktivitas — Jira vs Non-Jira</div>
+                <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
+                  {leaderboard.slice(0,6).map(m => {
+                    const jiraPct = m.totalHours ? Math.round((m.totalHours * 0.7) / m.totalHours * 100) : 0;
+                    return (
+                      <div key={m.id} style={{ flex:"1 1 140px",minWidth:140 }}>
+                        <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5 }}>
+                          <Avi av={m.avatar} team={m.team} sz={22} />
+                          <span style={{ fontSize:11,color:T.textPri,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name.split(" ")[0]}</span>
+                        </div>
+                        <div style={{ height:64,background:T.surfaceHi,borderRadius:8,overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"flex-end" }}>
+                          <div style={{ height:`${jiraPct}%`,background:T.jira,opacity:.85 }} />
+                          <div style={{ height:`${100-jiraPct}%`,background:T.textMute,opacity:.3 }} />
+                        </div>
+                        <div style={{ fontSize:9,color:T.jira,fontWeight:700,marginTop:3,textAlign:"center",fontFamily:MONO }}>~{jiraPct}% Jira</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display:"flex",gap:14,marginTop:10,flexWrap:"wrap" }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:5,fontSize:10,color:T.textMute }}><div style={{ width:10,height:10,borderRadius:2,background:T.jira,opacity:.85 }} /> Jira ticket hours</div>
+                  <div style={{ display:"flex",alignItems:"center",gap:5,fontSize:10,color:T.textMute }}><div style={{ width:10,height:10,borderRadius:2,background:T.textMute,opacity:.5 }} /> Non-Jira (learning, meeting, koordinasi)</div>
+                </div>
+              </Card>
 
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14 }}>
-            <Card p={18}>
-              <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Delivery — Jam Mingguan</div>
-              <ResponsiveContainer width="100%" height={140}>
-                <BarChart data={WEEKLY.delivery} barSize={5} barGap={0}>
-                  <XAxis dataKey="d" tick={{ fill:T.textMute,fontSize:11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill:T.textMute,fontSize:10 }} axisLine={false} tickLine={false} width={22} />
-                  <Tooltip contentStyle={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,color:T.textPri }} />
-                  {Object.entries(ACTS).filter(([,v])=>v.team==="delivery").map(([k,v])=><Bar key={k} dataKey={k} fill={v.color} radius={[2,2,0,0]} />)}
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-            <Card p={18}>
-              <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Pre-Sales — Mingguan</div>
-              <ResponsiveContainer width="100%" height={140}>
-                <BarChart data={WEEKLY.presales} barSize={5} barGap={0}>
-                  <XAxis dataKey="d" tick={{ fill:T.textMute,fontSize:11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill:T.textMute,fontSize:10 }} axisLine={false} tickLine={false} width={22} />
-                  <Tooltip contentStyle={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,color:T.textPri }} />
-                  {Object.entries(ACTS).filter(([,v])=>v.team==="presales").map(([k,v])=><Bar key={k} dataKey={k} fill={v.color} radius={[2,2,0,0]} />)}
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
+              <div style={{ display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:14 }}>
+                <Card p={18}>
+                  <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Delivery — Jam Mingguan</div>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <BarChart data={weeklySeries} barSize={5} barGap={0}>
+                      <XAxis dataKey="label" tick={{ fill:T.textMute,fontSize:11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill:T.textMute,fontSize:10 }} axisLine={false} tickLine={false} width={22} />
+                      <Tooltip contentStyle={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,color:T.textPri }} formatter={(value) => [`${value} jam`, 'Delivery']} />
+                      <Bar dataKey="delivery" fill={T.teal} radius={[2,2,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Card>
+                <Card p={18}>
+                  <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Pre-Sales — Mingguan</div>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <BarChart data={weeklySeries} barSize={5} barGap={0}>
+                      <XAxis dataKey="label" tick={{ fill:T.textMute,fontSize:11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill:T.textMute,fontSize:10 }} axisLine={false} tickLine={false} width={22} />
+                      <Tooltip contentStyle={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,color:T.textPri }} formatter={(value) => [`${value} jam`, 'Pre-Sales']} />
+                      <Bar dataKey="presales" fill={T.violet} radius={[2,2,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Card>
+              </div>
+            </div>
+
+            <div style={{ display:"flex",flexDirection:"column",gap:14, minWidth:0 }}>
+              <Card p={18}>
+                <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Snapshot Tim</div>
+                <div style={{ display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10 }}>
+                  {[
+                    { label: "Member aktif", value: activeMembers.length, color: T.indigoHi },
+                    { label: "Delivery", value: deliveryCount, color: T.teal },
+                    { label: "Pre-Sales", value: presalesCount, color: T.violet },
+                    { label: "Rata-rata jam", value: avgHoursLabel, color: T.amber },
+                  ].map((item) => (
+                    <div key={item.label} style={{ background:T.surfaceHi,border:`1px solid ${item.color}25`,borderRadius:10,padding:"11px 12px" }}>
+                      <div style={{ fontSize:10,color:T.textMute,marginBottom:6,textTransform:"uppercase",letterSpacing:".06em" }}>{item.label}</div>
+                      <div style={{ fontSize:22,fontWeight:800,color:item.color,fontFamily:MONO }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <Card p={18}>
+                <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12 }}>
+                  <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em" }}>Top Contributor</div>
+                  <span style={{ fontSize:10,color:T.textMute }}>berdasarkan jam kerja</span>
+                </div>
+                {topMember ? (
+                  <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+                    <Avi av={topMember.avatar} team={topMember.team} sz={42} />
+                    <div style={{ flex:1,minWidth:0 }}>
+                      <div style={{ fontSize:14,fontWeight:700,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{topMember.name}</div>
+                      <div style={{ fontSize:11,color:T.textMute,marginTop:2 }}>{topMember.activitiesCount} aktivitas · {fmtH(topMember.totalHours * 60)}</div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontSize:11,color:T.textMute }}>KPI</div>
+                      <div style={{ fontSize:14,fontWeight:800,color:topMember.team==="presales"?T.violet:T.teal,fontFamily:MONO }}>
+                        {topKpi !== null ? topKpi.toFixed(1) : "—"}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize:12,color:T.textMute }}>Belum ada data leaderboard.</div>
+                )}
+              </Card>
+
+              <Card p={18}>
+                <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Arah Penggunaan</div>
+                <div style={{ display:"flex",flexDirection:"column",gap:10,fontSize:12,color:T.textSec,lineHeight:1.6 }}>
+                  <div>1. Activity Log untuk detail harian dan filter per member.</div>
+                  <div>2. Team Members untuk hierarki dan status tim.</div>
+                  <div>3. Profile untuk integrasi Jira, Telegram, dan KPI pribadi.</div>
+                </div>
+              </Card>
+            </div>
           </div>
         </div>
       )}

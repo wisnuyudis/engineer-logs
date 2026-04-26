@@ -101,11 +101,16 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
 
   return (
     <div>
-      <div style={{ display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between" }}>
-        <div style={{ display:"flex",gap:5,flexWrap:"wrap",alignItems:"center" }}>
+      <div style={{ display:"flex",gap:12,marginBottom:14,flexWrap:"wrap",alignItems:"flex-end",justifyContent:"space-between" }}>
+        <div style={{ display:"flex",flexDirection:"column",gap:6,flex:1,minWidth:0 }}>
+          <div style={{ display:"flex",gap:5,flexWrap:"wrap",alignItems:"center" }}>
           <Pill active={filter==="all"} color={T.indigoHi} lo={T.indigoLo} onClick={()=>setFilter("all")}>Semua</Pill>
           <Pill active={filter==="synced"} color={T.jira} lo={T.jiraLo} onClick={()=>setFilter("synced")}>Sinkron Otomatis</Pill>
           <Pill active={filter==="manual"} color={T.textSec} lo={T.border} onClick={()=>setFilter("manual")}>Input Manual</Pill>
+          </div>
+          <div style={{ fontSize:11, color:T.textMute }}>
+            Klik baris untuk melihat detail lengkap. Kolom tabel bisa diurutkan dari header.
+          </div>
         </div>
         <div style={{ display:"flex",gap:8,flexWrap:"wrap",alignItems:"center" }}>
           {adminView && (
@@ -128,7 +133,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
       </div>
 
       <Card p={0} style={{ overflow:"hidden" }}>
-        <div style={{ display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:T.surfaceHi,fontSize:11,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".05em" }}>
+        <div style={{ position:"sticky",top:0,zIndex:2,display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:T.surfaceHi,fontSize:11,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".05em" }}>
           <div />
           <button style={headerBtnStyle} onClick={()=>onSort('date')}>Tanggal{sortMark('date')}</button>
           <button style={headerBtnStyle} onClick={()=>onSort('topic')}>Info{sortMark('topic')}</button>
@@ -155,7 +160,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
             <div key={a.id} style={{ borderBottom:`1px solid ${T.border}` }}>
               <div
                 onClick={()=>toggleExpanded(a.id)}
-                style={{ display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",alignItems:"start",cursor:"pointer",background:expanded?`${T.indigo}08`:T.surface }}
+                style={{ display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",alignItems:"start",cursor:"pointer",background:expanded?`${T.indigo}08`:T.surface,transition:"background .15s", }}
               >
                 <div style={{ fontSize:14,color:T.textMute }}>{expanded ? '▾' : '▸'}</div>
                 <div>

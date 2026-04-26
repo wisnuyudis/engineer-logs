@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './components/Sidebar';
@@ -10,6 +10,7 @@ import { ReportsView } from './components/ReportsView';
 import { ProfileView } from './components/ProfileView';
 import { TaxonomyView } from './components/TaxonomyView';
 import { KpiManagementView } from './components/KpiManagementView';
+import { AuditTrailView } from './components/AuditTrailView';
 import { TaxonomyContext } from './contexts/TaxonomyContext';
 import { T, FONT, DISPLAY } from './theme/tokens';
 import { RoleBadge, Avi } from './components/ui/Primitives';
@@ -29,6 +30,17 @@ export default function App() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    const handleAuthUpdated = (event) => {
+      const nextUser = event?.detail?.user;
+      if (nextUser) {
+        setUser(nextUser);
+      }
+    };
+    window.addEventListener('auth:updated', handleAuthUpdated);
+    return () => window.removeEventListener('auth:updated', handleAuthUpdated);
+  }, []);
+
   const { data: members = [], isLoading: loadingMembers } = useQuery({
     queryKey: ['members'],
     queryFn: async () => {
@@ -44,6 +56,8 @@ export default function App() {
       const res = await api.get('/activities', { params: { paginate: false } });
       return res.data.map(a => ({
         ...a,
+        userId: a.user?.id,
+        userName: a.user?.name,
         user: a.user?.name,
         userTeam: a.user?.team,
         kpi: { nps: a.nps }
@@ -96,7 +110,8 @@ export default function App() {
     "/members": "Team Members",
     "/reports": "Reports",
     "/profile": "Profil Saya",
-    "/kpi-admin": "KPI"
+    "/kpi-admin": "KPI",
+    "/audit": "Audit Trail",
   };
 
   const view = location.pathname;
@@ -106,53 +121,58 @@ export default function App() {
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.textPri }}>
       <Toaster position="top-center" richColors />
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
       <div style={{ display: "flex", minHeight: "100vh" }}>
         
         <Sidebar user={user} onLogout={() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          queryClient.clear();
-          setUser(null);
+          api.post('/auth/logout').catch(() => null).finally(() => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            queryClient.clear();
+            setUser(null);
+          });
         }} />
 
         <main style={{ marginLeft: 220, flex: 1, padding: "22px 26px", minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-            <div>
-              <div style={{ fontSize: 9, color: T.textMute, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 3 }}>
-                {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+          <div style={{ maxWidth: 1480, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+              <div>
+                <div style={{ fontSize: 9, color: T.textMute, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 3 }}>
+                  {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                </div>
+                <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: T.textPri, fontFamily: DISPLAY, letterSpacing: "-.02em" }}>{pageTitle}</h1>
               </div>
-              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: T.textPri, fontFamily: DISPLAY, letterSpacing: "-.02em" }}>{pageTitle}</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Avi av={user.avatar} team={user.team} sz={28} />
+                <RoleBadge role={user.role} />
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Avi av={user.avatar} team={user.team} sz={28} />
-              <RoleBadge role={user.role} />
-            </div>
-          </div>
 
-          {isLoading ? (
-            <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "20px" }}>
-              <div style={{ background: T.surface, height: 180, borderRadius: 16, animation: "pulse 1.5s infinite" }} />
-              <div style={{ display: "flex", gap: "20px" }}>
-                <div style={{ background: T.surface, height: 350, flex: 2, borderRadius: 16, animation: "pulse 1.5s infinite" }} />
-                <div style={{ background: T.surface, height: 350, flex: 1, borderRadius: 16, animation: "pulse 1.5s infinite" }} />
+            {isLoading ? (
+              <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div style={{ background: T.surface, height: 180, borderRadius: 16, animation: "pulse 1.5s infinite" }} />
+                <div style={{ display: "flex", gap: "20px" }}>
+                  <div style={{ background: T.surface, height: 350, flex: 2, borderRadius: 16, animation: "pulse 1.5s infinite" }} />
+                  <div style={{ background: T.surface, height: 350, flex: 1, borderRadius: 16, animation: "pulse 1.5s infinite" }} />
+                </div>
+                <style>{`@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 0.3; } 100% { opacity: 0.6; } }`}</style>
               </div>
-              <style>{`@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 0.3; } 100% { opacity: 0.6; } }`}</style>
-            </div>
-          ) : (
-            <TaxonomyContext.Provider value={ACTS}>
-              <Routes>
-                <Route path="/" element={<DashboardView currentUser={user} activities={acts} members={members} onAdminEditNps={handleAdminEditNps} />} />
-                <Route path="/activities" element={<ActivitiesView currentUser={user} members={members} onAdd={handleAddAct} />} />
-                <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} activities={acts} />} />
-                <Route path="/reports" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
-                <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={u => setUser(u)} />} />
-                <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
-                <Route path="/taxonomy" element={<TaxonomyView currentUser={user} />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </TaxonomyContext.Provider>
-          )}
+            ) : (
+              <TaxonomyContext.Provider value={ACTS}>
+                <Routes>
+                  <Route path="/" element={<DashboardView currentUser={user} activities={acts} members={members} onAdminEditNps={handleAdminEditNps} />} />
+                  <Route path="/activities" element={<ActivitiesView currentUser={user} members={members} onAdd={handleAddAct} />} />
+                  <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} activities={acts} />} />
+                  <Route path="/reports" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
+                  <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={u => setUser(u)} />} />
+                  <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
+                  <Route path="/audit" element={<AuditTrailView currentUser={user} />} />
+                  <Route path="/taxonomy" element={<TaxonomyView currentUser={user} />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </TaxonomyContext.Provider>
+            )}
+          </div>
 
         </main>
       </div>

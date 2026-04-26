@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activateUser = void 0;
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const activateUser = async (req, res) => {
     try {
@@ -35,6 +36,15 @@ const activateUser = async (req, res) => {
                 passwordHash,
                 status: 'active'
             }
+        });
+        await (0, auditTrail_1.writeAuditSystem)({
+            userId,
+            action: 'account.activate',
+            entityType: 'user',
+            entityId: userId,
+            after: { status: 'active' },
+            ipAddress: req.ip || null,
+            userAgent: req.headers['user-agent'] || null,
         });
         // Clean up used token
         await prisma.setting.delete({

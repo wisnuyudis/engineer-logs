@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { deleteSyncedJiraWorklog, syncJiraWorklogToActivity } from '../services/jiraSyncService';
+import { writeAudit, writeAuditSystem } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
 
@@ -185,6 +186,20 @@ export const handleJiraCallback = async (req: Request, res: Response) => {
       }
     });
 
+    await writeAuditSystem({
+      userId: setting.value,
+      action: 'jira.connect',
+      entityType: 'jira_account',
+      entityId: resource.id,
+      after: {
+        jiraAccountId: myself.accountId || null,
+        jiraCloudId: resource.id,
+        jiraDisplayName: myself.displayName || null,
+      },
+      ipAddress: req.ip || null,
+      userAgent: req.headers['user-agent'] || null,
+    });
+
     await prisma.setting.delete({ where: { key: setting.key } }).catch(() => null);
     return res.redirect(createFrontendRedirect('connected'));
   } catch (error: any) {
@@ -206,6 +221,13 @@ export const disconnectJira = async (req: AuthRequest, res: Response) => {
         jiraAvatarUrl: null,
         jiraConnectedAt: null,
       }
+    });
+
+    await writeAudit(req, {
+      action: 'jira.disconnect',
+      entityType: 'jira_account',
+      entityId: userId,
+      after: { connected: false },
     });
 
     res.json({ message: 'Koneksi Jira diputus' });
