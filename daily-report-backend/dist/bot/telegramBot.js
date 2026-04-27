@@ -15,7 +15,13 @@ const botToken = process.env.TELEGRAM_BOT_TOKEN;
 exports.bot = botToken ? new telegraf_1.Telegraf(botToken) : null;
 let isBotRunning = false;
 if (exports.bot) {
-    const sessionPath = path_1.default.resolve(process.cwd(), 'telegram_sessions.json');
+    const legacySessionPath = path_1.default.resolve(process.cwd(), 'telegram_sessions.json');
+    const sessionPath = process.env.TELEGRAM_SESSION_FILE
+        ? path_1.default.resolve(process.env.TELEGRAM_SESSION_FILE)
+        : (fs_1.default.existsSync(legacySessionPath)
+            ? legacySessionPath
+            : path_1.default.resolve(process.cwd(), 'data/telegram_sessions.json'));
+    fs_1.default.mkdirSync(path_1.default.dirname(sessionPath), { recursive: true });
     if (fs_1.default.existsSync(sessionPath)) {
         try {
             const stored = JSON.parse(fs_1.default.readFileSync(sessionPath, 'utf8'));
@@ -34,7 +40,7 @@ if (exports.bot) {
         }
     }
     // 1. Inisialisasi Session Middleware
-    const localSession = new telegraf_session_local_1.default({ database: 'telegram_sessions.json' });
+    const localSession = new telegraf_session_local_1.default({ database: sessionPath });
     exports.bot.use(localSession.middleware());
     exports.bot.use(async (ctx, next) => {
         const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';

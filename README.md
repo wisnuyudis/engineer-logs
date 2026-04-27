@@ -104,6 +104,50 @@ Script ini akan:
 - menjalankan backend
 - menjalankan frontend
 
+## Deploy Dengan Docker
+
+Repo ini sekarang menyediakan setup Docker untuk backend dan frontend sekaligus.
+
+Prasyarat:
+
+- Docker
+- Docker Compose plugin (`docker compose`)
+- file `daily-report-backend/.env` sudah sesuai environment server
+
+Langkah:
+
+```bash
+git pull
+docker compose build
+docker compose up -d
+```
+
+Service yang dijalankan:
+
+- `frontend` di port `80`
+- `backend` di port `4000`
+
+Arsitektur runtime:
+
+- frontend dibuild dengan Vite lalu diserve oleh Nginx
+- request `/api` dan `/uploads` dari frontend diproxy ke container backend
+- state session bot Telegram dipersist di volume Docker terpisah
+- folder upload backend dipersist di volume Docker `backend_uploads`
+
+Catatan environment penting:
+
+- set `FRONTEND_URL` ke origin publik frontend, misalnya `http://192.168.30.141`
+- set `PORT=4000`
+- tetap isi `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, dan env integrasi lain yang dibutuhkan
+
+Perintah operasional umum:
+
+```bash
+docker compose logs -f
+docker compose restart
+docker compose down
+```
+
 ## Default URL Lokal
 
 - Frontend: `http://localhost:5173`
@@ -160,4 +204,3 @@ Halaman audit trail hanya tersedia untuk admin.
   - admin: semua data
   - head: subtree bawahan
   - user biasa: diri sendiri
-

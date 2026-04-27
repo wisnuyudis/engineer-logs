@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+data
+server.log
+dev.db
+prisma/dev.db
+telegram_sessions.json
+.env
+npm-debug.log*

@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./daily-report-backend
+    container_name: engineerlog-backend
+    env_file:
+      - ./daily-report-backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      TELEGRAM_SESSION_FILE: /app/data/telegram_sessions.json
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+    volumes:
+      - backend_data:/app/data
+      - backend_uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./daily-report-dashboard
+      args:
+        VITE_API_URL: /api
+    container_name: engineerlog-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  backend_data:
+  backend_uploads:
