@@ -12,8 +12,8 @@ import { TaxonomyView } from './components/TaxonomyView';
 import { KpiManagementView } from './components/KpiManagementView';
 import { AuditTrailView } from './components/AuditTrailView';
 import { TaxonomyContext } from './contexts/TaxonomyContext';
-import { T, FONT, DISPLAY } from './theme/tokens';
-import { RoleBadge, Avi } from './components/ui/Primitives';
+import { T, FONT, DISPLAY, applyThemeTokens } from './theme/tokens';
+import { RoleBadge, Avi, Btn } from './components/ui/Primitives';
 import { Toaster } from 'sonner';
 import React from 'react';
 import api from './lib/api';
@@ -25,14 +25,28 @@ export default function App() {
       return stored ? JSON.parse(stored) : null;
     } catch { return null; }
   });
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('theme') || 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
 
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  applyThemeTokens(theme);
+
   const syncUser = (nextUser) => {
     setUser(nextUser);
     localStorage.setItem('user', JSON.stringify(nextUser));
   };
+
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const handleAuthUpdated = (event) => {
@@ -184,6 +198,36 @@ export default function App() {
 
         </main>
       </div>
+      <button
+        onClick={() => setTheme((prev) => prev === 'dark' ? 'light' : 'dark')}
+        aria-label="Toggle theme"
+        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        style={{
+          position: 'fixed',
+          right: 22,
+          bottom: 22,
+          width: 58,
+          height: 58,
+          borderRadius: '999px',
+          border: `1px solid ${T.borderHi}`,
+          background: `linear-gradient(135deg, ${T.surfaceHi}, ${T.surface})`,
+          color: T.textPri,
+          boxShadow: theme === 'dark'
+            ? '0 18px 40px rgba(0,0,0,.38)'
+            : '0 18px 40px rgba(28,35,90,.18)',
+          cursor: 'pointer',
+          zIndex: 120,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 24,
+          transition: 'transform .15s ease, box-shadow .15s ease, background .15s ease',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+      >
+        {theme === 'dark' ? '☀' : '☾'}
+      </button>
     </div>
   );
 }
