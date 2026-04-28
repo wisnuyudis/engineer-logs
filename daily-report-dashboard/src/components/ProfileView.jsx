@@ -4,12 +4,63 @@ import { Card, Avi, RoleBadge, TeamBadge, Btn, Lbl, Inp } from './ui/Primitives'
 import { PersonalKPI } from './shared/PersonalKPI';
 import api from '../lib/api';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 export function ProfileView({ user, activities, onUpdate }) {
   const [edit,setE]=useState(false);
   const [draft,setD]=useState({...user});
   const [saved,setSaved]=useState(false);
-  const save=()=>{onUpdate(draft);setE(false);setSaved(true);setTimeout(()=>setSaved(false),2500);};
+  const [saving, setSaving] = useState(false);
+  const [pw, setPw] = useState({ oldPassword:"", newPassword:"", confirmPassword:"" });
+  const [pwBusy, setPwBusy] = useState(false);
+
+  useEffect(() => {
+    setD({ ...user });
+  }, [user]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.patch('/auth/profile', {
+        name: draft.name,
+        avatarUrl: draft.avatarUrl || null,
+      });
+      onUpdate({ ...user, ...data });
+      setE(false);
+      setSaved(true);
+      setTimeout(()=>setSaved(false),2500);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Gagal menyimpan profil');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitPasswordChange = async () => {
+    if (!pw.oldPassword || !pw.newPassword || !pw.confirmPassword) {
+      return toast.error('Semua field password wajib diisi');
+    }
+    if (pw.newPassword.length < 6) {
+      return toast.error('Password baru minimal 6 karakter');
+    }
+    if (pw.newPassword !== pw.confirmPassword) {
+      return toast.error('Konfirmasi password baru tidak sama');
+    }
+
+    setPwBusy(true);
+    try {
+      const { data } = await api.patch('/auth/password', {
+        oldPassword: pw.oldPassword,
+        newPassword: pw.newPassword,
+      });
+      setPw({ oldPassword:"", newPassword:"", confirmPassword:"" });
+      toast.success(data.message || 'Password berhasil diubah');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Gagal mengubah password');
+    } finally {
+      setPwBusy(false);
+    }
+  };
   return (
     <div style={{ width:"100%", maxWidth:1240 }}>
       <style>{`
@@ -47,7 +98,7 @@ export function ProfileView({ user, activities, onUpdate }) {
               </div>
               <div>
                 {!edit ? <Btn v="sec" sz="sm" onClick={()=>setE(true)}>✏ Edit</Btn>
-                : <div style={{ display:"flex",gap:5 }}><Btn v="ghost" sz="sm" onClick={()=>{setE(false);setD({...user});}}>Batal</Btn><Btn v="teal" sz="sm" onClick={save}>Simpan</Btn></div>}
+                : <div style={{ display:"flex",gap:5 }}><Btn v="ghost" sz="sm" onClick={()=>{setE(false);setD({...user});}} disabled={saving}>Batal</Btn><Btn v="teal" sz="sm" onClick={save} disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</Btn></div>}
               </div>
             </div>
             {saved&&<div style={{ marginBottom:12,padding:"7px 12px",background:T.greenLo,border:`1px solid ${T.green}30`,borderRadius:7,fontSize:12,color:T.green }}>✓ Profil berhasil diperbarui</div>}
@@ -66,6 +117,35 @@ export function ProfileView({ user, activities, onUpdate }) {
         </div>
 
         <div className="profile-stack">
+          <Card p={22}>
+            <div style={{ fontSize:15, fontWeight:700, color:T.textPri, marginBottom:8 }}>Keamanan Akun</div>
+            <p style={{ fontSize:12, color:T.textMute, margin:"0 0 16px", lineHeight:1.5 }}>
+              Ubah password akun Anda sendiri dari halaman profil ini.
+            </p>
+            <div style={{ display:"grid", gap:12 }}>
+              <Inp
+                type="password"
+                label="Password Lama"
+                value={pw.oldPassword}
+                onChange={(e)=>setPw((prev)=>({ ...prev, oldPassword: e.target.value }))}
+              />
+              <Inp
+                type="password"
+                label="Password Baru"
+                value={pw.newPassword}
+                onChange={(e)=>setPw((prev)=>({ ...prev, newPassword: e.target.value }))}
+              />
+              <Inp
+                type="password"
+                label="Konfirmasi Password Baru"
+                value={pw.confirmPassword}
+                onChange={(e)=>setPw((prev)=>({ ...prev, confirmPassword: e.target.value }))}
+              />
+              <Btn v="teal" onClick={submitPasswordChange} disabled={pwBusy} style={{ justifyContent:"center" }}>
+                {pwBusy ? 'Mengubah Password...' : 'Ubah Password'}
+              </Btn>
+            </div>
+          </Card>
           <JiraIntegrator />
           <TelegramIntegrator />
         </div>

@@ -29,12 +29,16 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const syncUser = (nextUser) => {
+    setUser(nextUser);
+    localStorage.setItem('user', JSON.stringify(nextUser));
+  };
 
   useEffect(() => {
     const handleAuthUpdated = (event) => {
       const nextUser = event?.detail?.user;
       if (nextUser) {
-        setUser(nextUser);
+        syncUser(nextUser);
       }
     };
     window.addEventListener('auth:updated', handleAuthUpdated);
@@ -85,7 +89,7 @@ export default function App() {
   }, [taxRaw]);
 
   if (!user) {
-    return <LoginPage onLogin={u => { setUser(u); navigate('/'); }} />;
+    return <LoginPage onLogin={u => { syncUser(u); navigate('/'); }} />;
   }
 
   // Define optimisic mutation callbacks to replace Prop Drilling useState
@@ -103,6 +107,10 @@ export default function App() {
     queryClient.invalidateQueries({ queryKey: ['activities-log'] });
   };
   const handleAddMember = (m) => queryClient.setQueryData(['members'], old => [...(old || []), m]);
+  const handleResetMemberPassword = async (id, newPassword) => {
+    const res = await api.patch(`/users/${id}/reset-password`, { newPassword });
+    return res.data;
+  };
 
   const TITLES = {
     "/": "Dashboard",
@@ -162,9 +170,9 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<DashboardView currentUser={user} activities={acts} members={members} onAdminEditNps={handleAdminEditNps} />} />
                   <Route path="/activities" element={<ActivitiesView currentUser={user} members={members} onAdd={handleAddAct} />} />
-                  <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} activities={acts} />} />
+                  <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} onResetPassword={handleResetMemberPassword} activities={acts} />} />
                   <Route path="/reports" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
-                  <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={u => setUser(u)} />} />
+                  <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={syncUser} />} />
                   <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
                   <Route path="/audit" element={<AuditTrailView currentUser={user} />} />
                   <Route path="/taxonomy" element={<TaxonomyView currentUser={user} />} />

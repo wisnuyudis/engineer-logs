@@ -282,12 +282,14 @@ function InviteModal({ open, onClose, members, onAdd }) {
   );
 }
 
-function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, activities }) {
+function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, onResetPassword, activities }) {
   const [confirm,setC]=useState(false),[delC,setD]=useState(false);
   const [deleting,setDeleting]=useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   const kpi = useMemo(()=>calcKPI(m,activities),[m,activities]);
   const isSusp = m.status==="suspended";
   return (
+    <>
     <Card style={{ opacity:isSusp?.75:1,position:"relative",overflow:"hidden" }} glow={isSusp?T.amber:undefined}>
       {isSusp&&<div style={{ position:"absolute",top:0,left:0,right:0,height:2,background:`repeating-linear-gradient(90deg,${T.amber} 0,${T.amber} 7px,transparent 7px,transparent 14px)` }} />}
       <div style={{ display:"flex",alignItems:"flex-start",gap:10,marginBottom:12 }}>
@@ -346,6 +348,7 @@ function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, activities })
 
       {canManage&&m.status!=="invited"&&!delC&&(
         <div style={{ borderTop:`1px solid ${T.border}`,paddingTop:10 }}>
+          <Btn v="ghost" sz="sm" style={{ width:"100%",justifyContent:"center",marginBottom:8 }} onClick={()=>setResetOpen(true)}>🔑 Reset Password</Btn>
           {!confirm ? (
             <Btn v={isSusp?"green":"amber"} sz="sm" style={{ width:"100%",justifyContent:"center" }} onClick={()=>setC(true)}>{isSusp?"🔓 Aktifkan":"🔒 Suspend"}</Btn>
           ) : (
@@ -357,6 +360,67 @@ function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, activities })
         </div>
       )}
     </Card>
+    <ResetPasswordModal
+      open={resetOpen}
+      onClose={()=>setResetOpen(false)}
+      member={m}
+      onSubmit={onResetPassword}
+    />
+    </>
+  );
+}
+
+function ResetPasswordModal({ open, onClose, member, onSubmit }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    if (busy) return;
+    setNewPassword('');
+    setConfirmPassword('');
+    onClose();
+  };
+
+  const submit = async () => {
+    if (!newPassword || !confirmPassword) {
+      return toast.error('Password baru dan konfirmasi wajib diisi');
+    }
+    if (newPassword.length < 6) {
+      return toast.error('Password baru minimal 6 karakter');
+    }
+    if (newPassword !== confirmPassword) {
+      return toast.error('Konfirmasi password tidak sama');
+    }
+
+    try {
+      setBusy(true);
+      const data = await onSubmit(member.id, newPassword);
+      toast.success(data.message || `Password ${member.name} berhasil direset`);
+      close();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Gagal reset password');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={close} width={420}>
+      <MHead title="Reset Password" sub={`Atur password baru untuk ${member?.name || 'member'}`} onClose={close} />
+      <div style={{ display:'grid', gap:12 }}>
+        <Inp label="Password Baru" type="password" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} />
+        <Inp label="Konfirmasi Password Baru" type="password" value={confirmPassword} onChange={(e)=>setConfirmPassword(e.target.value)} />
+        <div style={{ fontSize:11, color:T.textMute, lineHeight:1.5 }}>
+          Password baru akan langsung berlaku untuk login berikutnya.
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <Btn v="ghost" style={{ flex:1, justifyContent:'center' }} onClick={close} disabled={busy}>Batal</Btn>
+          <Btn v="teal" style={{ flex:1, justifyContent:'center' }} onClick={submit} disabled={busy}>
+            {busy ? 'Mereset...' : 'Reset Password'}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -369,7 +433,7 @@ function kpiColor(score) {
   return T.red;
 }
 
-export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, activities }) {
+export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, onResetPassword, activities }) {
   const [teamF,setTF]=useState("all");
   const [inviteOpen,setInvite]=useState(false);
   const canManage = isAdmin(currentUser.role);
@@ -395,7 +459,7 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, a
           <div style={{ flex:1,height:1,background:T.border }} />
         </div>
         <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12 }}>
-          {list.map(m=><MemberCard key={m.id} m={m} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} activities={activities} />)}
+          {list.map(m=><MemberCard key={m.id} m={m} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} onResetPassword={onResetPassword} activities={activities} />)}
         </div>
       </div>
     );

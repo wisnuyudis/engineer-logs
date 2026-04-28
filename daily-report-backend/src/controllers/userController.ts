@@ -164,3 +164,49 @@ export const deleteUser = async (req: Request<{ id: string }>, res: Response) =>
     res.status(500).json({ error: 'Failed to delete user' });
   }
 };
+
+export const resetUserPassword = async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { newPassword } = req.body as { newPassword?: string };
+
+    if (!newPassword || newPassword.trim().length < 6) {
+      return res.status(400).json({ error: 'Password baru minimal 6 karakter' });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, name: true, status: true }
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword.trim(), 10);
+
+    await prisma.user.update({
+      where: { id },
+      data: { passwordHash }
+    });
+
+    await writeAudit(req as any, {
+      action: 'user.password_reset',
+      entityType: 'user',
+      entityId: id,
+      metadata: {
+        email: existingUser.email,
+        name: existingUser.name,
+        status: existingUser.status,
+      },
+    });
+
+    res.json({
+      message: `Password ${existingUser.name} berhasil direset`
+    });
+  } catch (error) {
+    if (req.log) req.log.error(error, 'Error resetting user password');
+    else console.error(error);
+    res.status(500).json({ error: 'Failed to reset user password' });
+  }
+};

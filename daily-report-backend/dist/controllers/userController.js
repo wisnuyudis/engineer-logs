@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteUser = exports.updateUser = exports.createUser = exports.getUsers = void 0;
+exports.resetUserPassword = exports.deleteUser = exports.updateUser = exports.createUser = exports.getUsers = void 0;
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const auditTrail_1 = require("../utils/auditTrail");
@@ -160,3 +160,45 @@ const deleteUser = async (req, res) => {
     }
 };
 exports.deleteUser = deleteUser;
+const resetUserPassword = async (req, res) => {
+    try {
+        const id = String(req.params.id);
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.trim().length < 6) {
+            return res.status(400).json({ error: 'Password baru minimal 6 karakter' });
+        }
+        const existingUser = await prisma.user.findUnique({
+            where: { id },
+            select: { id: true, email: true, name: true, status: true }
+        });
+        if (!existingUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const passwordHash = await bcryptjs_1.default.hash(newPassword.trim(), 10);
+        await prisma.user.update({
+            where: { id },
+            data: { passwordHash }
+        });
+        await (0, auditTrail_1.writeAudit)(req, {
+            action: 'user.password_reset',
+            entityType: 'user',
+            entityId: id,
+            metadata: {
+                email: existingUser.email,
+                name: existingUser.name,
+                status: existingUser.status,
+            },
+        });
+        res.json({
+            message: `Password ${existingUser.name} berhasil direset`
+        });
+    }
+    catch (error) {
+        if (req.log)
+            req.log.error(error, 'Error resetting user password');
+        else
+            console.error(error);
+        res.status(500).json({ error: 'Failed to reset user password' });
+    }
+};
+exports.resetUserPassword = resetUserPassword;
