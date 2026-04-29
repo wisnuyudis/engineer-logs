@@ -336,7 +336,7 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period, pmNp
         const relatedJobDoneAt = job ? toIsoDate(job.resolutionDate) : null;
         const reportDoneAt = report ? toIsoDate(report.resolutionDate) : null;
         const reportDays = businessDaysBetween(relatedJobDoneAt, reportDoneAt);
-        const reportScore = report ? pmReportScore(reportDays) : -1;
+        const reportScore = report ? pmReportScore(reportDays) : 4;
         reportItems.push({
             parentRef,
             parentDueDate,
@@ -345,6 +345,7 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period, pmNp
             reportDoneAt,
             businessDaysLate: reportDays,
             score: reportScore,
+            assumedByPolicy: !report,
         });
     }
     const executionScore = averageScores(execItems.map((item) => item.score));
@@ -373,8 +374,8 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period, pmNp
 };
 const computeCorrectiveMaintenanceDomain = (issues) => {
     const relevant = issues.filter((issue) => {
-        const workType = normalizeSummary(issue.workTypeName);
-        return isProjectPrefix(issue.projectName, '(SUP)') && workType.includes('problem');
+        const requestType = normalizeSummary(issue.workTypeName);
+        return requestType.includes('problem');
     });
     if (!relevant.length) {
         return {
@@ -463,9 +464,10 @@ const computeCorrectiveMaintenanceDomain = (issues) => {
 };
 const computeEnhancementDomain = (issues) => {
     const relevant = issues.filter((issue) => {
-        const workType = normalizeSummary(issue.workTypeName);
-        return isProjectPrefix(issue.projectName, '(SUP)')
-            && (workType.includes('request changes and enhancement') || workType.includes('enhancement') || workType.includes('change'));
+        const requestType = normalizeSummary(issue.workTypeName);
+        return (requestType.includes('request changes and enhancement')
+            || requestType.includes('enhancement')
+            || requestType.includes('change'));
     });
     if (!relevant.length) {
         return {

@@ -129,12 +129,12 @@ const resolveJiraActKey = (issueKey, issueTypeName, projectName, workTypeName) =
         return 'jira_impl';
     if (project.startsWith('[OPS]'))
         return 'jira_ops';
-    if (project.startsWith('(SUP)')) {
-        if (workType === '[system] problem')
-            return 'jira_cm';
-        if (workType === '[system] change' || workType === '[system] service request')
-            return 'jira_ops';
-    }
+    if (workType.includes('problem'))
+        return 'jira_cm';
+    if (workType.includes('enhancement') || workType.includes('change'))
+        return 'jira_enh';
+    if (workType.includes('service request'))
+        return 'jira_ops';
     if (key.startsWith('MAINT-') || issueType.includes('preventive'))
         return 'jira_pm';
     if (key.startsWith('CM-') || key.startsWith('SUP-') || issueType.includes('incident') || issueType.includes('bug'))
