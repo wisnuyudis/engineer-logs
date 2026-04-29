@@ -223,14 +223,21 @@ const fetchJiraWorklog = async (issueKeyOrId, worklogId) => {
 };
 exports.fetchJiraWorklog = fetchJiraWorklog;
 const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, endDate) => {
+    const fieldMap = await loadJiraFieldNameMap();
+    const actualStartField = fieldMap['actual start'] || fieldMap['actual start date'] || fieldMap['start date'];
     const conditions = [
         `assignee = "${assigneeAccountId}"`,
-        `statusCategory = Done`,
-        `statusCategoryChangedDate >= "${startDate}"`,
-        `statusCategoryChangedDate <= "${endDate}"`,
         `issuetype not in subTaskIssueTypes()`,
         `issuetype != Epic`,
     ];
+    if (actualStartField) {
+        conditions.push(`"${actualStartField}" >= "${startDate}"`);
+        conditions.push(`"${actualStartField}" <= "${endDate}"`);
+    }
+    else {
+        conditions.push(`updated >= "${startDate}"`);
+        conditions.push(`updated <= "${endDate}"`);
+    }
     const jql = `${conditions.join(' AND ')} ORDER BY statusCategoryChangedDate DESC`;
     const matchedIssues = [];
     let nextPageToken;
@@ -240,7 +247,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
             jql,
             maxResults,
             nextPageToken,
-            fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate'],
+            fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', actualStartField].filter(Boolean),
         };
         const res = await jiraFetch('/rest/api/3/search/jql', {
             method: 'POST',

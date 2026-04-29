@@ -114,6 +114,9 @@ const averageScores = (values: Array<number | null | undefined>) => {
   return roundScore(filtered.reduce((sum, value) => sum + value, 0) / filtered.length);
 };
 
+const hasScorableAutoEvidence = (values: Array<number | null | undefined>) =>
+  values.some((value) => value !== null && value !== undefined);
+
 const normalizeManualScore = (value: unknown, fallback: number | null = null) => {
   if (value === null || value === undefined || value === '') return fallback;
   const num = Number(value);
@@ -288,7 +291,9 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
   const missingDocCount = docStatus.filter((doc) => !doc.present).length;
   const lateDocCount = docStatus.filter((doc) => doc.present && !doc.onTime).length;
   const documentationScore = foundDocCount === 0 ? -1 : (missingDocCount === 0 && lateDocCount === 0 ? 4 : 3);
-  const score = averageScores([taskScore, documentationScore, implNps]);
+  const score = hasScorableAutoEvidence([taskScore, documentationScore])
+    ? averageScores([taskScore, documentationScore, implNps])
+    : null;
 
   return {
     score,
@@ -400,7 +405,9 @@ const computePreventiveMaintenanceDomain = (
 
   const executionScore = averageScores(execItems.map((item) => item.score));
   const reportScore = averageScores(reportItems.map((item) => item.score));
-  const score = averageScores([executionScore, reportScore, pmNps]);
+  const score = hasScorableAutoEvidence([executionScore, reportScore])
+    ? averageScores([executionScore, reportScore, pmNps])
+    : null;
 
   return {
     score,
