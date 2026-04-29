@@ -537,7 +537,8 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
     const subtaskJql = [
         `assignee = "${user.jiraAccountId}"`,
         'issuetype in subTaskIssueTypes()',
-        `((due >= "${period.startDate}" AND due <= "${period.endDate}") OR (statusCategoryChangedDate >= "${period.startDate}" AND statusCategoryChangedDate <= "${period.endDate}"))`,
+        `updated >= "${period.startDate}"`,
+        `updated <= "${period.endDate}"`,
     ].join(' AND ');
     const supportJql = [
         `assignee = "${user.jiraAccountId}"`,

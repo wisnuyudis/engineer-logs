@@ -234,7 +234,27 @@ const searchJiraIssues = async ({ jql, fields }) => {
             body: JSON.stringify(payload),
         });
         if (!res.ok) {
-            throw new Error(`Gagal mengambil issue Jira untuk KPI. Status: ${res.status}`);
+            let detail = '';
+            try {
+                const data = await res.json();
+                const messages = [
+                    ...(Array.isArray(data?.errorMessages) ? data.errorMessages : []),
+                    ...Object.values(data?.errors || {}).map((value) => String(value)),
+                ].filter(Boolean);
+                if (messages.length)
+                    detail = ` - ${messages.join('; ')}`;
+            }
+            catch {
+                try {
+                    const text = await res.text();
+                    if (text)
+                        detail = ` - ${text.slice(0, 300)}`;
+                }
+                catch {
+                    detail = '';
+                }
+            }
+            throw new Error(`Gagal mengambil issue Jira untuk KPI. Status: ${res.status}${detail}`);
         }
         const data = await res.json();
         const issues = Array.isArray(data.issues) ? data.issues : [];
