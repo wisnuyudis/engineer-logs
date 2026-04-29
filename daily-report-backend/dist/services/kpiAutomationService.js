@@ -12,6 +12,7 @@ const REQUIRED_IMPL_DOCS = [
 ];
 const normalizeSummary = (value) => String(value || '').trim().toLowerCase();
 const inQuarter = (dateValue, period) => Boolean(dateValue && dateValue >= period.startDate && dateValue <= period.endDate);
+const isSupportKey = (issueKey) => String(issueKey || '').toUpperCase().startsWith('SUP-');
 const toIsoDate = (value) => {
     if (!value)
         return null;
@@ -374,8 +375,8 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period, pmNp
 };
 const computeCorrectiveMaintenanceDomain = (issues) => {
     const relevant = issues.filter((issue) => {
-        const requestType = normalizeSummary(issue.workTypeName);
-        return requestType === 'contact technical support (sup)';
+        const issueType = normalizeSummary(issue.issueTypeName);
+        return isSupportKey(issue.key) && issueType === '[system] problem';
     });
     if (!relevant.length) {
         return {
@@ -464,8 +465,8 @@ const computeCorrectiveMaintenanceDomain = (issues) => {
 };
 const computeEnhancementDomain = (issues) => {
     const relevant = issues.filter((issue) => {
-        const requestType = normalizeSummary(issue.workTypeName);
-        return requestType === 'request changes and enhancement (sup)';
+        const issueType = normalizeSummary(issue.issueTypeName);
+        return isSupportKey(issue.key) && issueType === '[system] change';
     });
     if (!relevant.length) {
         return {

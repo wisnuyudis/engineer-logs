@@ -50,6 +50,7 @@ const REQUIRED_IMPL_DOCS = [
 
 const normalizeSummary = (value: string | null | undefined) => String(value || '').trim().toLowerCase();
 const inQuarter = (dateValue: string | null | undefined, period: QuarterRange) => Boolean(dateValue && dateValue >= period.startDate && dateValue <= period.endDate);
+const isSupportKey = (issueKey: string | null | undefined) => String(issueKey || '').toUpperCase().startsWith('SUP-');
 
 const toIsoDate = (value: string | null | undefined) => {
   if (!value) return null;
@@ -425,8 +426,8 @@ const computePreventiveMaintenanceDomain = (
 
 const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>) => {
   const relevant = issues.filter((issue) => {
-    const requestType = normalizeSummary(issue.workTypeName);
-    return requestType === 'contact technical support (sup)';
+    const issueType = normalizeSummary(issue.issueTypeName);
+    return isSupportKey(issue.key) && issueType === '[system] problem';
   });
   if (!relevant.length) {
     return {
@@ -521,8 +522,8 @@ const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
 
 const computeEnhancementDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>) => {
   const relevant = issues.filter((issue) => {
-    const requestType = normalizeSummary(issue.workTypeName);
-    return requestType === 'request changes and enhancement (sup)';
+    const issueType = normalizeSummary(issue.issueTypeName);
+    return isSupportKey(issue.key) && issueType === '[system] change';
   });
   if (!relevant.length) {
     return {

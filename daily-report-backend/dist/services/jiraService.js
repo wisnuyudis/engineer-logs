@@ -129,9 +129,9 @@ const resolveJiraActKey = (issueKey, issueTypeName, projectName, workTypeName) =
         return 'jira_impl';
     if (project.startsWith('[OPS]'))
         return 'jira_ops';
-    if (workType === 'contact technical support (sup)')
+    if (key.startsWith('SUP-') && issueType === '[system] problem')
         return 'jira_cm';
-    if (workType === 'request changes and enhancement (sup)')
+    if (key.startsWith('SUP-') && issueType === '[system] change')
         return 'jira_enh';
     if (workType.includes('service request'))
         return 'jira_ops';

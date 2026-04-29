@@ -130,8 +130,8 @@ export const resolveJiraActKey = (
   if (project.startsWith('[MA]')) return 'jira_pm';
   if (project.startsWith('[IMP]')) return 'jira_impl';
   if (project.startsWith('[OPS]')) return 'jira_ops';
-  if (workType === 'contact technical support (sup)') return 'jira_cm';
-  if (workType === 'request changes and enhancement (sup)') return 'jira_enh';
+  if (key.startsWith('SUP-') && issueType === '[system] problem') return 'jira_cm';
+  if (key.startsWith('SUP-') && issueType === '[system] change') return 'jira_enh';
   if (workType.includes('service request')) return 'jira_ops';
 
   if (key.startsWith('MAINT-') || issueType.includes('preventive')) return 'jira_pm';
