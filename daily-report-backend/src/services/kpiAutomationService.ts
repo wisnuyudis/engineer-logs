@@ -320,7 +320,7 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
 
 const computePreventiveMaintenanceDomain = (
   issues: Awaited<ReturnType<typeof searchJiraIssues>>,
-  parentStartDates: Map<string, string | null>,
+  parentDueDates: Map<string, string | null>,
   period: QuarterRange,
   pmNps: number | null
 ) => {
@@ -353,8 +353,8 @@ const computePreventiveMaintenanceDomain = (
   let applicableParentCount = 0;
 
   for (const [parentRef, group] of grouped.entries()) {
-    const parentStartDate = parentStartDates.get(parentRef) || null;
-    if (!inQuarter(parentStartDate, period)) {
+    const parentDueDate = parentDueDates.get(parentRef) || null;
+    if (!inQuarter(parentDueDate, period)) {
       continue;
     }
     applicableParentCount += 1;
@@ -372,7 +372,7 @@ const computePreventiveMaintenanceDomain = (
       const score = jobDoneAt ? pmExecutionScore(lateDays) : -1;
       execItems.push({
         parentRef,
-        parentStartDate,
+        parentDueDate,
         issueKey: job.key,
         dueDate: job.dueDate,
         doneAt: jobDoneAt,
@@ -387,7 +387,7 @@ const computePreventiveMaintenanceDomain = (
     const reportScore = report ? pmReportScore(reportDays) : -1;
     reportItems.push({
       parentRef,
-      parentStartDate,
+      parentDueDate,
       issueKey: report?.key || null,
       actualPmDoneAt: relatedJobDoneAt,
       reportDoneAt,
@@ -657,7 +657,7 @@ export const computeEngineerDeliveryKpi = async (
     pmParents = parentKeys.length
       ? await searchJiraIssues({
           jql: `issuekey in (${parentKeys.map((key) => `"${key}"`).join(',')})`,
-          fields: ['summary', 'issuetype', 'project', 'status'],
+          fields: ['summary', 'issuetype', 'project', 'status', 'duedate'],
         })
       : [];
   } catch (error: any) {
@@ -696,13 +696,13 @@ export const computeEngineerDeliveryKpi = async (
   }
 
   const implementation = computeImplementationDomain(subtasks, manualInputs.implNps);
-  const pmParentStartDates = new Map<string, string | null>(
+  const pmParentDueDates = new Map<string, string | null>(
     (pmParents || []).flatMap((issue) => [
-      [issue.key, issue.startDate || null] as const,
-      [issue.id, issue.startDate || null] as const,
+      [issue.key, issue.dueDate || null] as const,
+      [issue.id, issue.dueDate || null] as const,
     ])
   );
-  const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentStartDates, period, manualInputs.pmNps);
+  const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentDueDates, period, manualInputs.pmNps);
   const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssues);
   const enhancement = computeEnhancementDomain(supportIssues);
 

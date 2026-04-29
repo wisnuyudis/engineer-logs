@@ -281,7 +281,7 @@ const computeImplementationDomain = (issues, implNps) => {
         },
     };
 };
-const computePreventiveMaintenanceDomain = (issues, parentStartDates, period, pmNps) => {
+const computePreventiveMaintenanceDomain = (issues, parentDueDates, period, pmNps) => {
     const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[MA]'));
     if (!relevant.length) {
         return {
@@ -308,8 +308,8 @@ const computePreventiveMaintenanceDomain = (issues, parentStartDates, period, pm
     const reportItems = [];
     let applicableParentCount = 0;
     for (const [parentRef, group] of grouped.entries()) {
-        const parentStartDate = parentStartDates.get(parentRef) || null;
-        if (!inQuarter(parentStartDate, period)) {
+        const parentDueDate = parentDueDates.get(parentRef) || null;
+        if (!inQuarter(parentDueDate, period)) {
             continue;
         }
         applicableParentCount += 1;
@@ -325,7 +325,7 @@ const computePreventiveMaintenanceDomain = (issues, parentStartDates, period, pm
             const score = jobDoneAt ? pmExecutionScore(lateDays) : -1;
             execItems.push({
                 parentRef,
-                parentStartDate,
+                parentDueDate,
                 issueKey: job.key,
                 dueDate: job.dueDate,
                 doneAt: jobDoneAt,
@@ -339,7 +339,7 @@ const computePreventiveMaintenanceDomain = (issues, parentStartDates, period, pm
         const reportScore = report ? pmReportScore(reportDays) : -1;
         reportItems.push({
             parentRef,
-            parentStartDate,
+            parentDueDate,
             issueKey: report?.key || null,
             actualPmDoneAt: relatedJobDoneAt,
             reportDoneAt,
@@ -583,7 +583,7 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
         pmParents = parentKeys.length
             ? await (0, jiraService_1.searchJiraIssues)({
                 jql: `issuekey in (${parentKeys.map((key) => `"${key}"`).join(',')})`,
-                fields: ['summary', 'issuetype', 'project', 'status'],
+                fields: ['summary', 'issuetype', 'project', 'status', 'duedate'],
             })
             : [];
     }
@@ -622,11 +622,11 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
         };
     }
     const implementation = computeImplementationDomain(subtasks, manualInputs.implNps);
-    const pmParentStartDates = new Map((pmParents || []).flatMap((issue) => [
-        [issue.key, issue.startDate || null],
-        [issue.id, issue.startDate || null],
+    const pmParentDueDates = new Map((pmParents || []).flatMap((issue) => [
+        [issue.key, issue.dueDate || null],
+        [issue.id, issue.dueDate || null],
     ]));
-    const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentStartDates, period, manualInputs.pmNps);
+    const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentDueDates, period, manualInputs.pmNps);
     const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssues);
     const enhancement = computeEnhancementDomain(supportIssues);
     const scores = {
