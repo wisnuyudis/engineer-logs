@@ -225,6 +225,7 @@ exports.fetchJiraWorklog = fetchJiraWorklog;
 const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, endDate) => {
     const fieldMap = await loadJiraFieldNameMap();
     const actualStartField = fieldMap['actual start'] || fieldMap['actual start date'] || fieldMap['start date'];
+    const requestTypeField = fieldMap['request type'] || fieldMap['customer request type'] || fieldMap['work type'];
     const conditions = [
         `assignee = "${assigneeAccountId}"`,
         `issuetype not in subTaskIssueTypes()`,
@@ -247,7 +248,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
             jql,
             maxResults,
             nextPageToken,
-            fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', actualStartField].filter(Boolean),
+            fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', actualStartField, requestTypeField].filter(Boolean),
         };
         const res = await jiraFetch('/rest/api/3/search/jql', {
             method: 'POST',
@@ -266,7 +267,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
             const isSubtask = Boolean(issue.fields?.issuetype?.subtask);
             if (isSubtask || String(issueTypeName || '').toLowerCase() === 'epic')
                 continue;
-            const actKey = (0, exports.resolveJiraActKey)(issue.key, issueTypeName, issue.fields?.project?.name || null, null);
+            const actKey = (0, exports.resolveJiraActKey)(issue.key, issueTypeName, issue.fields?.project?.name || null, extractFieldValue(issue.fields, requestTypeField));
             if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_enh', 'jira_ops'].includes(actKey)) {
                 matchedIssues.push({ key: issue.key, actKey });
             }

@@ -566,8 +566,9 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
         `assignee = "${user.jiraAccountId}"`,
         'issuetype not in subTaskIssueTypes()',
         'issuetype != Epic',
-        `updated >= "${period.startDate}"`,
-        `updated <= "${period.endDate}"`,
+        'issuekey ~ "SUP-"',
+        `"Actual Start" >= "${period.startDate}"`,
+        `"Actual Start" <= "${period.endDate}"`,
     ].join(' AND ');
     let subtasks;
     let supportIssues;
