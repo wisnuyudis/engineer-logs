@@ -20,6 +20,10 @@ Dokumen ini sengaja ditulis sebagai catatan implementasi, bukan sebagai tafsir f
 3. Domain yang tidak berlaku (`N/A`) tidak masuk pembagi skor akhir.
 4. Bila ada `-1` pada domain yang applicable, ada implikasi bonus/eligibility sesuai dokumen.
 
+Catatan koreksi implementasi:
+
+- komponen `Kelengkapan Dokumentasi` untuk domain `Implementation` mengikuti skala umum `4..-1`
+
 ## Service Engineer (PD-001)
 
 ### Domain KPI
@@ -56,9 +60,51 @@ Catatan:
 
 Status pemahaman implementasi saat ini:
 
-- `Task Accuracy`: secara teoritis bisa diturunkan dari Jira bila ada task scope + milestone/due date yang jelas.
-- `Dokumentasi`: belum jelas representasi aktualnya di workflow Jira saat ini.
-- `NPS`: tidak ada di Jira, saat ini lebih realistis diinput manual dengan default `3`.
+Implementasi operasional terbaru:
+
+#### 1.a Ketepatan Penyelesaian Task
+
+- basis hitung: persentase `subtask` yang di-assign dan selesai tepat waktu
+- `tepat waktu` = selesai sebelum / pada `due date`
+
+Skor:
+
+- `>= 90%` task selesai tepat waktu -> `4`
+- `75% - <90%` task selesai tepat waktu -> `3`
+- `50% - <75%` task selesai tepat waktu -> `2`
+- `25% - <50%` task selesai tepat waktu -> `1`
+- `<25%` task selesai tepat waktu atau task gagal -> `0`
+
+#### 1.b Kelengkapan Dokumentasi
+
+Evidence wajib dicek di level `subtask`, bukan task:
+
+- `Method Of Produce`
+- `System Requirement Document`
+- `Training Module`
+- `Installation & Configuration Guide`
+- `Administrator Guide`
+
+Catatan penting:
+
+- subtask dokumen bisa tersebar di task yang berbeda karena ada fase `pre deploy` dan `post deploy`
+- implementasi harus mengecek `subtask`, bukan issue/task induk tunggal
+
+Aturan scoring terbaru:
+
+- seluruh dokumen lengkap dan tepat waktu -> `4`
+- ada maksimal `1` dokumen terlambat dari `due date` -> `3`
+- dokumen ada sebagian / lebih dari `1` terlambat / ada yang missing tetapi tidak nol total -> `3`
+- tidak ada dokumen sama sekali -> `-1`
+
+Catatan:
+
+- untuk implementasi saat ini, komponen dokumentasi praktis hanya memakai bucket `4`, `3`, dan `-1`
+
+#### 1.c NPS
+
+- `manual input`
+- default `3`
 
 ### 2) KPI Preventive Maintenance
 
@@ -66,11 +112,12 @@ Komponen:
 
 1. `Kepatuhan Pelaksanaan PM`
 2. `Kepatuhan Pengiriman Laporan PM`
+3. `NPS`
 
 Rumus:
 
 ```text
-KPI Preventive Maintenance = (Pelaksanaan PM + Laporan PM) / 2
+KPI Preventive Maintenance = (Pelaksanaan PM + Laporan PM + NPS) / 3
 ```
 
 Bila ada beberapa PM dalam satu periode:
@@ -79,15 +126,56 @@ Bila ada beberapa PM dalam satu periode:
 Domain PM = rata-rata seluruh KPI PM yang applicable
 ```
 
-Mapping yang sudah teridentifikasi:
+Implementasi operasional terbaru:
 
-- `Report PM`: subtask dengan judul awalan `Report PM`, status `Done`
-- `Report sent date`: tanggal `Done` subtask `Report PM`
+- Jira tidak memiliki `rentang tanggal`, hanya `due date`
+- `Pekerjaan PM` direpresentasikan sebagai subtask dengan prefix `Pekerjaan PM`
+- `Report PM` direpresentasikan sebagai subtask dengan prefix `Report PM`
+
+#### 2.a Skor Kepatuhan Pelaksanaan Preventive Maintenance
+
+Untuk `Pekerjaan PM`:
+
+- gunakan `due date` sebagai acuan keterlambatan
+- gunakan timestamp perubahan status `Done` sebagai tanggal aktual pelaksanaan
+
+Skor:
+
+- `4` -> PM dilaksanakan dalam rentang tanggal yang ditetapkan
+- `3` -> PM dilaksanakan `<= 1 minggu` setelah akhir rentang tanggal
+- `2` -> PM dilaksanakan `>1 - 2 minggu` setelah akhir rentang tanggal
+- `1` -> PM dilaksanakan `>2 - 4 minggu` setelah akhir rentang tanggal
+- `0` -> PM dilaksanakan `>4 minggu` setelah akhir rentang tanggal
+- `-1` -> Preventive Maintenance tidak dilakukan tanpa justifikasi yang sah
+
+Catatan implementasi saat ini:
+
+- karena Jira hanya punya `due date`, implementasi sementara perlu memperlakukan `due date` sebagai batas akhir rentang tanggal
+
+#### 2.b Skor Kepatuhan Pengiriman Laporan Preventive Maintenance
+
+Untuk `Report PM`:
+
+- ambil timestamp status `Done` subtask `Pekerjaan PM` pada parent yang sama
+- bandingkan terhadap timestamp status `Done` subtask `Report PM`
+
+Skor:
+
+- `4` -> laporan PM dikirim `<= 3 hari kerja` setelah tanggal aktual pelaksanaan PM
+- `3` -> laporan PM dikirim `>3 - 5 hari kerja` setelah tanggal pelaksanaan PM
+- `2` -> laporan PM dikirim `>5 - 10 hari kerja` setelah tanggal pelaksanaan PM
+- `1` -> laporan PM dikirim `>10 - 15 hari kerja` setelah tanggal pelaksanaan PM
+- `0` -> laporan PM dikirim `>15 hari kerja` setelah tanggal pelaksanaan PM
+- `-1` -> laporan PM tidak dibuat dan/atau tidak dikirim
+
+#### 2.c NPS
+
+- `manual input`
+- default `3`
 
 Yang masih perlu dipastikan:
 
-- sumber `planned window / date range PM`
-- sumber `actual execution date`
+- definisi final `hari kerja` untuk implementasi sistem
 
 ### 3) KPI Corrective Maintenance
 
@@ -113,48 +201,88 @@ SLA severity yang tertulis di PDF:
 - Tingkat 3: response 15 menit, resolution 2 hari kerja
 - Tingkat 4: response 15 menit, resolution 2 hari kerja
 
-Definisi operasional yang sudah dikonfirmasi:
+Definisi operasional terbaru:
 
-- `first response` = ada `comment pertama` dan perubahan status dari `Confirm Priority` ke `Waiting for customer`
+- `first response` = timestamp `comment pertama`
+- `resolution` = timestamp saat status `Done`
+- untuk severity `3` dan `4`, perhitungan `resolution / handling time` menggunakan `worklog / time tracking`
+- bila ada waktu menunggu customer, sistem tetap mengacu ke `time tracking`
+- bila `priority` berubah, ambil hasil / nilai terakhir
+
+Response Time SLA:
+
+- semua severity: `15 menit`
+
+Tabel SLA:
+
+- `Tingkat 1 / Kritis-Tinggi`
+  - workaround: `4 jam setelah respon awal`
+  - resolution: `8 jam setelah respon awal`
+- `Tingkat 2 / Medium`
+  - workaround: `8 jam setelah respon awal`
+  - resolution: `16 jam setelah respon awal`
+- `Tingkat 3 / Rendah`
+  - workaround: `1 hari kerja`
+  - resolution: `2 hari kerja`
+- `Tingkat 4 / Pertanyaan`
+  - workaround: `1 hari kerja`
+  - resolution: `2 hari kerja`
+
+Skor untuk `Response Time` dan `Resolution Time`:
+
+- `4` -> waktu aktual `<= SLA`
+- `3` -> waktu aktual `> SLA` sampai `2x SLA`
+- `2` -> waktu aktual `> 2x SLA` sampai `3x SLA`
+- `1` -> waktu aktual `> 3x SLA`
+- `0` -> permintaan direspon tanpa tindak lanjut teknis atau komunikasi lanjutan yang terdokumentasi
+- `-1` -> tidak ada respon dan penanganan sama sekali
 
 Catatan implementasi:
 
-- Perlu keputusan final timestamp mana yang dipakai:
-  - waktu comment pertama
-  - waktu transition ke `Waiting for customer`
-  - atau timestamp terlengkap yang dianggap memenuhi definisi response
+- severity akhir diambil dari nilai `priority` terakhir
 
 ### 4) KPI Enhancement
 
-Dokumen menyebut Enhancement sebagai domain terpisah.
+Implementasi operasional terbaru:
 
-Namun pada praktik Jira saat ini belum terlihat representasi yang benar-benar terpisah dan strict.
+- sumber domain: ticketing system `(SUP)`
+- request / work type: `Request Changes and Enhancement`
+- komponen yang dinilai hanya `Response Time`
+- `first response` = comment pertama
+- SLA response time = `1 hari`
 
-Kondisi lapangan saat ini:
+Skor:
 
-- `(SUP)` + `[System] Change`
-- `(SUP)` + `[System] Service request`
-
-lebih dekat ke domain non-problem operational/change request.
-
-Kesimpulan sementara:
-
-- domain Enhancement ada di dokumen
-- tetapi representasi aktualnya di Jira belum cukup jelas untuk dihitung otomatis dengan aman
+- `4` -> waktu aktual `<= SLA`
+- `3` -> waktu aktual `> SLA` sampai `2x SLA`
+- `2` -> waktu aktual `> 2x SLA` sampai `3x SLA`
+- `1` -> waktu aktual `> 3x SLA`
+- `0` -> permintaan direspon tanpa tindak lanjut teknis atau komunikasi lanjutan yang terdokumentasi
+- `-1` -> tidak ada respon dan penanganan sama sekali
 
 ### 5) KPI Operational Service / MSS
 
-Dokumen menyebut domain ini berlaku untuk SE.
+Koreksi implementasi:
 
-Namun pada implementasi Jira saat ini, klasifikasi yang paling dekat adalah:
+- domain ini hanya fokus pada project / item dengan prefix `[OP]`
 
-- `(SUP)` + `[System] Change`
-- `(SUP)` + `[System] Service request`
+Komponen:
 
-Kesimpulan sementara:
+1. `Skor Laporan Bulanan`
+2. `Skor Laporan Triwulanan`
+3. `Skor NPS`
 
-- untuk kebutuhan sistem saat ini, domain non-problem `(SUP)` paling aman diklasifikasikan ke bucket operasional/change-service-request
-- pemisahan tegas antara `Enhancement` vs `Operational Service` masih perlu aturan organisasi yang lebih eksplisit
+Rumus:
+
+```text
+KPI Operational Service / MSS = (Skor Laporan Bulanan + Skor Laporan Triwulanan + Skor NPS) / 3
+```
+
+Catatan:
+
+- `NPS` tetap manual dengan default `3` bila customer tidak mengembalikan form
+- bucket `(SUP)` + `[System] Change` dan `(SUP)` + `[System] Service request` tidak lagi dianggap representasi utama domain ini
+- representasi otomatis harus mengacu ke prefix `[OP]`
 
 ### Skor Akhir KPI Service Engineer
 
@@ -258,24 +386,26 @@ Skor Akhir KPI PM = jumlah skor domain aktif / jumlah domain aktif
 - `[IMP]` -> `Implementation`
 - `[MA]` -> `Preventive Maintenance`
 - `(SUP)` + `[System] Problem` -> `Corrective Maintenance`
-- `(SUP)` + `[System] Change` -> `Operational / Change bucket`
-- `(SUP)` + `[System] Service request` -> `Operational / Service Request bucket`
+- `[OP]` -> `Operational Service / MSS`
+- `(SUP)` + `Request Changes and Enhancement` -> `Enhancement`
 
 ### Field / evidence yang sudah diketahui
 
 - `severity` -> field `priority`
 - `report sent date` -> subtask `Report PM...` status `Done`
 - `BAST date` -> subtask `BAST...` status `Done`
-- `first response CM` -> comment pertama + transisi `Confirm Priority` -> `Waiting for customer`
+- `first response CM` -> comment pertama
+- `first response Enhancement` -> comment pertama
 - `NPS` -> manual input, default `3`
+- `Pekerjaan PM actual date` -> status `Done` pada subtask prefix `Pekerjaan PM`
+- `Report PM actual date` -> status `Done` pada subtask prefix `Report PM`
 
 ### Field / evidence yang belum kuat
 
-- planned start / planned end PM
-- actual execution date PM
-- dokumen wajib implementasi
+- planned start / planned end PM yang eksplisit sebagai rentang
+- implementasi `hari kerja` untuk PM / SLA tertentu
+- coverage rule dokumentasi Implementation kini dipahami sebagai bucket `lengkap=4`, `selain itu tetapi masih ada evidence=3`, `tidak ada=-1`
 - mandays plan / actual
-- pemisahan final Enhancement vs Operational untuk SE
 
 ## Kesimpulan Implementasi
 
@@ -288,12 +418,17 @@ Secara teori KPI bisa dihitung otomatis dari Jira, tetapi implementasi penuh aka
 
 Karena itu, pendekatan otomatis penuh saat ini berisiko menghasilkan skor yang terlihat presisi tetapi sebenarnya lemah secara aturan.
 
+## Aturan Agregasi Domain
+
+- bila dalam satu quarter ada banyak item dalam domain yang sama, `skor domain = rata-rata semua item`
+- domain dianggap `N/A` bila tidak ada ticket / item sama sekali pada quarter tersebut
+
 ## Kesimpulan Produk Saat Ini
 
 Pendekatan yang lebih pragmatis untuk fase sekarang:
 
-1. aplikasi hanya menyimpan `nilai domain KPI manual`
-2. admin / head mengisi skor domain hasil evaluasi manual
+1. domain yang evidence-nya sudah kuat dapat diotomatisasi bertahap
+2. domain yang belum stabil atau memang diarahkan manual tetap disimpan sebagai nilai manual
 3. sistem hanya:
    - menyimpan evidence/domain/value
    - menghitung rata-rata domain aktif
@@ -302,5 +437,5 @@ Pendekatan yang lebih pragmatis untuk fase sekarang:
 Dengan begitu:
 
 - aturan organisasi tetap dihormati
-- sistem tidak memaksakan inferensi dari Jira yang belum cukup stabil
+- sistem tidak memaksakan inferensi pada area yang belum cukup stabil
 - struktur data tetap siap bila nanti sebagian domain ingin diotomatisasi
