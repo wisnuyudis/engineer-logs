@@ -270,7 +270,6 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
       maxResults,
       nextPageToken,
       fields,
-      expand: ['names'],
     };
 
     const res = await jiraFetch('/rest/api/3/search/jql', {
@@ -313,7 +312,7 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
         issueTypeIsSubtask: Boolean(issue.fields?.issuetype?.subtask),
         projectKey: issue.fields?.project?.key || null,
         projectName: issue.fields?.project?.name || null,
-        workTypeName: extractNamedFieldValue(issue.fields, data.names, 'Work Type'),
+        workTypeName: extractNamedFieldValue(issue.fields, data.names || issue.names, 'Work Type'),
         assigneeAccountId: issue.fields?.assignee?.accountId || null,
         parentId: issue.fields?.parent?.id ? String(issue.fields.parent.id) : null,
         parentKey: issue.fields?.parent?.key || null,
