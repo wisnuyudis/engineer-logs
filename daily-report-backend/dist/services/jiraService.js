@@ -129,9 +129,9 @@ const resolveJiraActKey = (issueKey, issueTypeName, projectName, workTypeName) =
         return 'jira_impl';
     if (project.startsWith('[OPS]'))
         return 'jira_ops';
-    if (workType.includes('problem'))
+    if (workType === 'contact technical support (sup)')
         return 'jira_cm';
-    if (workType.includes('enhancement') || workType.includes('change'))
+    if (workType === 'request changes and enhancement (sup)')
         return 'jira_enh';
     if (workType.includes('service request'))
         return 'jira_ops';
@@ -169,7 +169,7 @@ const fetchJiraTicket = async (ticketId) => {
 exports.fetchJiraTicket = fetchJiraTicket;
 const fetchJiraIssue = async (issueKeyOrId) => {
     const fieldMap = await loadJiraFieldNameMap();
-    const extraFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date']].filter(Boolean);
+    const extraFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date'], fieldMap['actual start']].filter(Boolean);
     const queryFields = ['summary', 'issuetype', 'project', ...extraFields].join(',');
     const res = await jiraFetch(`/rest/api/3/issue/${issueKeyOrId}?fields=${encodeURIComponent(queryFields)}&expand=names`);
     if (!res.ok) {
@@ -189,6 +189,7 @@ const fetchJiraIssue = async (issueKeyOrId) => {
         workTypeName: extractNamedFieldValue(data.fields, data.names, 'Work Type')
             || extractNamedFieldValue(data.fields, data.names, 'Request Type')
             || extractNamedFieldValueByMap(data.fields, fieldMap, ['Work Type', 'Request Type']),
+        actualStartDate: extractNamedFieldValueByMap(data.fields, fieldMap, ['Actual Start', 'Start date']),
     };
 };
 exports.fetchJiraIssue = fetchJiraIssue;
@@ -270,7 +271,7 @@ const searchJiraIssues = async ({ jql, fields }) => {
     let nextPageToken;
     const maxResults = 50;
     const fieldMap = await loadJiraFieldNameMap();
-    const additionalFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date']].filter(Boolean);
+    const additionalFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date'], fieldMap['actual start']].filter(Boolean);
     const queryFields = Array.from(new Set([...fields, ...additionalFields]));
     while (true) {
         const payload = {
@@ -327,6 +328,7 @@ const searchJiraIssues = async ({ jql, fields }) => {
                 parentId: issue.fields?.parent?.id ? String(issue.fields.parent.id) : null,
                 parentKey: issue.fields?.parent?.key || null,
                 startDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Start date']),
+                actualStartDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Actual Start', 'Start date']),
                 dueDate: issue.fields?.duedate || null,
                 createdAt: issue.fields?.created || null,
                 updatedAt: issue.fields?.updated || null,

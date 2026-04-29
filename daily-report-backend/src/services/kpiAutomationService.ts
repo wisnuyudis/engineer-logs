@@ -426,7 +426,7 @@ const computePreventiveMaintenanceDomain = (
 const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>) => {
   const relevant = issues.filter((issue) => {
     const requestType = normalizeSummary(issue.workTypeName);
-    return requestType.includes('problem');
+    return requestType === 'contact technical support (sup)';
   });
   if (!relevant.length) {
     return {
@@ -522,11 +522,7 @@ const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
 const computeEnhancementDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>) => {
   const relevant = issues.filter((issue) => {
     const requestType = normalizeSummary(issue.workTypeName);
-    return (
-      requestType.includes('request changes and enhancement')
-      || requestType.includes('enhancement')
-      || requestType.includes('change')
-    );
+    return requestType === 'request changes and enhancement (sup)';
   });
   if (!relevant.length) {
     return {
@@ -707,8 +703,9 @@ export const computeEngineerDeliveryKpi = async (
     ])
   );
   const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentDueDates, period, manualInputs.pmNps);
-  const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssues);
-  const enhancement = computeEnhancementDomain(supportIssues);
+  const supportIssuesInQuarter = supportIssues.filter((issue) => inQuarter(issue.actualStartDate, period));
+  const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssuesInQuarter);
+  const enhancement = computeEnhancementDomain(supportIssuesInQuarter);
 
   const scores: KpiScoreMap = {
     impl: implementation.score,

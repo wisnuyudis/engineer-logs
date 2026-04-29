@@ -375,7 +375,7 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period, pmNp
 const computeCorrectiveMaintenanceDomain = (issues) => {
     const relevant = issues.filter((issue) => {
         const requestType = normalizeSummary(issue.workTypeName);
-        return requestType.includes('problem');
+        return requestType === 'contact technical support (sup)';
     });
     if (!relevant.length) {
         return {
@@ -465,9 +465,7 @@ const computeCorrectiveMaintenanceDomain = (issues) => {
 const computeEnhancementDomain = (issues) => {
     const relevant = issues.filter((issue) => {
         const requestType = normalizeSummary(issue.workTypeName);
-        return (requestType.includes('request changes and enhancement')
-            || requestType.includes('enhancement')
-            || requestType.includes('change'));
+        return requestType === 'request changes and enhancement (sup)';
     });
     if (!relevant.length) {
         return {
@@ -629,8 +627,9 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
         [issue.id, issue.dueDate || null],
     ]));
     const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentDueDates, period, manualInputs.pmNps);
-    const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssues);
-    const enhancement = computeEnhancementDomain(supportIssues);
+    const supportIssuesInQuarter = supportIssues.filter((issue) => inQuarter(issue.actualStartDate, period));
+    const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssuesInQuarter);
+    const enhancement = computeEnhancementDomain(supportIssuesInQuarter);
     const scores = {
         impl: implementation.score,
         pm: preventiveMaintenance.score,
