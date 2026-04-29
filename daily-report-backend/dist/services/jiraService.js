@@ -267,7 +267,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
             if (isSubtask || String(issueTypeName || '').toLowerCase() === 'epic')
                 continue;
             const actKey = (0, exports.resolveJiraActKey)(issue.key, issueTypeName, issue.fields?.project?.name || null, null);
-            if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_ops'].includes(actKey)) {
+            if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_enh', 'jira_ops'].includes(actKey)) {
                 matchedIssues.push({ key: issue.key, actKey });
             }
         }

@@ -286,7 +286,7 @@ export const fetchCompletedJiraTasksForQuarter = async (
         null
       );
 
-      if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_ops'].includes(actKey)) {
+      if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_enh', 'jira_ops'].includes(actKey)) {
         matchedIssues.push({ key: issue.key, actKey });
       }
     }

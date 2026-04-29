@@ -16,6 +16,10 @@ function avgScores(values) {
   return Number((filtered.reduce((sum, value) => sum + value, 0) / filtered.length).toFixed(2));
 }
 
+function hasAutoEvidence(values) {
+  return values.some((value) => value !== null && value !== undefined);
+}
+
 function normalizeManualValue(value, fallback = null) {
   if (value === '' || value === null || value === undefined) return fallback;
   const num = Number(value);
@@ -34,17 +38,21 @@ function computeEngineerDeliveryPreview(scorecardData, manualInputs) {
   }
 
   const breakdown = scorecard.breakdown || {};
+  const implAutoScores = [
+    breakdown.impl?.components?.taskAccuracy?.score ?? null,
+    breakdown.impl?.components?.documentation?.score ?? null,
+  ];
+  const pmAutoScores = [
+    breakdown.pm?.components?.execution?.score ?? null,
+    breakdown.pm?.components?.report?.score ?? null,
+  ];
   const nextScores = {
-    impl: avgScores([
-      breakdown.impl?.components?.taskAccuracy?.score ?? null,
-      breakdown.impl?.components?.documentation?.score ?? null,
-      normalizeManualValue(manualInputs.implNps, scorecard.manualInputs?.implNps ?? 3),
-    ]),
-    pm: avgScores([
-      breakdown.pm?.components?.execution?.score ?? null,
-      breakdown.pm?.components?.report?.score ?? null,
-      normalizeManualValue(manualInputs.pmNps, scorecard.manualInputs?.pmNps ?? 3),
-    ]),
+    impl: hasAutoEvidence(implAutoScores)
+      ? avgScores([...implAutoScores, normalizeManualValue(manualInputs.implNps, scorecard.manualInputs?.implNps ?? 3)])
+      : null,
+    pm: hasAutoEvidence(pmAutoScores)
+      ? avgScores([...pmAutoScores, normalizeManualValue(manualInputs.pmNps, scorecard.manualInputs?.pmNps ?? 3)])
+      : null,
     cm: scorecard.scores?.cm ?? null,
     enh: scorecard.scores?.enh ?? null,
     ops: normalizeManualValue(manualInputs.opsScore, scorecard.manualInputs?.opsScore ?? null),
