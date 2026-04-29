@@ -704,6 +704,15 @@ export const computeEngineerDeliveryKpi = async (
   );
   const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentDueDates, period, manualInputs.pmNps);
   const supportIssuesInQuarter = supportIssues.filter((issue) => inQuarter(issue.actualStartDate, period));
+  const supportIssueDebug = supportIssues.map((issue) => ({
+    issueKey: issue.key,
+    issueTypeName: issue.issueTypeName,
+    requestType: issue.workTypeName,
+    actualStartDate: issue.actualStartDate,
+    createdAt: issue.createdAt,
+    updatedAt: issue.updatedAt,
+    inQuarterByActualStart: inQuarter(issue.actualStartDate, period),
+  }));
   const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssuesInQuarter);
   const enhancement = computeEnhancementDomain(supportIssuesInQuarter);
 
@@ -717,8 +726,22 @@ export const computeEngineerDeliveryKpi = async (
 
   breakdown.impl = implementation.breakdown;
   breakdown.pm = preventiveMaintenance.breakdown;
-  breakdown.cm = correctiveMaintenance.breakdown;
-  breakdown.enh = enhancement.breakdown;
+  breakdown.cm = {
+    ...correctiveMaintenance.breakdown,
+    debug: {
+      totalSupportCandidates: supportIssues.length,
+      inQuarterCandidates: supportIssuesInQuarter.length,
+      rawIssues: supportIssueDebug,
+    },
+  };
+  breakdown.enh = {
+    ...enhancement.breakdown,
+    debug: {
+      totalSupportCandidates: supportIssues.length,
+      inQuarterCandidates: supportIssuesInQuarter.length,
+      rawIssues: supportIssueDebug,
+    },
+  };
 
   const summary = computeResolvedKpiSummary(profile, scores, { completedJiraTaskCount });
   const currentSnapshot = {

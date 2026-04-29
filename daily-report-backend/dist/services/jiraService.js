@@ -169,7 +169,14 @@ const fetchJiraTicket = async (ticketId) => {
 exports.fetchJiraTicket = fetchJiraTicket;
 const fetchJiraIssue = async (issueKeyOrId) => {
     const fieldMap = await loadJiraFieldNameMap();
-    const extraFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date'], fieldMap['actual start']].filter(Boolean);
+    const extraFields = [
+        fieldMap['work type'],
+        fieldMap['request type'],
+        fieldMap['customer request type'],
+        fieldMap['start date'],
+        fieldMap['actual start'],
+        fieldMap['actual start date'],
+    ].filter(Boolean);
     const queryFields = ['summary', 'issuetype', 'project', ...extraFields].join(',');
     const res = await jiraFetch(`/rest/api/3/issue/${issueKeyOrId}?fields=${encodeURIComponent(queryFields)}&expand=names`);
     if (!res.ok) {
@@ -188,8 +195,9 @@ const fetchJiraIssue = async (issueKeyOrId) => {
         projectName: data.fields?.project?.name || null,
         workTypeName: extractNamedFieldValue(data.fields, data.names, 'Work Type')
             || extractNamedFieldValue(data.fields, data.names, 'Request Type')
-            || extractNamedFieldValueByMap(data.fields, fieldMap, ['Work Type', 'Request Type']),
-        actualStartDate: extractNamedFieldValueByMap(data.fields, fieldMap, ['Actual Start', 'Start date']),
+            || extractNamedFieldValue(data.fields, data.names, 'Customer Request Type')
+            || extractNamedFieldValueByMap(data.fields, fieldMap, ['Work Type', 'Request Type', 'Customer Request Type']),
+        actualStartDate: extractNamedFieldValueByMap(data.fields, fieldMap, ['Actual Start', 'Actual Start Date', 'Start date']),
     };
 };
 exports.fetchJiraIssue = fetchJiraIssue;
@@ -271,7 +279,14 @@ const searchJiraIssues = async ({ jql, fields }) => {
     let nextPageToken;
     const maxResults = 50;
     const fieldMap = await loadJiraFieldNameMap();
-    const additionalFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date'], fieldMap['actual start']].filter(Boolean);
+    const additionalFields = [
+        fieldMap['work type'],
+        fieldMap['request type'],
+        fieldMap['customer request type'],
+        fieldMap['start date'],
+        fieldMap['actual start'],
+        fieldMap['actual start date'],
+    ].filter(Boolean);
     const queryFields = Array.from(new Set([...fields, ...additionalFields]));
     while (true) {
         const payload = {
@@ -321,14 +336,15 @@ const searchJiraIssues = async ({ jql, fields }) => {
                 issueTypeIsSubtask: Boolean(issue.fields?.issuetype?.subtask),
                 projectKey: issue.fields?.project?.key || null,
                 projectName: issue.fields?.project?.name || null,
-                workTypeName: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Work Type', 'Request Type'])
+                workTypeName: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Work Type', 'Request Type', 'Customer Request Type'])
                     || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Work Type')
-                    || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Request Type'),
+                    || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Request Type')
+                    || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Customer Request Type'),
                 assigneeAccountId: issue.fields?.assignee?.accountId || null,
                 parentId: issue.fields?.parent?.id ? String(issue.fields.parent.id) : null,
                 parentKey: issue.fields?.parent?.key || null,
                 startDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Start date']),
-                actualStartDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Actual Start', 'Start date']),
+                actualStartDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Actual Start', 'Actual Start Date', 'Start date']),
                 dueDate: issue.fields?.duedate || null,
                 createdAt: issue.fields?.created || null,
                 updatedAt: issue.fields?.updated || null,
