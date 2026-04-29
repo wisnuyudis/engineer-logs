@@ -137,7 +137,9 @@ export function PersonalKPI({ user, activities }) {
               </Tag>
               {scorecard?.hasViolation && <Tag color={T.red} lo={T.redLo}>Ada Pelanggaran</Tag>}
               <Tag color={T.textMute} lo={T.border}>{scorecard?.activeDomainCount || 0} domain aktif</Tag>
-              <Tag color={T.indigoHi} lo={T.indigoLo}>Input manual head/admin</Tag>
+              <Tag color={T.indigoHi} lo={T.indigoLo}>
+                {scorecard?.automationMode === 'hybrid_auto_v1' ? 'Hybrid otomatis + input manual terbatas' : 'Input manual head/admin'}
+              </Tag>
               </div>
             </div>
           </div>

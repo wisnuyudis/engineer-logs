@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.computeKpiSummary = exports.qbMultiplierFromCompletedTasks = exports.canManageUserKpi = exports.canManageKpi = exports.normalizeYear = exports.normalizeQuarter = exports.buildQuarterLabel = exports.resolveKpiProfile = exports.KPI_PROFILES = void 0;
+exports.computeKpiSummary = exports.computeResolvedKpiSummary = exports.qbMultiplierFromCompletedTasks = exports.canManageUserKpi = exports.canManageKpi = exports.normalizeYear = exports.normalizeQuarter = exports.buildQuarterLabel = exports.resolveKpiProfile = exports.KPI_PROFILES = void 0;
 exports.KPI_PROFILES = {
     engineer_delivery: {
         key: 'engineer_delivery',
@@ -66,24 +66,16 @@ const qbMultiplierFromCompletedTasks = (count) => {
     return 0;
 };
 exports.qbMultiplierFromCompletedTasks = qbMultiplierFromCompletedTasks;
-const computeKpiSummary = (profile, rawScores, options = {}) => {
-    const scores = {};
+const computeResolvedKpiSummary = (profile, scores, options = {}) => {
     let total = 0;
     let count = 0;
     let hasViolation = false;
     const completedJiraTaskCount = Math.max(0, Number(options.completedJiraTaskCount || 0));
     const qbMultiplier = (0, exports.qbMultiplierFromCompletedTasks)(completedJiraTaskCount);
     for (const domain of profile.domains) {
-        const value = rawScores?.[domain.key];
-        if (value === null || value === undefined || value === '') {
-            scores[domain.key] = null;
+        const num = scores[domain.key];
+        if (num === null || num === undefined)
             continue;
-        }
-        const num = Number(value);
-        if (!Number.isFinite(num) || num < -1 || num > 4) {
-            throw new Error(`Nilai domain '${domain.label}' harus berada di antara -1 sampai 4.`);
-        }
-        scores[domain.key] = Number(num.toFixed(2));
         if (num === -1) {
             hasViolation = true;
         }
@@ -108,5 +100,22 @@ const computeKpiSummary = (profile, rawScores, options = {}) => {
         qbMultiplier,
         eligibleBonus: finalScore !== null && finalScore !== -1 && finalScore >= 3 && qbMultiplier > 0,
     };
+};
+exports.computeResolvedKpiSummary = computeResolvedKpiSummary;
+const computeKpiSummary = (profile, rawScores, options = {}) => {
+    const scores = {};
+    for (const domain of profile.domains) {
+        const value = rawScores?.[domain.key];
+        if (value === null || value === undefined || value === '') {
+            scores[domain.key] = null;
+            continue;
+        }
+        const num = Number(value);
+        if (!Number.isFinite(num) || num < -1 || num > 4) {
+            throw new Error(`Nilai domain '${domain.label}' harus berada di antara -1 sampai 4.`);
+        }
+        scores[domain.key] = Number(num.toFixed(2));
+    }
+    return (0, exports.computeResolvedKpiSummary)(profile, scores, options);
 };
 exports.computeKpiSummary = computeKpiSummary;

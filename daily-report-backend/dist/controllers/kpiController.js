@@ -4,6 +4,7 @@ exports.recalculateQbMetrics = exports.getKpiProfiles = exports.upsertUserKpiSco
 const client_1 = require("@prisma/client");
 const kpiManual_1 = require("../utils/kpiManual");
 const jiraService_1 = require("../services/jiraService");
+const kpiAutomationService_1 = require("../services/kpiAutomationService");
 const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const getQuarterDateRange = (year, quarter) => {
@@ -15,7 +16,16 @@ const getQuarterDateRange = (year, quarter) => {
         default: return { startDate: `${year}-01-01`, endDate: `${year}-03-31` };
     }
 };
-const mapScorecardResponse = (user, profile, scorecard, year, quarter) => ({
+const resolveHybridManualScore = (value, fallback) => {
+    if (value === undefined || value === null || value === '')
+        return fallback;
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < -1 || num > 4) {
+        throw new Error('Nilai manual KPI harus berada di antara -1 sampai 4.');
+    }
+    return Number(num.toFixed(2));
+};
+const mapScorecardResponse = (user, profile, scorecard, year, quarter, options = {}) => ({
     user: {
         id: user.id,
         name: user.name,
@@ -39,7 +49,7 @@ const mapScorecardResponse = (user, profile, scorecard, year, quarter) => ({
         ? {
             id: scorecard.id,
             scores: scorecard.scores || {},
-            notes: scorecard.notes || {},
+            notes: options.domainNotes || scorecard.notes || {},
             finalScore: scorecard.finalScore,
             activeDomainCount: scorecard.activeDomainCount,
             hasViolation: scorecard.hasViolation,
@@ -49,10 +59,14 @@ const mapScorecardResponse = (user, profile, scorecard, year, quarter) => ({
             qbLastCalculatedAt: scorecard.qbLastCalculatedAt || null,
             enteredById: scorecard.enteredById,
             updatedAt: scorecard.updatedAt,
+            manualInputs: options.manualInputs || null,
+            breakdown: options.breakdown || null,
+            automationWarnings: options.automationWarnings || [],
+            automationMode: options.automationMode || 'manual',
         }
         : {
             scores: {},
-            notes: {},
+            notes: options.domainNotes || {},
             finalScore: profile.key === 'project_manager' ? 3 : null,
             activeDomainCount: 0,
             hasViolation: false,
@@ -62,6 +76,10 @@ const mapScorecardResponse = (user, profile, scorecard, year, quarter) => ({
             qbLastCalculatedAt: null,
             enteredById: null,
             updatedAt: null,
+            manualInputs: options.manualInputs || null,
+            breakdown: options.breakdown || null,
+            automationWarnings: options.automationWarnings || [],
+            automationMode: options.automationMode || 'manual',
         },
 });
 const getKpiAssignableUsers = async (req, res) => {
@@ -142,6 +160,39 @@ const getUserKpiScorecard = async (req, res) => {
                 },
             },
         });
+        if (profile.key === 'engineer_delivery') {
+            const computed = await (0, kpiAutomationService_1.computeEngineerDeliveryKpi)(profile, user, getQuarterDateRange(year, quarter), scorecard);
+            const syntheticScorecard = scorecard
+                ? {
+                    ...scorecard,
+                    scores: computed.scores,
+                    notes: computed.domainNotes,
+                    finalScore: computed.finalScore,
+                    activeDomainCount: computed.activeDomainCount,
+                    hasViolation: computed.hasViolation,
+                    eligibleBonus: computed.eligibleBonus,
+                }
+                : {
+                    scores: computed.scores,
+                    notes: computed.domainNotes,
+                    finalScore: computed.finalScore,
+                    activeDomainCount: computed.activeDomainCount,
+                    hasViolation: computed.hasViolation,
+                    eligibleBonus: computed.eligibleBonus,
+                    completedJiraTaskCount: computed.completedJiraTaskCount,
+                    qbMultiplier: computed.qbMultiplier,
+                    qbLastCalculatedAt: null,
+                    enteredById: null,
+                    updatedAt: null,
+                };
+            return res.json(mapScorecardResponse(user, profile, syntheticScorecard, year, quarter, {
+                manualInputs: computed.manualInputs,
+                domainNotes: computed.domainNotes,
+                breakdown: computed.breakdown,
+                automationWarnings: computed.automationWarnings,
+                automationMode: 'hybrid_auto_v1',
+            }));
+        }
         res.json(mapScorecardResponse(user, profile, scorecard, year, quarter));
     }
     catch (error) {
@@ -160,6 +211,7 @@ const upsertUserKpiScorecard = async (req, res) => {
         const quarter = (0, kpiManual_1.normalizeQuarter)(req.body?.quarter);
         const scores = req.body?.scores || {};
         const notes = req.body?.notes || {};
+        const manualInputs = req.body?.manualInputs || {};
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: {
@@ -180,6 +232,77 @@ const upsertUserKpiScorecard = async (req, res) => {
         const profile = (0, kpiManual_1.resolveKpiProfile)(user.role);
         if (!profile) {
             return res.status(400).json({ error: 'Role ini belum punya profil KPI manual.' });
+        }
+        if (profile.key === 'engineer_delivery') {
+            const existing = await prisma.kpiScorecard.findUnique({
+                where: {
+                    userId_year_quarter: {
+                        userId: user.id,
+                        year,
+                        quarter,
+                    },
+                },
+            });
+            const persisted = (0, kpiAutomationService_1.parseEngineerDeliveryPersistedState)(existing?.notes, existing?.scores);
+            const nextManualInputs = {
+                implNps: resolveHybridManualScore(manualInputs.implNps, persisted.manualInputs.implNps),
+                pmNps: resolveHybridManualScore(manualInputs.pmNps, persisted.manualInputs.pmNps),
+                opsScore: resolveHybridManualScore(manualInputs.opsScore, persisted.manualInputs.opsScore),
+            };
+            const computed = await (0, kpiAutomationService_1.computeEngineerDeliveryKpi)(profile, user, getQuarterDateRange(year, quarter), {
+                ...existing,
+                notes: (0, kpiAutomationService_1.buildEngineerDeliveryPersistedNotes)(nextManualInputs, notes),
+            });
+            const scorecard = await prisma.kpiScorecard.upsert({
+                where: {
+                    userId_year_quarter: {
+                        userId: user.id,
+                        year,
+                        quarter,
+                    },
+                },
+                update: {
+                    profileKey: profile.key,
+                    scores: computed.scores,
+                    notes: computed.persistedNotes,
+                    finalScore: computed.finalScore,
+                    activeDomainCount: computed.activeDomainCount,
+                    hasViolation: computed.hasViolation,
+                    eligibleBonus: computed.eligibleBonus,
+                    completedJiraTaskCount: computed.completedJiraTaskCount,
+                    qbMultiplier: computed.qbMultiplier,
+                    enteredById: req.user?.userId,
+                },
+                create: {
+                    userId: user.id,
+                    year,
+                    quarter,
+                    profileKey: profile.key,
+                    scores: computed.scores,
+                    notes: computed.persistedNotes,
+                    finalScore: computed.finalScore,
+                    activeDomainCount: computed.activeDomainCount,
+                    hasViolation: computed.hasViolation,
+                    eligibleBonus: computed.eligibleBonus,
+                    completedJiraTaskCount: computed.completedJiraTaskCount,
+                    qbMultiplier: computed.qbMultiplier,
+                    enteredById: req.user?.userId,
+                },
+            });
+            await (0, auditTrail_1.writeAudit)(req, {
+                action: 'kpi.hybrid_save',
+                entityType: 'kpi_scorecard',
+                entityId: scorecard.id,
+                after: scorecard,
+                metadata: { year, quarter, userId: user.id },
+            });
+            return res.json(mapScorecardResponse(user, profile, scorecard, year, quarter, {
+                manualInputs: computed.manualInputs,
+                domainNotes: computed.domainNotes,
+                breakdown: computed.breakdown,
+                automationWarnings: computed.automationWarnings,
+                automationMode: 'hybrid_auto_v1',
+            }));
         }
         const existing = await prisma.kpiScorecard.findUnique({
             where: {
@@ -291,11 +414,78 @@ const recalculateQbMetrics = async (req, res) => {
                 },
             },
         });
+        if (profile.key === 'engineer_delivery') {
+            const computed = await (0, kpiAutomationService_1.computeEngineerDeliveryKpi)(profile, user, { startDate, endDate }, {
+                ...existing,
+                completedJiraTaskCount: jiraResult.count,
+            });
+            const scorecard = await prisma.kpiScorecard.upsert({
+                where: {
+                    userId_year_quarter: {
+                        userId: user.id,
+                        year,
+                        quarter,
+                    },
+                },
+                update: {
+                    profileKey: profile.key,
+                    scores: computed.scores,
+                    notes: computed.persistedNotes,
+                    finalScore: computed.finalScore,
+                    activeDomainCount: computed.activeDomainCount,
+                    hasViolation: computed.hasViolation,
+                    eligibleBonus: computed.eligibleBonus,
+                    completedJiraTaskCount: jiraResult.count,
+                    qbMultiplier: computed.qbMultiplier,
+                    qbLastCalculatedAt: new Date(),
+                },
+                create: {
+                    userId: user.id,
+                    year,
+                    quarter,
+                    profileKey: profile.key,
+                    scores: computed.scores,
+                    notes: computed.persistedNotes,
+                    finalScore: computed.finalScore,
+                    activeDomainCount: computed.activeDomainCount,
+                    hasViolation: computed.hasViolation,
+                    eligibleBonus: computed.eligibleBonus,
+                    completedJiraTaskCount: jiraResult.count,
+                    qbMultiplier: computed.qbMultiplier,
+                    qbLastCalculatedAt: new Date(),
+                },
+            });
+            await (0, auditTrail_1.writeAudit)(req, {
+                action: 'kpi.qb_recalculate',
+                entityType: 'kpi_scorecard',
+                entityId: scorecard.id,
+                after: scorecard,
+                metadata: {
+                    year,
+                    quarter,
+                    userId: user.id,
+                    qbCount: jiraResult.count,
+                },
+            });
+            return res.json({
+                ...mapScorecardResponse(user, profile, scorecard, year, quarter, {
+                    manualInputs: computed.manualInputs,
+                    domainNotes: computed.domainNotes,
+                    breakdown: computed.breakdown,
+                    automationWarnings: computed.automationWarnings,
+                    automationMode: 'hybrid_auto_v1',
+                }),
+                qbRefresh: {
+                    countedIssues: jiraResult.issues,
+                    count: jiraResult.count,
+                    startDate,
+                    endDate,
+                },
+            });
+        }
         const scores = existing?.scores || {};
         const notes = existing?.notes || {};
-        const summary = (0, kpiManual_1.computeKpiSummary)(profile, scores, {
-            completedJiraTaskCount: jiraResult.count,
-        });
+        const summary = (0, kpiManual_1.computeKpiSummary)(profile, scores, { completedJiraTaskCount: jiraResult.count });
         const scorecard = await prisma.kpiScorecard.upsert({
             where: {
                 userId_year_quarter: {

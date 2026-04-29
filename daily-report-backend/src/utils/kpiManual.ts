@@ -11,6 +11,8 @@ export type KpiProfileDef = {
   domains: KpiDomainDef[];
 };
 
+export type KpiScoreMap = Record<string, number | null>;
+
 export const KPI_PROFILES: Record<string, KpiProfileDef> = {
   engineer_delivery: {
     key: 'engineer_delivery',
@@ -74,12 +76,11 @@ export const qbMultiplierFromCompletedTasks = (count: number) => {
   return 0;
 };
 
-export const computeKpiSummary = (
+export const computeResolvedKpiSummary = (
   profile: KpiProfileDef,
-  rawScores: Record<string, unknown>,
+  scores: KpiScoreMap,
   options: { completedJiraTaskCount?: number } = {}
 ) => {
-  const scores: Record<string, number | null> = {};
   let total = 0;
   let count = 0;
   let hasViolation = false;
@@ -87,18 +88,8 @@ export const computeKpiSummary = (
   const qbMultiplier = qbMultiplierFromCompletedTasks(completedJiraTaskCount);
 
   for (const domain of profile.domains) {
-    const value = rawScores?.[domain.key];
-    if (value === null || value === undefined || value === '') {
-      scores[domain.key] = null;
-      continue;
-    }
-
-    const num = Number(value);
-    if (!Number.isFinite(num) || num < -1 || num > 4) {
-      throw new Error(`Nilai domain '${domain.label}' harus berada di antara -1 sampai 4.`);
-    }
-
-    scores[domain.key] = Number(num.toFixed(2));
+    const num = scores[domain.key];
+    if (num === null || num === undefined) continue;
     if (num === -1) {
       hasViolation = true;
     } else {
@@ -124,4 +115,29 @@ export const computeKpiSummary = (
     qbMultiplier,
     eligibleBonus: finalScore !== null && finalScore !== -1 && finalScore >= 3 && qbMultiplier > 0,
   };
+};
+
+export const computeKpiSummary = (
+  profile: KpiProfileDef,
+  rawScores: Record<string, unknown>,
+  options: { completedJiraTaskCount?: number } = {}
+) => {
+  const scores: KpiScoreMap = {};
+
+  for (const domain of profile.domains) {
+    const value = rawScores?.[domain.key];
+    if (value === null || value === undefined || value === '') {
+      scores[domain.key] = null;
+      continue;
+    }
+
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < -1 || num > 4) {
+      throw new Error(`Nilai domain '${domain.label}' harus berada di antara -1 sampai 4.`);
+    }
+
+    scores[domain.key] = Number(num.toFixed(2));
+  }
+
+  return computeResolvedKpiSummary(profile, scores, options);
 };

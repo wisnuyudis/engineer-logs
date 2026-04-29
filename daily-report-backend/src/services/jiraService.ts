@@ -231,3 +231,96 @@ export const fetchCompletedJiraTasksForQuarter = async (
     issues: matchedIssues,
   };
 };
+
+export type JiraSearchIssue = {
+  id: string;
+  key: string;
+  summary: string | null;
+  issueTypeName: string | null;
+  issueTypeIsSubtask: boolean;
+  projectKey: string | null;
+  projectName: string | null;
+  workTypeName: string | null;
+  assigneeAccountId: string | null;
+  parentId: string | null;
+  parentKey: string | null;
+  dueDate: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  resolutionDate: string | null;
+  statusName: string | null;
+  priorityName: string | null;
+  timeSpentSeconds: number;
+  comments: Array<{ id: string; createdAt: string | null; bodyText: string }>;
+};
+
+type SearchJiraIssuesOptions = {
+  jql: string;
+  fields: string[];
+};
+
+export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions) => {
+  const matchedIssues: JiraSearchIssue[] = [];
+  let nextPageToken: string | undefined;
+  const maxResults = 50;
+
+  while (true) {
+    const payload = {
+      jql,
+      maxResults,
+      nextPageToken,
+      fields,
+      expand: ['names'],
+    };
+
+    const res = await jiraFetch('/rest/api/3/search/jql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Gagal mengambil issue Jira untuk KPI. Status: ${res.status}`);
+    }
+
+    const data: any = await res.json();
+    const issues = Array.isArray(data.issues) ? data.issues : [];
+
+    for (const issue of issues) {
+      matchedIssues.push({
+        id: String(issue.id),
+        key: String(issue.key),
+        summary: issue.fields?.summary || null,
+        issueTypeName: issue.fields?.issuetype?.name || null,
+        issueTypeIsSubtask: Boolean(issue.fields?.issuetype?.subtask),
+        projectKey: issue.fields?.project?.key || null,
+        projectName: issue.fields?.project?.name || null,
+        workTypeName: extractNamedFieldValue(issue.fields, data.names, 'Work Type'),
+        assigneeAccountId: issue.fields?.assignee?.accountId || null,
+        parentId: issue.fields?.parent?.id ? String(issue.fields.parent.id) : null,
+        parentKey: issue.fields?.parent?.key || null,
+        dueDate: issue.fields?.duedate || null,
+        createdAt: issue.fields?.created || null,
+        updatedAt: issue.fields?.updated || null,
+        resolutionDate: issue.fields?.resolutiondate || null,
+        statusName: issue.fields?.status?.name || null,
+        priorityName: issue.fields?.priority?.name || null,
+        timeSpentSeconds: Number(issue.fields?.timespent || 0),
+        comments: Array.isArray(issue.fields?.comment?.comments)
+          ? issue.fields.comment.comments.map((comment: any) => ({
+              id: String(comment.id),
+              createdAt: comment.created || null,
+              bodyText: flattenJiraComment(comment.body),
+            }))
+          : [],
+      });
+    }
+
+    nextPageToken = data.nextPageToken || undefined;
+    if (!nextPageToken || data.isLast || issues.length === 0) break;
+  }
+
+  return matchedIssues;
+};
