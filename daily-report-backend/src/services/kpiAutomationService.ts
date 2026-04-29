@@ -49,6 +49,7 @@ const REQUIRED_IMPL_DOCS = [
 ];
 
 const normalizeSummary = (value: string | null | undefined) => String(value || '').trim().toLowerCase();
+const inQuarter = (dateValue: string | null | undefined, period: QuarterRange) => Boolean(dateValue && dateValue >= period.startDate && dateValue <= period.endDate);
 
 const toIsoDate = (value: string | null | undefined) => {
   if (!value) return null;
@@ -317,7 +318,12 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
   };
 };
 
-const computePreventiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>, pmNps: number | null) => {
+const computePreventiveMaintenanceDomain = (
+  issues: Awaited<ReturnType<typeof searchJiraIssues>>,
+  parentStartDates: Map<string, string | null>,
+  period: QuarterRange,
+  pmNps: number | null
+) => {
   const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[MA]'));
   if (!relevant.length) {
     return {
@@ -344,8 +350,15 @@ const computePreventiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
 
   const execItems: any[] = [];
   const reportItems: any[] = [];
+  let applicableParentCount = 0;
 
   for (const [parentRef, group] of grouped.entries()) {
+    const parentStartDate = parentStartDates.get(parentRef) || null;
+    if (!inQuarter(parentStartDate, period)) {
+      continue;
+    }
+    applicableParentCount += 1;
+
     const job = group
       .filter((issue) => normalizeSummary(issue.summary).startsWith('pekerjaan pm'))
       .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))[0];
@@ -359,6 +372,7 @@ const computePreventiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
       const score = jobDoneAt ? pmExecutionScore(lateDays) : -1;
       execItems.push({
         parentRef,
+        parentStartDate,
         issueKey: job.key,
         dueDate: job.dueDate,
         doneAt: jobDoneAt,
@@ -373,6 +387,7 @@ const computePreventiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
     const reportScore = report ? pmReportScore(reportDays) : -1;
     reportItems.push({
       parentRef,
+      parentStartDate,
       issueKey: report?.key || null,
       actualPmDoneAt: relatedJobDoneAt,
       reportDoneAt,
@@ -389,7 +404,7 @@ const computePreventiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
     score,
     breakdown: {
       mode: 'hybrid',
-      parentCount: grouped.size,
+      parentCount: applicableParentCount,
       components: {
         execution: {
           score: executionScore,
@@ -408,7 +423,10 @@ const computePreventiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
 };
 
 const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>) => {
-  const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '(SUP)') && normalizeSummary(issue.workTypeName) === '[system] problem');
+  const relevant = issues.filter((issue) => {
+    const workType = normalizeSummary(issue.workTypeName);
+    return isProjectPrefix(issue.projectName, '(SUP)') && workType.includes('problem');
+  });
   if (!relevant.length) {
     return {
       score: null,
@@ -501,7 +519,11 @@ const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
 };
 
 const computeEnhancementDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>) => {
-  const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '(SUP)') && normalizeSummary(issue.workTypeName) === 'request changes and enhancement');
+  const relevant = issues.filter((issue) => {
+    const workType = normalizeSummary(issue.workTypeName);
+    return isProjectPrefix(issue.projectName, '(SUP)')
+      && (workType.includes('request changes and enhancement') || workType.includes('enhancement') || workType.includes('change'));
+  });
   if (!relevant.length) {
     return {
       score: null,
@@ -613,6 +635,7 @@ export const computeEngineerDeliveryKpi = async (
 
   let subtasks;
   let supportIssues;
+  let pmParents;
   try {
     [subtasks, supportIssues] = await Promise.all([
       searchJiraIssues({
@@ -624,6 +647,19 @@ export const computeEngineerDeliveryKpi = async (
         fields: ['summary', 'issuetype', 'project', 'assignee', 'created', 'updated', 'resolutiondate', 'status', 'priority', 'comment', 'timespent'],
       }),
     ]);
+    const parentKeys = Array.from(
+      new Set(
+        subtasks
+          .filter((issue) => isProjectPrefix(issue.projectName, '[MA]') && issue.parentKey)
+          .map((issue) => issue.parentKey as string)
+      )
+    );
+    pmParents = parentKeys.length
+      ? await searchJiraIssues({
+          jql: `issuekey in (${parentKeys.map((key) => `"${key}"`).join(',')})`,
+          fields: ['summary', 'issuetype', 'project', 'status'],
+        })
+      : [];
   } catch (error: any) {
     if (lastAutomationSnapshot) {
       warnings.push(`Jira automation fallback aktif. Snapshot terakhir dipakai karena kalkulasi terbaru gagal: ${error?.message || 'Unknown Jira error'}`);
@@ -660,7 +696,13 @@ export const computeEngineerDeliveryKpi = async (
   }
 
   const implementation = computeImplementationDomain(subtasks, manualInputs.implNps);
-  const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, manualInputs.pmNps);
+  const pmParentStartDates = new Map<string, string | null>(
+    (pmParents || []).flatMap((issue) => [
+      [issue.key, issue.startDate || null] as const,
+      [issue.id, issue.startDate || null] as const,
+    ])
+  );
+  const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentStartDates, period, manualInputs.pmNps);
   const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssues);
   const enhancement = computeEnhancementDomain(supportIssues);
 

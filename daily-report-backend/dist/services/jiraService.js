@@ -49,6 +49,43 @@ const flattenJiraComment = (node) => {
         return node.text || '';
     return flattenJiraComment(node.content);
 };
+let jiraFieldNameMapCache = null;
+const loadJiraFieldNameMap = async () => {
+    if (jiraFieldNameMapCache)
+        return jiraFieldNameMapCache;
+    const res = await jiraFetch('/rest/api/3/field');
+    if (!res.ok) {
+        throw new Error(`Gagal mengambil metadata field Jira. Status: ${res.status}`);
+    }
+    const fields = await res.json();
+    jiraFieldNameMapCache = Object.fromEntries(fields
+        .filter((field) => field?.name && field?.id)
+        .map((field) => [String(field.name).toLowerCase(), String(field.id)]));
+    return jiraFieldNameMapCache;
+};
+const extractFieldValue = (fields, fieldKey) => {
+    if (!fields || !fieldKey)
+        return null;
+    const value = fields[fieldKey];
+    if (!value)
+        return null;
+    if (typeof value === 'string')
+        return value;
+    if (typeof value?.value === 'string')
+        return value.value;
+    if (typeof value?.name === 'string')
+        return value.name;
+    if (Array.isArray(value)) {
+        const first = value.find((item) => typeof item === 'string' || typeof item?.value === 'string' || typeof item?.name === 'string');
+        if (typeof first === 'string')
+            return first;
+        if (typeof first?.value === 'string')
+            return first.value;
+        if (typeof first?.name === 'string')
+            return first.name;
+    }
+    return null;
+};
 const extractNamedFieldValue = (fields, names, fieldName) => {
     if (!fields || !names)
         return null;
@@ -69,6 +106,15 @@ const extractNamedFieldValue = (fields, names, fieldName) => {
             return first;
         if (typeof first?.value === 'string')
             return first.value;
+    }
+    return null;
+};
+const extractNamedFieldValueByMap = (fields, fieldMap, fieldNames) => {
+    for (const fieldName of fieldNames) {
+        const key = fieldMap[fieldName.toLowerCase()];
+        const value = extractFieldValue(fields, key);
+        if (value !== null)
+            return value;
     }
     return null;
 };
@@ -122,7 +168,10 @@ const fetchJiraTicket = async (ticketId) => {
 };
 exports.fetchJiraTicket = fetchJiraTicket;
 const fetchJiraIssue = async (issueKeyOrId) => {
-    const res = await jiraFetch(`/rest/api/3/issue/${issueKeyOrId}?fields=summary,issuetype,project&expand=names`);
+    const fieldMap = await loadJiraFieldNameMap();
+    const extraFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date']].filter(Boolean);
+    const queryFields = ['summary', 'issuetype', 'project', ...extraFields].join(',');
+    const res = await jiraFetch(`/rest/api/3/issue/${issueKeyOrId}?fields=${encodeURIComponent(queryFields)}&expand=names`);
     if (!res.ok) {
         if (res.status === 404) {
             throw new Error(`Issue Jira ${issueKeyOrId} tidak ditemukan.`);
@@ -137,7 +186,9 @@ const fetchJiraIssue = async (issueKeyOrId) => {
         issueTypeName: data.fields?.issuetype?.name || null,
         projectKey: data.fields?.project?.key || null,
         projectName: data.fields?.project?.name || null,
-        workTypeName: extractNamedFieldValue(data.fields, data.names, 'Work Type'),
+        workTypeName: extractNamedFieldValue(data.fields, data.names, 'Work Type')
+            || extractNamedFieldValue(data.fields, data.names, 'Request Type')
+            || extractNamedFieldValueByMap(data.fields, fieldMap, ['Work Type', 'Request Type']),
     };
 };
 exports.fetchJiraIssue = fetchJiraIssue;
@@ -218,12 +269,15 @@ const searchJiraIssues = async ({ jql, fields }) => {
     const matchedIssues = [];
     let nextPageToken;
     const maxResults = 50;
+    const fieldMap = await loadJiraFieldNameMap();
+    const additionalFields = [fieldMap['work type'], fieldMap['request type'], fieldMap['start date']].filter(Boolean);
+    const queryFields = Array.from(new Set([...fields, ...additionalFields]));
     while (true) {
         const payload = {
             jql,
             maxResults,
             nextPageToken,
-            fields,
+            fields: queryFields,
         };
         const res = await jiraFetch('/rest/api/3/search/jql', {
             method: 'POST',
@@ -266,10 +320,13 @@ const searchJiraIssues = async ({ jql, fields }) => {
                 issueTypeIsSubtask: Boolean(issue.fields?.issuetype?.subtask),
                 projectKey: issue.fields?.project?.key || null,
                 projectName: issue.fields?.project?.name || null,
-                workTypeName: extractNamedFieldValue(issue.fields, data.names || issue.names, 'Work Type'),
+                workTypeName: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Work Type', 'Request Type'])
+                    || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Work Type')
+                    || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Request Type'),
                 assigneeAccountId: issue.fields?.assignee?.accountId || null,
                 parentId: issue.fields?.parent?.id ? String(issue.fields.parent.id) : null,
                 parentKey: issue.fields?.parent?.key || null,
+                startDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Start date']),
                 dueDate: issue.fields?.duedate || null,
                 createdAt: issue.fields?.created || null,
                 updatedAt: issue.fields?.updated || null,
