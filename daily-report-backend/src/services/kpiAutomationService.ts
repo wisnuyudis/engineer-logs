@@ -645,7 +645,17 @@ export const computeEngineerDeliveryKpi = async (
         persistedNotes: buildEngineerDeliveryPersistedNotes(manualInputs, domainNotes, lastAutomationSnapshot),
       };
     }
-    throw error;
+    warnings.push(`Kalkulasi Jira belum bisa dijalankan: ${error?.message || 'Unknown Jira error'}`);
+    const summary = computeResolvedKpiSummary(profile, fallbackScores, { completedJiraTaskCount });
+    return {
+      ...summary,
+      scores: fallbackScores,
+      manualInputs,
+      domainNotes,
+      breakdown,
+      automationWarnings: warnings,
+      persistedNotes: buildEngineerDeliveryPersistedNotes(manualInputs, domainNotes, null),
+    };
   }
 
   const implementation = computeImplementationDomain(subtasks, manualInputs.implNps);
