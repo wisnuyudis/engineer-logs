@@ -228,8 +228,16 @@ const parsePrioritySeverity = (priorityName: string | null) => {
   return 4;
 };
 
-const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJiraIssues>>, implNps: number | null) => {
-  const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[IMP]'));
+const computeImplementationDomain = (
+  issues: Awaited<ReturnType<typeof searchJiraIssues>>,
+  implNps: number | null,
+  period: QuarterRange
+) => {
+  const relevant = issues.filter((issue) =>
+    isProjectPrefix(issue.projectName, '[IMP]')
+    && !!issue.dueDate
+    && inQuarter(issue.dueDate, period)
+  );
   if (!relevant.length) {
     return {
       score: null,
@@ -703,7 +711,7 @@ export const computeEngineerDeliveryKpi = async (
     };
   }
 
-  const implementation = computeImplementationDomain(subtasks, manualInputs.implNps);
+  const implementation = computeImplementationDomain(subtasks, manualInputs.implNps, period);
   const pmParentDueDates = new Map<string, string | null>(
     (pmParents || []).flatMap((issue) => [
       [issue.key, issue.dueDate || null] as const,

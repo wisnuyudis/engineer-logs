@@ -194,8 +194,10 @@ const parsePrioritySeverity = (priorityName) => {
         return 3;
     return 4;
 };
-const computeImplementationDomain = (issues, implNps) => {
-    const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[IMP]'));
+const computeImplementationDomain = (issues, implNps, period) => {
+    const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[IMP]')
+        && !!issue.dueDate
+        && inQuarter(issue.dueDate, period));
     if (!relevant.length) {
         return {
             score: null,
@@ -627,7 +629,7 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
             persistedNotes: (0, exports.buildEngineerDeliveryPersistedNotes)(manualInputs, domainNotes, null),
         };
     }
-    const implementation = computeImplementationDomain(subtasks, manualInputs.implNps);
+    const implementation = computeImplementationDomain(subtasks, manualInputs.implNps, period);
     const pmParentDueDates = new Map((pmParents || []).flatMap((issue) => [
         [issue.key, issue.dueDate || null],
         [issue.id, issue.dueDate || null],
