@@ -139,6 +139,7 @@ export default function App() {
   const view = location.pathname;
   const pageTitle = TITLES[view] || TITLES["/"];
   const isLoading = loadingMembers || loadingActs || loadingTax;
+  const hasPageFab = view === '/members' || view === '/activities';
 
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.textPri }}>
@@ -205,7 +206,7 @@ export default function App() {
         style={{
           position: 'fixed',
           right: 22,
-          bottom: 22,
+          bottom: hasPageFab ? 92 : 22,
           width: 58,
           height: 58,
           borderRadius: '999px',
