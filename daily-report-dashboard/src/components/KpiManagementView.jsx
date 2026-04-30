@@ -357,12 +357,12 @@ export function KpiManagementView({ currentUser }) {
                         columns={[
                           { key:'issueKey', label:'Issue' },
                           { key:'dueDate', label:'Due Date' },
-                          { key:'doneAt', label:'Done At' },
+                          { key:'actualEndAt', label:'Actual End' },
                           { key:'status', label:'Status' },
                         ]}
                         rows={(scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.items || []).map((item) => ({
                           ...item,
-                          status: item.doneAt ? (item.onTime ? 'On time' : 'Late') : 'Open',
+                          status: item.actualEndAt ? (item.onTime ? 'On time' : 'Late') : 'Open',
                         }))}
                       />
                       <HybridDetailsTable

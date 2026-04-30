@@ -238,7 +238,7 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
         issueCount: 0,
         components: {
           taskAccuracy: { score: null, eligibleSubtaskCount: 0, onTimeSubtaskCount: 0, lateSubtaskCount: 0, openSubtaskCount: 0, onTimePct: null },
-          documentation: { score: null, expectedDocCount: REQUIRED_IMPL_DOCS.length, foundDocCount: 0, lateDocCount: 0, missingDocCount: REQUIRED_IMPL_DOCS.length, matchedDocs: [] },
+          documentation: { score: null, expectedDocCount: REQUIRED_IMPL_DOCS.length, foundDocCount: 0, lateDocCount: 0, missingDocCount: 0, matchedDocs: [], applicable: false },
           nps: { score: implNps, source: 'manual' },
         },
       },
@@ -247,28 +247,28 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
 
   const eligibleTasks = relevant.filter((issue) => !!issue.dueDate);
   const taskItems = eligibleTasks.map((issue) => {
-    const doneAt = toIsoDate(issue.resolutionDate);
+    const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
-    const onTime = Boolean(doneAt && due && new Date(doneAt) <= due);
+    const onTime = Boolean(actualEndAt && due && new Date(actualEndAt) <= due);
     return {
       issueKey: issue.key,
       summary: issue.summary,
       dueDate: issue.dueDate,
-      doneAt,
+      actualEndAt,
       onTime,
     };
   });
   const onTimeSubtaskCount = eligibleTasks.filter((issue) => {
-    const doneAt = toIsoDate(issue.resolutionDate);
+    const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
-    return doneAt && due && new Date(doneAt) <= due;
+    return actualEndAt && due && new Date(actualEndAt) <= due;
   }).length;
   const lateSubtaskCount = eligibleTasks.filter((issue) => {
-    const doneAt = toIsoDate(issue.resolutionDate);
+    const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
-    return doneAt && due && new Date(doneAt) > due;
+    return actualEndAt && due && new Date(actualEndAt) > due;
   }).length;
-  const openSubtaskCount = eligibleTasks.filter((issue) => !toIsoDate(issue.resolutionDate)).length;
+  const openSubtaskCount = eligibleTasks.filter((issue) => !toIsoDate(issue.actualEndDate)).length;
   const onTimePct = eligibleTasks.length ? (onTimeSubtaskCount / eligibleTasks.length) * 100 : null;
   const taskScore = onTimePct === null ? null : implementationTaskScore(onTimePct);
 
@@ -276,9 +276,9 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
     const matches = relevant.filter((issue) => normalizeSummary(issue.summary) === normalizeSummary(docName));
     const present = matches.length > 0;
     const hasOnTime = matches.some((issue) => {
-      const doneAt = toIsoDate(issue.resolutionDate);
+      const actualEndAt = toIsoDate(issue.actualEndDate);
       const due = endOfDueDate(issue.dueDate);
-      return doneAt && due && new Date(doneAt) <= due;
+      return actualEndAt && due && new Date(actualEndAt) <= due;
     });
     return {
       name: docName,
@@ -288,9 +288,10 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
   });
 
   const foundDocCount = docStatus.filter((doc) => doc.present).length;
-  const missingDocCount = docStatus.filter((doc) => !doc.present).length;
+  const missingDocCount = foundDocCount > 0 ? docStatus.filter((doc) => !doc.present).length : 0;
   const lateDocCount = docStatus.filter((doc) => doc.present && !doc.onTime).length;
-  const documentationScore = foundDocCount === 0 ? -1 : (missingDocCount === 0 && lateDocCount === 0 ? 4 : 3);
+  const documentationApplicable = foundDocCount > 0;
+  const documentationScore = !documentationApplicable ? null : (missingDocCount === 0 && lateDocCount === 0 ? 4 : 3);
   const score = hasScorableAutoEvidence([taskScore, documentationScore])
     ? averageScores([taskScore, documentationScore, implNps])
     : null;
@@ -317,6 +318,7 @@ const computeImplementationDomain = (issues: Awaited<ReturnType<typeof searchJir
           lateDocCount,
           missingDocCount,
           matchedDocs: docStatus,
+          applicable: documentationApplicable,
         },
         nps: { score: implNps, source: 'manual' },
       },

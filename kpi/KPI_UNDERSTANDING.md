@@ -65,7 +65,8 @@ Implementasi operasional terbaru:
 #### 1.a Ketepatan Penyelesaian Task
 
 - basis hitung: persentase `subtask` yang di-assign dan selesai tepat waktu
-- `tepat waktu` = selesai sebelum / pada `due date`
+- `tepat waktu` = `Actual End` sebelum / pada `due date`
+- `Done` tidak lagi dipakai sebagai acuan komponen ini
 
 Skor:
 
@@ -95,11 +96,12 @@ Aturan scoring terbaru:
 - seluruh dokumen lengkap dan tepat waktu -> `4`
 - ada maksimal `1` dokumen terlambat dari `due date` -> `3`
 - dokumen ada sebagian / lebih dari `1` terlambat / ada yang missing tetapi tidak nol total -> `3`
-- tidak ada dokumen sama sekali -> `-1`
+- bila naming dokumen standar belum ditemukan sama sekali, komponen dokumentasi dianggap `N/A` dan tidak masuk pembagi
+- tidak ada dokumen sama sekali hanya dianggap `-1` bila memang naming standar sudah applicable dan seharusnya ada
 
 Catatan:
 
-- untuk implementasi saat ini, komponen dokumentasi praktis hanya memakai bucket `4`, `3`, dan `-1`
+- untuk implementasi saat ini, komponen dokumentasi praktis memakai bucket `4`, `3`, `-1`, atau `N/A` sesuai applicability naming
 
 #### 1.c NPS
 
