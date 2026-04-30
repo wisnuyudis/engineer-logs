@@ -46,6 +46,15 @@ const diffDaysFromDue = (dueDate, actualIso) => {
         return null;
     return Math.floor((actual.getTime() - due.getTime()) / 86400000);
 };
+const diffMinutesFromDueEnd = (dueDate, actualIso) => {
+    if (!dueDate || !actualIso)
+        return null;
+    const due = endOfDueDate(dueDate);
+    const actual = new Date(actualIso);
+    if (!due || Number.isNaN(actual.getTime()))
+        return null;
+    return (actual.getTime() - due.getTime()) / 60000;
+};
 const businessDaysBetween = (startIso, endIso) => {
     if (!startIso || !endIso)
         return null;
@@ -69,6 +78,22 @@ const businessDaysBetween = (startIso, endIso) => {
     return count;
 };
 const roundScore = (value) => value === null ? null : Number(value.toFixed(2));
+const formatHumanDuration = (minutes) => {
+    if (minutes === null || !Number.isFinite(minutes))
+        return null;
+    const abs = Math.abs(Math.round(minutes));
+    const days = Math.floor(abs / 1440);
+    const hours = Math.floor((abs % 1440) / 60);
+    const mins = abs % 60;
+    const parts = [];
+    if (days)
+        parts.push(`${days} hari`);
+    if (hours)
+        parts.push(`${hours} jam`);
+    if (mins || !parts.length)
+        parts.push(`${mins} menit`);
+    return `${minutes < 0 ? 'lebih cepat' : 'terlambat'} ${parts.join(' ')}`;
+};
 const averageScores = (values) => {
     const filtered = values.filter((value) => value !== null && value !== undefined);
     if (!filtered.length)
@@ -145,10 +170,11 @@ const implementationTaskScore = (onTimePct) => {
         return 1;
     return 0;
 };
-const pmExecutionScore = (lateDays) => {
-    if (lateDays === null)
+const pmExecutionScore = (lateMinutes) => {
+    if (lateMinutes === null)
         return null;
-    if (lateDays <= 0)
+    const lateDays = lateMinutes / 1440;
+    if (lateMinutes <= 0)
         return 4;
     if (lateDays <= 7)
         return 3;
@@ -326,15 +352,16 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period) => {
             .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))[0];
         if (job) {
             const jobDoneAt = toIsoDate(job.resolutionDate);
-            const lateDays = diffDaysFromDue(job.dueDate, jobDoneAt);
-            const score = jobDoneAt ? pmExecutionScore(lateDays) : -1;
+            const lateMinutes = diffMinutesFromDueEnd(job.dueDate, jobDoneAt);
+            const score = jobDoneAt ? pmExecutionScore(lateMinutes) : -1;
             execItems.push({
                 parentRef,
                 parentDueDate,
                 issueKey: job.key,
                 dueDate: job.dueDate,
                 doneAt: jobDoneAt,
-                lateDays,
+                lateMinutes: roundScore(lateMinutes),
+                lateHuman: formatHumanDuration(lateMinutes),
                 score,
             });
         }

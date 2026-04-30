@@ -139,6 +139,7 @@ Untuk `Pekerjaan PM`:
 
 - gunakan `due date` sebagai acuan keterlambatan
 - gunakan timestamp perubahan status `Done` sebagai tanggal aktual pelaksanaan
+- untuk implementasi sistem saat ini, `due date` diperlakukan sampai akhir hari pada tanggal tersebut
 
 Skor:
 

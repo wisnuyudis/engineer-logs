@@ -83,6 +83,14 @@ const diffDaysFromDue = (dueDate: string | null, actualIso: string | null) => {
   return Math.floor((actual.getTime() - due.getTime()) / 86400000);
 };
 
+const diffMinutesFromDueEnd = (dueDate: string | null, actualIso: string | null) => {
+  if (!dueDate || !actualIso) return null;
+  const due = endOfDueDate(dueDate);
+  const actual = new Date(actualIso);
+  if (!due || Number.isNaN(actual.getTime())) return null;
+  return (actual.getTime() - due.getTime()) / 60000;
+};
+
 const businessDaysBetween = (startIso: string | null, endIso: string | null) => {
   if (!startIso || !endIso) return null;
   const start = new Date(startIso);
@@ -105,6 +113,19 @@ const businessDaysBetween = (startIso: string | null, endIso: string | null) => 
 };
 
 const roundScore = (value: number | null) => value === null ? null : Number(value.toFixed(2));
+
+const formatHumanDuration = (minutes: number | null) => {
+  if (minutes === null || !Number.isFinite(minutes)) return null;
+  const abs = Math.abs(Math.round(minutes));
+  const days = Math.floor(abs / 1440);
+  const hours = Math.floor((abs % 1440) / 60);
+  const mins = abs % 60;
+  const parts = [];
+  if (days) parts.push(`${days} hari`);
+  if (hours) parts.push(`${hours} jam`);
+  if (mins || !parts.length) parts.push(`${mins} menit`);
+  return `${minutes < 0 ? 'lebih cepat' : 'terlambat'} ${parts.join(' ')}`;
+};
 
 const averageScores = (values: Array<number | null | undefined>) => {
   const filtered = values.filter((value): value is number => value !== null && value !== undefined);
@@ -191,9 +212,10 @@ const implementationTaskScore = (onTimePct: number) => {
   return 0;
 };
 
-const pmExecutionScore = (lateDays: number | null) => {
-  if (lateDays === null) return null;
-  if (lateDays <= 0) return 4;
+const pmExecutionScore = (lateMinutes: number | null) => {
+  if (lateMinutes === null) return null;
+  const lateDays = lateMinutes / 1440;
+  if (lateMinutes <= 0) return 4;
   if (lateDays <= 7) return 3;
   if (lateDays <= 14) return 2;
   if (lateDays <= 28) return 1;
@@ -379,15 +401,16 @@ const computePreventiveMaintenanceDomain = (
 
     if (job) {
       const jobDoneAt = toIsoDate(job.resolutionDate);
-      const lateDays = diffDaysFromDue(job.dueDate, jobDoneAt);
-      const score = jobDoneAt ? pmExecutionScore(lateDays) : -1;
+      const lateMinutes = diffMinutesFromDueEnd(job.dueDate, jobDoneAt);
+      const score = jobDoneAt ? pmExecutionScore(lateMinutes) : -1;
       execItems.push({
         parentRef,
         parentDueDate,
         issueKey: job.key,
         dueDate: job.dueDate,
         doneAt: jobDoneAt,
-        lateDays,
+        lateMinutes: roundScore(lateMinutes),
+        lateHuman: formatHumanDuration(lateMinutes),
         score,
       });
     }

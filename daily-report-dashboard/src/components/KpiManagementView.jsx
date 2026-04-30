@@ -74,7 +74,47 @@ function HybridMetric({ label, score, detail }) {
 }
 
 function DetailCell({ value }) {
-  return <span>{value === null || value === undefined || value === '' ? '—' : String(value)}</span>;
+  if (value === null || value === undefined || value === '') return <span>—</span>;
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const date = new Date(`${value}T00:00:00`);
+      if (!Number.isNaN(date.getTime())) {
+        return <span>{date.toLocaleDateString('id-ID')}</span>;
+      }
+    }
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        return <span>{date.toLocaleString('id-ID')}</span>;
+      }
+    }
+  }
+  return <span>{String(value)}</span>;
+}
+
+function formatMinutesHuman(value) {
+  if (value === null || value === undefined || value === '' || Number.isNaN(Number(value))) return '—';
+  const total = Math.abs(Math.round(Number(value)));
+  const days = Math.floor(total / 1440);
+  const hours = Math.floor((total % 1440) / 60);
+  const minutes = total % 60;
+  const parts = [];
+  if (days) parts.push(`${days} hari`);
+  if (hours) parts.push(`${hours} jam`);
+  if (minutes || !parts.length) parts.push(`${minutes} menit`);
+  return parts.join(' ');
+}
+
+function formatHoursHuman(value) {
+  if (value === null || value === undefined || value === '' || Number.isNaN(Number(value))) return '—';
+  return formatMinutesHuman(Number(value) * 60);
+}
+
+function formatBizDaysHuman(value) {
+  if (value === null || value === undefined || value === '' || Number.isNaN(Number(value))) return '—';
+  const num = Number(value);
+  if (num === 0) return '0 hari kerja';
+  return `${num} hari kerja`;
 }
 
 function HybridDetailsTable({ title, columns, rows }) {
@@ -401,7 +441,7 @@ export function KpiManagementView({ currentUser }) {
                           { key:'issueKey', label:'Issue' },
                           { key:'dueDate', label:'Due Date' },
                           { key:'doneAt', label:'Done At' },
-                          { key:'lateDays', label:'Late (days)' },
+                          { key:'lateHuman', label:'Keterlambatan' },
                           { key:'score', label:'Skor' },
                         ]}
                         rows={scorecardData?.scorecard?.breakdown?.pm?.components?.execution?.items || []}
@@ -413,7 +453,7 @@ export function KpiManagementView({ currentUser }) {
                           { key:'issueKey', label:'Issue' },
                           { key:'actualPmDoneAt', label:'Actual PM Done' },
                           { key:'reportDoneAt', label:'Report Done' },
-                          { key:'businessDaysLate', label:'Late (biz days)' },
+                          { key:'businessDaysLate', label:'Keterlambatan', render: (row) => formatBizDaysHuman(row.businessDaysLate) },
                           { key:'score', label:'Skor' },
                         ]}
                         rows={scorecardData?.scorecard?.breakdown?.pm?.components?.report?.items || []}
@@ -445,7 +485,7 @@ export function KpiManagementView({ currentUser }) {
                           { key:'priority', label:'Priority' },
                           { key:'createdAt', label:'Created' },
                           { key:'firstCommentAt', label:'First Response' },
-                          { key:'actualMinutes', label:'Minutes' },
+                          { key:'actualMinutes', label:'Durasi' , render: (row) => formatMinutesHuman(row.actualMinutes) },
                           { key:'score', label:'Skor' },
                         ]}
                         rows={scorecardData?.scorecard?.breakdown?.cm?.components?.response?.items || []}
@@ -458,7 +498,7 @@ export function KpiManagementView({ currentUser }) {
                           { key:'severity', label:'Severity' },
                           { key:'actualStartAt', label:'Actual Start' },
                           { key:'actualEndAt', label:'Actual End' },
-                          { key:'actualHours', label:'Hours' },
+                          { key:'actualHours', label:'Durasi', render: (row) => formatHoursHuman(row.actualHours) },
                           { key:'score', label:'Skor' },
                         ]}
                         rows={scorecardData?.scorecard?.breakdown?.cm?.components?.resolution?.items || []}
@@ -482,7 +522,7 @@ export function KpiManagementView({ currentUser }) {
                           { key:'issueKey', label:'Issue' },
                           { key:'createdAt', label:'Created' },
                           { key:'firstCommentAt', label:'First Response' },
-                          { key:'actualHours', label:'Hours' },
+                          { key:'actualHours', label:'Durasi', render: (row) => formatHoursHuman(row.actualHours) },
                           { key:'score', label:'Skor' },
                         ]}
                         rows={scorecardData?.scorecard?.breakdown?.enh?.components?.response?.items || []}
