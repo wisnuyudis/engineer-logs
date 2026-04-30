@@ -204,9 +204,8 @@ SLA severity yang tertulis di PDF:
 Definisi operasional terbaru:
 
 - `first response` = timestamp `comment pertama`
-- `resolution` = timestamp saat status `Done`
-- untuk severity `3` dan `4`, perhitungan `resolution / handling time` menggunakan `worklog / time tracking`
-- bila ada waktu menunggu customer, sistem tetap mengacu ke `time tracking`
+- `resolution` = selisih `Actual Start` ke `Actual End`
+- `response` tetap memakai pendekatan existing (`createdAt` ke first response/comment pertama)
 - bila `priority` berubah, ambil hasil / nilai terakhir
 
 Response Time SLA:

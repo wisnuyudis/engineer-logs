@@ -294,6 +294,8 @@ const searchJiraIssues = async ({ jql, fields }) => {
         fieldMap['start date'],
         fieldMap['actual start'],
         fieldMap['actual start date'],
+        fieldMap['actual end'],
+        fieldMap['actual end date'],
     ].filter(Boolean);
     const queryFields = Array.from(new Set([...fields, ...additionalFields]));
     while (true) {
@@ -353,6 +355,7 @@ const searchJiraIssues = async ({ jql, fields }) => {
                 parentKey: issue.fields?.parent?.key || null,
                 startDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Start date']),
                 actualStartDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Actual Start', 'Actual Start Date', 'Start date']),
+                actualEndDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Actual End', 'Actual End Date']),
                 dueDate: issue.fields?.duedate || null,
                 createdAt: issue.fields?.created || null,
                 updatedAt: issue.fields?.updated || null,

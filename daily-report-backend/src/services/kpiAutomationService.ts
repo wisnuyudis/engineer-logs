@@ -469,19 +469,15 @@ const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
     }
 
     let resolutionScore: number;
-    if (!firstCommentAt && !hasFollowUp) {
-      resolutionScore = -1;
-    } else {
-      const actualHours = severity >= 3
-        ? (issue.timeSpentSeconds > 0 ? issue.timeSpentSeconds / 3600 : null)
-        : diffHours(firstCommentAt, issue.resolutionDate);
+    const actualResolutionHours = diffHours(issue.actualStartDate, issue.actualEndDate);
 
-      if (actualHours === null) {
-        resolutionScore = 0;
-      } else {
-        const slaHours = severity === 1 ? 8 : severity === 2 ? 16 : 48;
-        resolutionScore = timeAgainstSlaScore(actualHours, slaHours) ?? 0;
-      }
+    if (!firstCommentAt && !hasFollowUp && !issue.actualEndDate) {
+      resolutionScore = -1;
+    } else if (actualResolutionHours === null) {
+      resolutionScore = 0;
+    } else {
+      const slaHours = severity === 1 ? 8 : severity === 2 ? 16 : 48;
+      resolutionScore = timeAgainstSlaScore(actualResolutionHours, slaHours) ?? 0;
     }
 
     responseItems.push({
@@ -497,8 +493,9 @@ const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
       issueKey: issue.key,
       priority: issue.priorityName,
       severity,
-      resolutionAt: issue.resolutionDate,
-      timeSpentHours: roundScore(issue.timeSpentSeconds > 0 ? issue.timeSpentSeconds / 3600 : null),
+      actualStartAt: issue.actualStartDate,
+      actualEndAt: issue.actualEndDate,
+      actualHours: roundScore(actualResolutionHours),
       score: resolutionScore,
     });
   }

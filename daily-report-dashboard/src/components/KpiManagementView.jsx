@@ -461,8 +461,9 @@ export function KpiManagementView({ currentUser }) {
                           { key:'issueKey', label:'Issue' },
                           { key:'priority', label:'Priority' },
                           { key:'severity', label:'Severity' },
-                          { key:'resolutionAt', label:'Done At' },
-                          { key:'timeSpentHours', label:'Hours' },
+                          { key:'actualStartAt', label:'Actual Start' },
+                          { key:'actualEndAt', label:'Actual End' },
+                          { key:'actualHours', label:'Hours' },
                           { key:'score', label:'Skor' },
                         ]}
                         rows={scorecardData?.scorecard?.breakdown?.cm?.components?.resolution?.items || []}
