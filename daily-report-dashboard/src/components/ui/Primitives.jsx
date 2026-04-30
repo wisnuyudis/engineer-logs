@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T, FONT, DISPLAY, MONO } from '../../theme/tokens';
-import { ROLES } from '../../constants/taxonomy';
+import { ROLES, teamOf } from '../../constants/taxonomy';
 
 export function Tag({ color, lo, children, small }) {
   return (
@@ -13,7 +13,10 @@ export function Tag({ color, lo, children, small }) {
 }
 export function RoleBadge({ role }) {
   const r = ROLES[role]; if(!r) return null;
-  return <Tag color={r.color} lo={r.lo}>{r.label}</Tag>;
+  const team = r.team || teamOf(role);
+  const color = team === "presales" ? T.violet : team === "delivery" ? T.teal : T.amber;
+  const lo = team === "presales" ? T.violetLo : team === "delivery" ? T.tealLo : T.amberLo;
+  return <Tag color={color} lo={lo}>{r.label}</Tag>;
 }
 export function TeamBadge({ team }) {
   if(team==="presales") return <Tag color={T.violet} lo={T.violetLo}>Pre-Sales</Tag>;

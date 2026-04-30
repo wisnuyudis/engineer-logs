@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { T, MONO } from '../theme/tokens';
 import { teamOf, isAdmin } from '../constants/taxonomy';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
-import { Pill, Card, Modal, MHead } from './ui/Primitives';
+import { Pill, Card, Modal, MHead, Tag } from './ui/Primitives';
 import { LogForm } from './LogForm';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import api from '../lib/api';
@@ -16,6 +16,13 @@ const headerBtnStyle = {
   font: 'inherit',
   color: 'inherit',
 };
+
+function activityTone(def = {}) {
+  if (def.source === 'jira') return { color: T.jira, lo: T.jiraLo };
+  if (def.team === 'presales') return { color: T.violet, lo: T.violetLo };
+  if (def.team === 'delivery') return { color: T.teal, lo: T.tealLo };
+  return { color: T.indigoHi, lo: T.indigoLo };
+}
 
 export function ActivitiesView({ currentUser, members = [], onAdd }) {
   const ACTS = useTaxonomy();
@@ -176,8 +183,8 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
                   </div>
                 </div>
                 <div style={{ minWidth:0 }}>
-                  <div style={{ fontSize:12,color:def.color || T.textPri,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
-                    {def.label || a.actKey}
+                  <div style={{ overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
+                    <Tag color={activityTone(def).color} lo={activityTone(def).lo} small>{def.label || a.actKey}</Tag>
                   </div>
                   <div style={{ fontSize:10,color:T.textMute }}>{a.status}</div>
                 </div>

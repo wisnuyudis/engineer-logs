@@ -494,13 +494,18 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, o
         </div>
       </Card>
 
-      <div style={{ display:"flex",gap:5,marginBottom:18,flexWrap:"wrap",alignItems:"center" }}>
-        {[["all","Semua Tim",T.indigoHi,T.indigoLo],["presales","Pre-Sales",T.violet,T.violetLo],["delivery","Delivery",T.teal,T.tealLo]].map(([v,l,col,lo])=>(
-          <Pill key={v} active={teamF===v} color={col} lo={lo} onClick={()=>setTF(v)}>{l}</Pill>
-        ))}
-        <span style={{ fontSize:11,color:T.textMute,marginLeft:4 }}>
-          {totalActive} aktif · {totalSuspended} suspended
-        </span>
+      <div style={{ display:"flex",justifyContent:"space-between",gap:12,marginBottom:18,flexWrap:"wrap",alignItems:"center" }}>
+        <div style={{ display:"flex",gap:5,flexWrap:"wrap",alignItems:"center" }}>
+          {[["all","Semua Tim",T.indigoHi,T.indigoLo],["presales","Pre-Sales",T.violet,T.violetLo],["delivery","Delivery",T.teal,T.tealLo]].map(([v,l,col,lo])=>(
+            <Pill key={v} active={teamF===v} color={col} lo={lo} onClick={()=>setTF(v)}>{l}</Pill>
+          ))}
+          <span style={{ fontSize:11,color:T.textMute,marginLeft:4 }}>
+            {totalActive} aktif · {totalSuspended} suspended
+          </span>
+        </div>
+        {canManage && (
+          <Btn v="primary" sz="sm" onClick={()=>setInvite(true)}>+ Add Team Member</Btn>
+        )}
       </div>
 
       {showDelivery && <>
@@ -516,14 +521,6 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, o
       {canManage && (
         <>
           <InviteModal open={inviteOpen} onClose={()=>setInvite(false)} members={members} onAdd={onAdd} />
-          <button onClick={()=>setInvite(true)}
-            title="Undang Member Baru"
-            style={{ position:"fixed",bottom:28,right:28,width:52,height:52,borderRadius:"50%",
-              background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,color:"#fff",border:"none",
-              fontSize:22,cursor:"pointer",boxShadow:`0 4px 20px ${T.indigo}60`,display:"flex",
-              alignItems:"center",justifyContent:"center",zIndex:100,transition:"transform .15s" }}
-            onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"}
-            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>+</button>
         </>
       )}
     </div>

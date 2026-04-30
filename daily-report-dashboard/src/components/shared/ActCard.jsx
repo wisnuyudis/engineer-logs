@@ -10,20 +10,25 @@ export function ActCard({ act }) {
   const def = ACTS[act.actKey] || {};
   const isJira = def.source === "jira";
   const done   = act.status === "completed";
+  const tone = isJira
+    ? { color: T.jira, lo: T.jiraLo }
+    : def.team === "presales"
+      ? { color: T.violet, lo: T.violetLo }
+      : def.team === "delivery"
+        ? { color: T.teal, lo: T.tealLo }
+        : { color: T.indigoHi, lo: T.indigoLo };
   
   return (
     <div style={{ display:"flex",cursor:"pointer",flexDirection:"column",background:exp?`${T.indigo}08`:T.surface,border:`1.5px solid ${exp?T.indigo:T.border}`,borderRadius:12,transition:"all .2s",boxShadow:exp?`0 4px 20px ${T.indigo}20`:"none" }}
       onClick={() => setExp(!exp)}
-      onMouseEnter={e=>{if(!exp)e.currentTarget.style.borderColor=def.color+"50"}}
+      onMouseEnter={e=>{if(!exp)e.currentTarget.style.borderColor=tone.color+"50"}}
       onMouseLeave={e=>{if(!exp)e.currentTarget.style.borderColor=T.border}}>
       <div style={{ display:"flex",gap:0 }}>
-      <div style={{ width:4,background:def.color||T.border,flexShrink:0,borderTopLeftRadius:10,borderBottomLeftRadius:exp?0:10 }} />
+      <div style={{ width:4,background:tone.color||T.border,flexShrink:0,borderTopLeftRadius:10,borderBottomLeftRadius:exp?0:10 }} />
       <div style={{ flex:1,padding:"11px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap" }}>
         {/* Category + Jira badge */}
         <div style={{ display:"flex",flexDirection:"column",gap:4,width:160,flexShrink:0 }}>
-          <span style={{ fontSize:12,fontWeight:700,color:def.color,display:"flex",alignItems:"center",gap:4 }}>
-            {def.icon} {def.label}
-          </span>
+          <Tag color={tone.color} lo={tone.lo} small>{def.icon} {def.label}</Tag>
           {isJira && (
             <span style={{ fontSize:10,fontWeight:700,color:T.jira,background:T.jiraLo,border:`1px solid ${T.jira}30`,borderRadius:4,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:4,width:"fit-content",fontFamily:MONO }}>
               ◈ {act.ticketId}

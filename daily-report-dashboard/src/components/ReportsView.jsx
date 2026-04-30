@@ -530,7 +530,7 @@ export function ReportsView({ activities, members, currentUser }) {
                           )}
                         </td>
                         <td style={{ padding: '8px 12px' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: def.color }}>{def.icon} {def.label}</span>
+                          <Tag color={activityTone(def).color} lo={activityTone(def).lo} small>{def.icon} {def.label}</Tag>
                         </td>
                         <td style={{ padding: '8px 12px', color: T.textPri, maxWidth: 200 }}>
                           <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -565,4 +565,10 @@ export function ReportsView({ activities, members, currentUser }) {
       </div>
     </div>
   );
+}
+function activityTone(def = {}) {
+  if (def.source === 'jira') return { color: T.jira, lo: T.jiraLo };
+  if (def.team === 'presales') return { color: T.violet, lo: T.violetLo };
+  if (def.team === 'delivery') return { color: T.teal, lo: T.tealLo };
+  return { color: T.indigoHi, lo: T.indigoLo };
 }
