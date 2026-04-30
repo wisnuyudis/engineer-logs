@@ -246,7 +246,6 @@ const upsertUserKpiScorecard = async (req, res) => {
             const persisted = (0, kpiAutomationService_1.parseEngineerDeliveryPersistedState)(existing?.notes, existing?.scores);
             const nextManualInputs = {
                 implNps: resolveHybridManualScore(manualInputs.implNps, persisted.manualInputs.implNps),
-                pmNps: resolveHybridManualScore(manualInputs.pmNps, persisted.manualInputs.pmNps),
                 opsScore: resolveHybridManualScore(manualInputs.opsScore, persisted.manualInputs.opsScore),
             };
             const computed = await (0, kpiAutomationService_1.computeEngineerDeliveryKpi)(profile, user, getQuarterDateRange(year, quarter), {

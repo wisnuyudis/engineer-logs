@@ -114,12 +114,11 @@ Komponen:
 
 1. `Kepatuhan Pelaksanaan PM`
 2. `Kepatuhan Pengiriman Laporan PM`
-3. `NPS`
 
 Rumus:
 
 ```text
-KPI Preventive Maintenance = (Pelaksanaan PM + Laporan PM + NPS) / 3
+KPI Preventive Maintenance = (Pelaksanaan PM + Laporan PM) / 2
 ```
 
 Bila ada beberapa PM dalam satu periode:
@@ -169,11 +168,6 @@ Skor:
 - `1` -> laporan PM dikirim `>10 - 15 hari kerja` setelah tanggal pelaksanaan PM
 - `0` -> laporan PM dikirim `>15 hari kerja` setelah tanggal pelaksanaan PM
 - `-1` -> laporan PM tidak dibuat dan/atau tidak dikirim
-
-#### 2.c NPS
-
-- `manual input`
-- default `3`
 
 Yang masih perlu dipastikan:
 

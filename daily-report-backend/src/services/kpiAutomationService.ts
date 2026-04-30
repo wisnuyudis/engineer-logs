@@ -3,7 +3,6 @@ import { KpiProfileDef, KpiScoreMap, computeResolvedKpiSummary } from '../utils/
 
 export type EngineerDeliveryManualInputs = {
   implNps: number | null;
-  pmNps: number | null;
   opsScore: number | null;
 };
 
@@ -154,7 +153,6 @@ export const parseEngineerDeliveryPersistedState = (rawNotes: unknown, rawScores
     return {
       manualInputs: {
         implNps: normalizeManualScore(typed.manualInputs?.implNps, 3),
-        pmNps: normalizeManualScore(typed.manualInputs?.pmNps, 3),
         opsScore: normalizeManualScore(typed.manualInputs?.opsScore, null),
       },
       domainNotes: normalizeDomainNotes(typed.domainNotes),
@@ -165,7 +163,6 @@ export const parseEngineerDeliveryPersistedState = (rawNotes: unknown, rawScores
   return {
     manualInputs: {
       implNps: 3,
-      pmNps: 3,
       opsScore: normalizeManualScore(scored.ops, null),
     },
     domainNotes: normalizeDomainNotes(legacyNotes),
@@ -337,8 +334,7 @@ const computeImplementationDomain = (
 const computePreventiveMaintenanceDomain = (
   issues: Awaited<ReturnType<typeof searchJiraIssues>>,
   parentDueDates: Map<string, string | null>,
-  period: QuarterRange,
-  pmNps: number | null
+  period: QuarterRange
 ) => {
   const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[MA]'));
   if (!relevant.length) {
@@ -350,7 +346,6 @@ const computePreventiveMaintenanceDomain = (
         components: {
           execution: { score: null, itemCount: 0, items: [] as any[] },
           report: { score: null, itemCount: 0, items: [] as any[] },
-          nps: { score: pmNps, source: 'manual' },
         },
       },
     };
@@ -416,7 +411,7 @@ const computePreventiveMaintenanceDomain = (
   const executionScore = averageScores(execItems.map((item) => item.score));
   const reportScore = averageScores(reportItems.map((item) => item.score));
   const score = hasScorableAutoEvidence([executionScore, reportScore])
-    ? averageScores([executionScore, reportScore, pmNps])
+    ? averageScores([executionScore, reportScore])
     : null;
 
   return {
@@ -435,7 +430,6 @@ const computePreventiveMaintenanceDomain = (
           itemCount: reportItems.length,
           items: reportItems,
         },
-        nps: { score: pmNps, source: 'manual' },
       },
     },
   };
@@ -612,7 +606,7 @@ export const computeEngineerDeliveryKpi = async (
   };
   const breakdown: EngineerDeliveryBreakdown = {
     impl: { mode: 'auto', issueCount: 0, components: { taskAccuracy: { score: null }, documentation: { score: null }, nps: { score: manualInputs.implNps, source: 'manual' } } },
-    pm: { mode: 'auto', parentCount: 0, components: { execution: { score: null }, report: { score: null }, nps: { score: manualInputs.pmNps, source: 'manual' } } },
+    pm: { mode: 'auto', parentCount: 0, components: { execution: { score: null }, report: { score: null } } },
     cm: { mode: 'auto', issueCount: 0, components: { response: { score: null }, resolution: { score: null } } },
     enh: { mode: 'auto', issueCount: 0, components: { response: { score: null } } },
     ops: { mode: 'manual', components: { overall: { score: manualInputs.opsScore, source: 'manual' } } },
@@ -718,7 +712,7 @@ export const computeEngineerDeliveryKpi = async (
       [issue.id, issue.dueDate || null] as const,
     ])
   );
-  const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentDueDates, period, manualInputs.pmNps);
+  const preventiveMaintenance = computePreventiveMaintenanceDomain(subtasks, pmParentDueDates, period);
   const supportIssuesInQuarter = supportIssues.filter((issue) => inQuarter(issue.actualStartDate, period));
   const supportIssueDebug = supportIssues.map((issue) => ({
     issueKey: issue.key,

@@ -292,7 +292,6 @@ export const upsertUserKpiScorecard = async (req: AuthRequest, res: Response) =>
       const persisted = parseEngineerDeliveryPersistedState(existing?.notes, existing?.scores);
       const nextManualInputs = {
         implNps: resolveHybridManualScore(manualInputs.implNps, persisted.manualInputs.implNps),
-        pmNps: resolveHybridManualScore(manualInputs.pmNps, persisted.manualInputs.pmNps),
         opsScore: resolveHybridManualScore(manualInputs.opsScore, persisted.manualInputs.opsScore),
       };
       const computed = await computeEngineerDeliveryKpi(

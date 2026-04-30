@@ -51,7 +51,7 @@ function computeEngineerDeliveryPreview(scorecardData, manualInputs) {
       ? avgScores([...implAutoScores, normalizeManualValue(manualInputs.implNps, scorecard.manualInputs?.implNps ?? 3)])
       : null,
     pm: hasAutoEvidence(pmAutoScores)
-      ? avgScores([...pmAutoScores, normalizeManualValue(manualInputs.pmNps, scorecard.manualInputs?.pmNps ?? 3)])
+      ? avgScores(pmAutoScores)
       : null,
     cm: scorecard.scores?.cm ?? null,
     enh: scorecard.scores?.enh ?? null,
@@ -120,7 +120,7 @@ export function KpiManagementView({ currentUser }) {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [scores, setScores] = useState({});
   const [notes, setNotes] = useState({});
-  const [manualInputs, setManualInputs] = useState({ implNps: 3, pmNps: 3, opsScore: '' });
+  const [manualInputs, setManualInputs] = useState({ implNps: 3, opsScore: '' });
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['kpi-users'],
@@ -152,7 +152,6 @@ export function KpiManagementView({ currentUser }) {
     setNotes(scorecardData.scorecard.notes || {});
     setManualInputs({
       implNps: scorecardData.scorecard.manualInputs?.implNps ?? 3,
-      pmNps: scorecardData.scorecard.manualInputs?.pmNps ?? 3,
       opsScore: scorecardData.scorecard.manualInputs?.opsScore ?? '',
     });
   }, [scorecardData]);
@@ -174,7 +173,6 @@ export function KpiManagementView({ currentUser }) {
             quarter,
             manualInputs: {
               implNps: manualInputs.implNps === '' ? null : Number(manualInputs.implNps),
-              pmNps: manualInputs.pmNps === '' ? null : Number(manualInputs.pmNps),
               opsScore: manualInputs.opsScore === '' ? null : Number(manualInputs.opsScore),
             },
             notes,
@@ -234,7 +232,7 @@ export function KpiManagementView({ currentUser }) {
               </div>
               <div style={{ fontSize:12,color:T.textMute,maxWidth:640 }}>
                 {isEngineerDelivery
-                  ? 'Engineer Delivery memakai kalkulasi otomatis dari evidence Jira. Input manual hanya tersisa untuk NPS domain terkait dan skor Operational.'
+                  ? 'Engineer Delivery memakai kalkulasi otomatis dari evidence Jira. Input manual hanya tersisa untuk NPS Implementation dan skor Operational.'
                   : 'Nilai per domain diinput manual. Sistem hanya menghitung rata-rata domain aktif, pelanggaran, dan status bonus.'}
               </div>
             </div>
@@ -381,10 +379,7 @@ export function KpiManagementView({ currentUser }) {
                       <div style={{ display:'flex',justifyContent:'space-between',gap:12,alignItems:'start',marginBottom:10 }}>
                         <div>
                           <div style={{ fontSize:13,fontWeight:700,color:T.textPri }}>KPI Preventive Maintenance</div>
-                          <div style={{ fontSize:11,color:T.textMute,marginTop:3 }}>(Pelaksanaan PM + Report PM + NPS) / 3</div>
-                        </div>
-                        <div style={{ width:120 }}>
-                          <Inp label="NPS" type="number" min="-1" max="4" step="0.01" value={manualInputs.pmNps ?? ''} onChange={(e)=>setManualInputs((prev)=>({ ...prev, pmNps: e.target.value }))} mono />
+                          <div style={{ fontSize:11,color:T.textMute,marginTop:3 }}>(Pelaksanaan PM + Report PM) / 2</div>
                         </div>
                       </div>
                       <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10 }}>
@@ -544,7 +539,7 @@ export function KpiManagementView({ currentUser }) {
                 <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,paddingTop:10,borderTop:`1px solid ${T.border}` }}>
                   <div style={{ fontSize:11,color:T.textMute }}>
                     {isEngineerDelivery
-                      ? <>Input manual aktif: <strong style={{ color:T.textPri }}>Implementation NPS</strong>, <strong style={{ color:T.textPri }}>PM NPS</strong>, dan <strong style={{ color:T.textPri }}>Operational</strong>.</>
+                      ? <>Input manual aktif: <strong style={{ color:T.textPri }}>Implementation NPS</strong> dan <strong style={{ color:T.textPri }}>Operational</strong>.</>
                       : <>Rentang nilai: <strong style={{ color:T.textPri }}>-1</strong> sampai <strong style={{ color:T.textPri }}>4</strong>. Kosong berarti tidak dihitung.</>}
                   </div>
                   <Btn v="primary" onClick={()=>saveMutation.mutate()} disabled={saveMutation.isPending}>
