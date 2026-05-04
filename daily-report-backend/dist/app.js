@@ -20,7 +20,24 @@ const path_1 = __importDefault(require("path"));
 const app = (0, express_1.default)();
 const allowedOrigins = new Set([process.env.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://[::1]:5173'].filter(Boolean));
 const isLocalDevOrigin = (origin) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(origin);
+const securityHeaders = {
+    'X-Frame-Options': 'SAMEORIGIN',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()',
+    'Content-Security-Policy': [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "frame-ancestors 'self'",
+        "object-src 'none'",
+        "img-src 'self' data: blob:",
+        "media-src 'self' blob:",
+    ].join('; '),
+};
 app.use((req, res, next) => {
+    Object.entries(securityHeaders).forEach(([key, value]) => {
+        res.setHeader(key, value);
+    });
     const origin = req.headers.origin;
     if (typeof origin === 'string' && (allowedOrigins.has(origin) || isLocalDevOrigin(origin))) {
         res.header('Access-Control-Allow-Origin', origin);

@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
+const getJwtSecret = () => {
+  const value = process.env.JWT_SECRET;
+  if (value) return value;
+  if (process.env.NODE_ENV === 'test') return 'test-access-secret';
+  throw new Error('JWT_SECRET must be set');
+};
 
 export interface AuthRequest extends Request {
   user?: {
@@ -15,13 +20,26 @@ export interface AuthRequest extends Request {
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Access token missing' });
+  }
+
+  const token = authHeader.slice(7).trim();
 
   if (!token) return res.status(401).json({ error: 'Access token missing' });
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, getJwtSecret(), (err, decoded) => {
     if (err) return res.status(401).json({ error: 'Invalid or expired token' });
-    req.user = decoded as AuthRequest['user'];
+    const payload = decoded as Partial<AuthRequest['user']>;
+    if (!payload?.userId || !payload?.email || !payload?.role) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    req.user = {
+      userId: String(payload.userId),
+      email: String(payload.email),
+      role: String(payload.role),
+      team: payload.team == null ? null : String(payload.team),
+    };
     next();
   });
 };

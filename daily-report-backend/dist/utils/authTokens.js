@@ -6,8 +6,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.makeJti = exports.parseCookie = exports.createRefreshTokenCookie = exports.hashToken = exports.verifyRefreshToken = exports.verifyAccessToken = exports.signRefreshToken = exports.signAccessToken = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const ACCESS_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${ACCESS_SECRET}-refresh`;
+const requireSecret = (name, fallback) => {
+    const value = process.env[name];
+    if (value)
+        return value;
+    if (process.env.NODE_ENV === 'test' && fallback)
+        return fallback;
+    throw new Error(`${name} must be set`);
+};
+const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
+const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
 const ACCESS_EXPIRES_IN = '15m';
 const REFRESH_EXPIRES_IN = '30d';
 const signAccessToken = (payload) => jsonwebtoken_1.default.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });

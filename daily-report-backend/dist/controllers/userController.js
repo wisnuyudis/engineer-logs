@@ -98,7 +98,7 @@ exports.updateUser = updateUser;
 const deleteUser = async (req, res) => {
     try {
         const id = String(req.params.id);
-        const authUserId = req.user?.id ? String(req.user.id) : null;
+        const authUserId = req.user?.userId ? String(req.user.userId) : null;
         const existingUser = await prisma.user.findUnique({
             where: { id },
             select: { id: true, name: true }

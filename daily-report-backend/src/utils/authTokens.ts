@@ -1,8 +1,15 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
-const ACCESS_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${ACCESS_SECRET}-refresh`;
+const requireSecret = (name: 'JWT_SECRET' | 'JWT_REFRESH_SECRET', fallback?: string) => {
+  const value = process.env[name];
+  if (value) return value;
+  if (process.env.NODE_ENV === 'test' && fallback) return fallback;
+  throw new Error(`${name} must be set`);
+};
+
+const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
+const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
 const ACCESS_EXPIRES_IN = '15m';
 const REFRESH_EXPIRES_IN = '30d';
 
