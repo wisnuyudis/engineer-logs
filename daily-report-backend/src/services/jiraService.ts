@@ -445,14 +445,14 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
 };
 
 export const fetchUpcomingJiraScheduleByAssignee = async (assigneeAccountId: string, dayWindow = 15) => {
+  const clauses = [
+    `assignee = "${assigneeAccountId}"`,
+    'duedate >= startOfDay()',
+    `duedate <= startOfDay("+${Math.max(1, Math.floor(dayWindow))}d")`,
+    'statusCategory != Done',
+  ];
   const issues = await searchJiraIssues({
-    jql: [
-      `assignee = "${assigneeAccountId}"`,
-      'duedate >= startOfDay()',
-      `duedate <= startOfDay("+${Math.max(1, Math.floor(dayWindow))}d")`,
-      'statusCategory != Done',
-      'ORDER BY duedate ASC',
-    ].join(' AND '),
+    jql: `${clauses.join(' AND ')} ORDER BY duedate ASC`,
     fields: ['summary', 'project', 'status', 'priority', 'duedate', 'issuetype', 'assignee'],
   });
 
