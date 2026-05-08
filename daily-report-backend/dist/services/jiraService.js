@@ -392,7 +392,7 @@ const fetchUpcomingJiraScheduleByAssignee = async (assigneeAccountId, dayWindow 
     });
     const baseUrl = (process.env.JIRA_BASE_URL || '').replace(/\/+$/, '');
     return issues
-        .filter((issue) => !issue.issueTypeIsSubtask && issue.dueDate)
+        .filter((issue) => issue.dueDate)
         .map((issue) => ({
         issueId: issue.id,
         issueKey: issue.key,
