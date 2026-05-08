@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { T, MONO } from '../theme/tokens';
 import { teamOf, isAdmin } from '../constants/taxonomy';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
-import { Pill, Card, Modal, MHead, Tag } from './ui/Primitives';
+import { Pill, Card, Modal, MHead, Tag, Btn } from './ui/Primitives';
 import { LogForm } from './LogForm';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import api from '../lib/api';
@@ -34,6 +34,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState(null);
   const [memberFilter, setMemberFilter] = useState("all");
+  const [editActivity, setEditActivity] = useState(null);
   const myTeam = teamOf(currentUser.role);
   const adminView = isAdmin(currentUser.role);
 
@@ -56,7 +57,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
     return params;
   }, [page, sortBy, sortDir, search, filter, adminView, memberFilter]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['activities-log', queryParams],
     queryFn: async () => {
       const res = await api.get('/activities', { params: queryParams });
@@ -206,6 +207,17 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
 
               {expanded && (
                 <div style={{ padding:"14px 20px 16px 56px",background:T.surface }}>
+                  {!isSynced && (
+                    <div style={{ display:"flex",justifyContent:"flex-end",marginBottom:12 }}>
+                      <Btn
+                        v="sec"
+                        sz="sm"
+                        onClick={(e)=>{ e.stopPropagation(); setEditActivity(a); }}
+                      >
+                        ✏ Edit Activity
+                      </Btn>
+                    </div>
+                  )}
                   {a.note && (
                     <div style={{ marginBottom:12 }}>
                       <div style={{ fontSize:10,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4 }}>Catatan</div>
@@ -255,6 +267,20 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
       <Modal open={logOpen} onClose={()=>setLog(false)} width={560}>
         <MHead title="Log Aktivitas" sub={new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} onClose={()=>setLog(false)} />
         <LogForm user={currentUser} onSave={()=>{onAdd();setLog(false);}} onCancel={()=>setLog(false)} />
+      </Modal>
+      <Modal open={!!editActivity} onClose={()=>setEditActivity(null)} width={560}>
+        <MHead title="Edit Aktivitas" sub="Hanya aktivitas input manual yang bisa diubah" onClose={()=>setEditActivity(null)} />
+        <LogForm
+          user={currentUser}
+          initialData={editActivity}
+          submitLabel="Simpan Perubahan"
+          onSave={()=>{
+            refetch();
+            onAdd();
+            setEditActivity(null);
+          }}
+          onCancel={()=>setEditActivity(null)}
+        />
       </Modal>
       <button onClick={()=>setLog(true)} style={{ position:"fixed",bottom:28,right:28,width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,color:"#fff",border:"none",fontSize:22,cursor:"pointer",boxShadow:`0 4px 20px ${T.indigo}60`,display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,transition:"transform .15s" }}
         onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>+</button>

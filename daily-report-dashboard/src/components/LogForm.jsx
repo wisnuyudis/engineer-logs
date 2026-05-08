@@ -6,7 +6,7 @@ import { Btn, Lbl, Inp } from './ui/Primitives';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
-export function LogForm({ user, onSave, onCancel }) {
+export function LogForm({ user, onSave, onCancel, initialData = null, submitLabel }) {
   const ACTS = useTaxonomy();
   const myTeam = teamOf(user.role);
   const availActs = useMemo(
@@ -14,24 +14,24 @@ export function LogForm({ user, onSave, onCancel }) {
     [user.role, ACTS]
   );
   const firstActKey = Object.keys(availActs)[0] || "";
-  const [actKey, setActKey] = useState(Object.keys(availActs)[0] || "");
-  const [startTime, setStart] = useState("09:00");
-  const [endTime,   setEnd]   = useState("10:00");
-  const [date,      setDate]  = useState(() => new Date().toISOString().split("T")[0]);
-  const [status, setStatus] = useState("completed");
-  const [note, setNote] = useState("");
+  const [actKey, setActKey] = useState(initialData?.actKey || Object.keys(availActs)[0] || "");
+  const [startTime, setStart] = useState(initialData?.startTime || "09:00");
+  const [endTime,   setEnd]   = useState(initialData?.endTime || "10:00");
+  const [date,      setDate]  = useState(() => initialData?.date || new Date().toISOString().split("T")[0]);
+  const [status, setStatus] = useState(initialData?.status || "completed");
+  const [note, setNote] = useState(initialData?.note || "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState({});
-  const [customerName, setCustomer] = useState("");
+  const [customerName, setCustomer] = useState(initialData?.customerName || "");
   // PM Presentation NPS
-  const [pmNps, setPmNps] = useState(3);
+  const [pmNps, setPmNps] = useState(initialData?.nps ?? 3);
   // App-only fields
-  const [topic, setTopic] = useState("");
-  const [contact, setContact] = useState("");
+  const [topic, setTopic] = useState(initialData?.topic || "");
+  const [contact, setContact] = useState(initialData?.topic || "");
   // Pre-sales fields
-  const [prName, setPrName] = useState("");
-  const [prId, setPrId]     = useState("");
-  const [value, setValue]   = useState("");
+  const [prName, setPrName] = useState(initialData?.prName || "");
+  const [prId, setPrId]     = useState(initialData?.leadId || "");
+  const [value, setValue]   = useState(initialData?.prospectValue != null ? String(initialData.prospectValue) : "");
   const [stage, setStage]   = useState("Contacted");
   // Attachments
   const [files, setFiles]   = useState([]);
@@ -50,6 +50,25 @@ export function LogForm({ user, onSave, onCancel }) {
   useEffect(() => {
     if (!actKey && firstActKey) setActKey(firstActKey);
   }, [actKey, firstActKey]);
+
+  useEffect(() => {
+    if (!initialData) return;
+    setActKey(initialData.actKey || firstActKey || "");
+    setStart(initialData.startTime || "09:00");
+    setEnd(initialData.endTime || "10:00");
+    setDate(initialData.date || new Date().toISOString().split("T")[0]);
+    setStatus(initialData.status || "completed");
+    setNote(initialData.note || "");
+    setCustomer(initialData.customerName || "");
+    setPmNps(initialData.nps ?? 3);
+    setTopic(initialData.topic || "");
+    setContact(initialData.topic || "");
+    setPrName(initialData.prName || "");
+    setPrId(initialData.leadId || "");
+    setValue(initialData.prospectValue != null ? String(initialData.prospectValue) : "");
+    setFiles([]);
+    setErr({});
+  }, [initialData, firstActKey]);
 
   // Compute duration in minutes from time range
   const calcDur = (s, e) => {
@@ -90,7 +109,6 @@ export function LogForm({ user, onSave, onCancel }) {
 
     setBusy(true);
     try {
-      // 1. Create main activity record
       const payload = {
         actKey: selectedActKey,
         date: date || new Date().toISOString().slice(0, 10),
@@ -106,11 +124,13 @@ export function LogForm({ user, onSave, onCancel }) {
         ...(isPS ? { prName, leadId: prId, prospectValue: Number(value)||0 } : {}) // Note: backend schema mapped prId to leadId
       };
       
-      const { data: activity } = await api.post('/activities', payload);
-      
-      // 2. Upload files if any
-      const uploadedAttachments = [];
-      if (files.length > 0) {
+      const isEdit = Boolean(initialData?.id);
+      const { data: activity } = isEdit
+        ? await api.patch(`/activities/${initialData.id}`, payload)
+        : await api.post('/activities', payload);
+
+      const uploadedAttachments = Array.isArray(activity.attachments) ? activity.attachments : [];
+      if (!isEdit && files.length > 0) {
         for (const f of files) {
           const formData = new FormData();
           formData.append('file', f.file);
@@ -126,7 +146,7 @@ export function LogForm({ user, onSave, onCancel }) {
       activity.userTeam = teamOf(user.role);
       activity.attachments = uploadedAttachments;
       
-      toast.success("Aktivitas berhasil ditambahkan");
+      toast.success(isEdit ? "Aktivitas berhasil diperbarui" : "Aktivitas berhasil ditambahkan");
       onSave(activity);
     } catch (error) {
       toast.error(error.response?.data?.error || "Gagal menyimpan aktivitas");
@@ -264,39 +284,40 @@ export function LogForm({ user, onSave, onCancel }) {
           onFocus={e=>e.target.style.borderColor=T.indigo} onBlur={e=>e.target.style.borderColor=T.border} />
       </div>
 
-      {/* Attachment */}
-      <div>
-        <Lbl>Lampiran <span style={{ fontWeight:400,textTransform:"none",letterSpacing:0 }}>(PDF, PNG, JPG, DOCX · maks 20 MB)</span></Lbl>
-        <input ref={fileRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.docx" style={{ display:"none" }} onChange={e=>addFiles(e.target.files)} />
-        <div
-          onClick={()=>fileRef.current.click()}
-          onDragOver={e=>{e.preventDefault();setDrag(true);}}
-          onDragLeave={()=>setDrag(false)}
-          onDrop={e=>{e.preventDefault();setDrag(false);addFiles(e.dataTransfer.files);}}
-          style={{ border:`2px dashed ${dragOver?T.indigo:T.border}`,borderRadius:9,padding:"14px 16px",cursor:"pointer",
-            background:dragOver?T.indigoLo:T.surfaceHi,transition:"all .15s",textAlign:"center" }}>
-          <div style={{ fontSize:20,marginBottom:4 }}>📎</div>
-          <div style={{ fontSize:12,color:dragOver?T.indigoHi:T.textSec }}>Klik atau drag & drop file di sini</div>
-        </div>
-        {err.files && <div style={{ fontSize:10,color:T.red,marginTop:3 }}>⚠ {err.files}</div>}
-        {files.length>0 && (
-          <div style={{ display:"flex",flexDirection:"column",gap:4,marginTop:8 }}>
-            {files.map(f=>(
-              <div key={f.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:7 }}>
-                <span style={{ fontSize:10,fontWeight:700,color:T.indigoHi,background:T.indigoLo,padding:"2px 6px",borderRadius:4,fontFamily:MONO,flexShrink:0 }}>{f.ext}</span>
-                <span style={{ fontSize:12,color:T.textPri,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{f.name}</span>
-                <span style={{ fontSize:10,color:T.textMute,flexShrink:0 }}>{(f.size/1024/1024).toFixed(1)} MB</span>
-                <button onClick={e=>{e.stopPropagation();setFiles(p=>p.filter(x=>x.id!==f.id));}} style={{ background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:14,padding:0,flexShrink:0 }}>×</button>
-              </div>
-            ))}
+      {!initialData?.id && (
+        <div>
+          <Lbl>Lampiran <span style={{ fontWeight:400,textTransform:"none",letterSpacing:0 }}>(PDF, PNG, JPG, DOCX · maks 20 MB)</span></Lbl>
+          <input ref={fileRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.docx" style={{ display:"none" }} onChange={e=>addFiles(e.target.files)} />
+          <div
+            onClick={()=>fileRef.current.click()}
+            onDragOver={e=>{e.preventDefault();setDrag(true);}}
+            onDragLeave={()=>setDrag(false)}
+            onDrop={e=>{e.preventDefault();setDrag(false);addFiles(e.dataTransfer.files);}}
+            style={{ border:`2px dashed ${dragOver?T.indigo:T.border}`,borderRadius:9,padding:"14px 16px",cursor:"pointer",
+              background:dragOver?T.indigoLo:T.surfaceHi,transition:"all .15s",textAlign:"center" }}>
+            <div style={{ fontSize:20,marginBottom:4 }}>📎</div>
+            <div style={{ fontSize:12,color:dragOver?T.indigoHi:T.textSec }}>Klik atau drag & drop file di sini</div>
           </div>
-        )}
-      </div>
+          {err.files && <div style={{ fontSize:10,color:T.red,marginTop:3 }}>⚠ {err.files}</div>}
+          {files.length>0 && (
+            <div style={{ display:"flex",flexDirection:"column",gap:4,marginTop:8 }}>
+              {files.map(f=>(
+                <div key={f.id} style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:7 }}>
+                  <span style={{ fontSize:10,fontWeight:700,color:T.indigoHi,background:T.indigoLo,padding:"2px 6px",borderRadius:4,fontFamily:MONO,flexShrink:0 }}>{f.ext}</span>
+                  <span style={{ fontSize:12,color:T.textPri,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{f.name}</span>
+                  <span style={{ fontSize:10,color:T.textMute,flexShrink:0 }}>{(f.size/1024/1024).toFixed(1)} MB</span>
+                  <button onClick={e=>{e.stopPropagation();setFiles(p=>p.filter(x=>x.id!==f.id));}} style={{ background:"none",border:"none",color:T.red,cursor:"pointer",fontSize:14,padding:0,flexShrink:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display:"flex",gap:8,paddingTop:4,borderTop:`1px solid ${T.border}` }}>
         <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={onCancel} disabled={busy}>Batal</Btn>
         <Btn v="primary" style={{ flex:2,justifyContent:"center" }} onClick={save} disabled={busy}>
-          {busy ? "Menyimpan..." : "+ Log Aktivitas"}
+          {busy ? "Menyimpan..." : (submitLabel || (initialData?.id ? "Simpan Perubahan" : "+ Log Aktivitas"))}
         </Btn>
       </div>
     </div>

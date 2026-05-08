@@ -202,6 +202,8 @@ exports.createActivity = createActivity;
 const updateActivity = async (req, res) => {
     try {
         const id = String(req.params.id);
+        const actorId = req.user?.userId;
+        const role = req.user?.role;
         // Zod Validation
         const validation = zodSchemas_1.ActivitySchema.safeParse(req.body);
         if (!validation.success) {
@@ -213,6 +215,10 @@ const updateActivity = async (req, res) => {
         const current = await prisma.activity.findUnique({ where: { id } });
         if (!current)
             return res.status(404).json({ error: 'Activity not found' });
+        const isAdminOrMgr = ['admin', 'mgr_dl', 'mgr_ps'].includes(role || '');
+        if (!actorId || (current.userId !== actorId && !isAdminOrMgr)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
         if (current.source === 'jira') {
             return res.status(400).json({ error: 'Aktivitas sinkron otomatis hanya bisa diubah dari Jira.' });
         }
@@ -263,6 +269,8 @@ exports.updateActivity = updateActivity;
 const deleteActivity = async (req, res) => {
     try {
         const id = String(req.params.id);
+        const actorId = req.user?.userId;
+        const role = req.user?.role;
         // Fetch to get attachments
         const activity = await prisma.activity.findUnique({
             where: { id },
@@ -270,6 +278,10 @@ const deleteActivity = async (req, res) => {
         });
         if (!activity)
             return res.status(404).json({ error: 'Activity not found' });
+        const isAdminOrMgr = ['admin', 'mgr_dl', 'mgr_ps'].includes(role || '');
+        if (!actorId || (activity.userId !== actorId && !isAdminOrMgr)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
         if (activity.source === 'jira') {
             return res.status(400).json({ error: 'Aktivitas sinkron otomatis hanya bisa dihapus dari Jira.' });
         }
