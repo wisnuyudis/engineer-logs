@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
+exports.fetchUpcomingJiraScheduleByAssignee = exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
 const jiraFetch = async (pathname, options = {}) => {
     const baseUrl = process.env.JIRA_BASE_URL;
     const email = process.env.JIRA_USER_EMAIL;
@@ -379,3 +379,30 @@ const searchJiraIssues = async ({ jql, fields }) => {
     return matchedIssues;
 };
 exports.searchJiraIssues = searchJiraIssues;
+const fetchUpcomingJiraScheduleByAssignee = async (assigneeAccountId, dayWindow = 15) => {
+    const issues = await (0, exports.searchJiraIssues)({
+        jql: [
+            `assignee = "${assigneeAccountId}"`,
+            'duedate >= startOfDay()',
+            `duedate <= startOfDay("+${Math.max(1, Math.floor(dayWindow))}d")`,
+            'statusCategory != Done',
+            'ORDER BY duedate ASC',
+        ].join(' AND '),
+        fields: ['summary', 'project', 'status', 'priority', 'duedate', 'issuetype', 'assignee'],
+    });
+    const baseUrl = (process.env.JIRA_BASE_URL || '').replace(/\/+$/, '');
+    return issues
+        .filter((issue) => !issue.issueTypeIsSubtask && issue.dueDate)
+        .map((issue) => ({
+        issueId: issue.id,
+        issueKey: issue.key,
+        issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
+        summary: issue.summary,
+        projectName: issue.projectName,
+        statusName: issue.statusName,
+        priorityName: issue.priorityName,
+        dueDate: issue.dueDate,
+        issueTypeName: issue.issueTypeName,
+    }));
+};
+exports.fetchUpcomingJiraScheduleByAssignee = fetchUpcomingJiraScheduleByAssignee;

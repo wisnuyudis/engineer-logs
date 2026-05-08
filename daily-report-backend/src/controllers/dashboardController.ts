@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middlewares/authMiddleware';
+import { canManageUserKpi } from '../utils/kpiManual';
+import { fetchUpcomingJiraScheduleByAssignee } from '../services/jiraService';
 
 const prisma = new PrismaClient();
 
@@ -75,5 +77,66 @@ export const getLeaderboard = async (req: AuthRequest, res: Response) => {
     res.json(leaderboard.slice(0, 5)); // top 5
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+};
+
+export const getUpcomingJiraSchedule = async (req: AuthRequest, res: Response) => {
+  try {
+    const actorId = req.user?.userId;
+    const targetUserId = String(req.params.userId || '');
+    if (!actorId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!targetUserId) return res.status(400).json({ error: 'User target wajib diisi' });
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        team: true,
+        jiraAccountId: true,
+      },
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User tidak ditemukan' });
+    }
+
+    const isSelf = actorId === targetUser.id;
+    const allowed = isSelf || canManageUserKpi(req.user || {}, targetUser);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    if (String(targetUser.team || '') !== 'delivery') {
+      return res.status(400).json({ error: 'Section Jira schedule hanya tersedia untuk user delivery' });
+    }
+
+    if (!targetUser.jiraAccountId) {
+      return res.json({
+        user: {
+          id: targetUser.id,
+          name: targetUser.name,
+          jiraAccountId: null,
+        },
+        items: [],
+        missingJiraAccount: true,
+      });
+    }
+
+    const items = await fetchUpcomingJiraScheduleByAssignee(targetUser.jiraAccountId, 15);
+
+    return res.json({
+      user: {
+        id: targetUser.id,
+        name: targetUser.name,
+        jiraAccountId: targetUser.jiraAccountId,
+      },
+      items,
+      missingJiraAccount: false,
+    });
+  } catch (error) {
+    if (req.log) req.log.error(error, 'Upcoming Jira schedule fetch failed');
+    return res.status(500).json({ error: 'Failed to fetch upcoming Jira schedule' });
   }
 };

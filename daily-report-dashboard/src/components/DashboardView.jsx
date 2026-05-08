@@ -309,7 +309,12 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
         </Card>
       )}
 
-      {tab==="kpi" && !isAdminRole && <PersonalKPI user={currentUser} activities={activities} />}
+      {tab==="kpi" && !isAdminRole && (
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <JiraScheduleCard user={currentUser} />
+          <PersonalKPI user={currentUser} activities={activities} />
+        </div>
+      )}
 
       {tab==="memberdetail" && (
         <div>
@@ -380,24 +385,18 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                     <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
                       <RoleBadge role={memberDetailUser.role} />
                       <TeamBadge team={memberDetailUser.team} />
+                      <Tag
+                        color={memberDetailUser.status==="active" ? T.green : memberDetailUser.status==="suspended" ? T.amber : T.indigo}
+                        lo={memberDetailUser.status==="active" ? T.greenLo : memberDetailUser.status==="suspended" ? T.amberLo : T.indigoLo}
+                      >
+                        {memberDetailUser.status==="active" ? "Aktif" : memberDetailUser.status==="suspended" ? "Suspended" : "Invited"}
+                      </Tag>
                       {(() => { const sup=members.find(m=>m.id===memberDetailUser.supervisorId); return sup?<Tag color={T.amber} lo={T.amberLo}>👤 {sup.name}</Tag>:null; })()}
                     </div>
                   </div>
-                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,textAlign:"right" }}>
-                    {[
-                      {l:"Jabatan",v:memberDetailUser.position},
-                      {l:"Dept",v:memberDetailUser.dept},
-                      {l:"Bergabung",v:memberDetailUser.joinDate},
-                      {l:"Status",v:memberDetailUser.status==="active"?"✓ Aktif":memberDetailUser.status==="suspended"?"⚠ Suspended":"📩 Invited"},
-                    ].map(f=>(
-                      <div key={f.l} style={{ padding:"6px 10px",background:T.surfaceHi,borderRadius:7,border:`1px solid ${T.border}` }}>
-                        <div style={{ fontSize:9,color:T.textMute,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2 }}>{f.l}</div>
-                        <div style={{ fontSize:11,fontWeight:600,color:T.textPri }}>{f.v}</div>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </Card>
+              <JiraScheduleCard user={memberDetailUser} />
               <PersonalKPI user={memberDetailUser} activities={activities} />
             </div>
           ) : (
@@ -416,4 +415,96 @@ function kpiColor(score) {
   if (score >= 3) return T.teal;
   if (score >= 2) return T.amber;
   return T.red;
+}
+
+function JiraScheduleCard({ user }) {
+  const [state, setState] = useState({ loading: false, items: [], missingJiraAccount: false, error: '' });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (!user?.id || user?.team !== 'delivery') {
+        setState({ loading: false, items: [], missingJiraAccount: false, error: '' });
+        return;
+      }
+
+      setState((prev) => ({ ...prev, loading: true, error: '' }));
+      try {
+        const { data } = await api.get(`/dashboard/jira-schedule/${user.id}`);
+        if (!cancelled) {
+          setState({
+            loading: false,
+            items: Array.isArray(data?.items) ? data.items : [],
+            missingJiraAccount: Boolean(data?.missingJiraAccount),
+            error: '',
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setState({
+            loading: false,
+            items: [],
+            missingJiraAccount: false,
+            error: error?.response?.data?.error || 'Gagal mengambil task schedule dari Jira',
+          });
+        }
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.team]);
+
+  if (!user?.id || user?.team !== 'delivery') return null;
+
+  return (
+    <Card p={0} style={{ overflow:'hidden' }}>
+      <div style={{ padding:'13px 20px', borderBottom:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+        <div>
+          <div style={{ fontSize:13, fontWeight:700, color:T.textPri }}>Task Schedule in Next 15 Days - {user.name}</div>
+          <div style={{ fontSize:11, color:T.textMute, marginTop:2 }}>Issue Jira aktif berdasarkan due date 15 hari ke depan</div>
+        </div>
+        <span style={{ fontSize:10, color:T.jira, background:T.jiraLo, padding:'3px 8px', borderRadius:999, border:`1px solid ${T.jira}30`, fontWeight:700 }}>Jira</span>
+      </div>
+
+      {state.loading && <div style={{ padding:'18px 20px', fontSize:12, color:T.textMute }}>Memuat task schedule...</div>}
+      {!state.loading && state.error && <div style={{ padding:'18px 20px', fontSize:12, color:T.red }}>{state.error}</div>}
+      {!state.loading && !state.error && state.missingJiraAccount && (
+        <div style={{ padding:'18px 20px', fontSize:12, color:T.textMute }}>User ini belum terhubung ke akun Jira.</div>
+      )}
+      {!state.loading && !state.error && !state.missingJiraAccount && state.items.length === 0 && (
+        <div style={{ padding:'18px 20px', fontSize:12, color:T.textMute }}>Tidak ada task dengan due date dalam 15 hari ke depan.</div>
+      )}
+
+      {!state.loading && !state.error && !state.missingJiraAccount && state.items.length > 0 && (
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', minWidth:760 }}>
+            <thead>
+              <tr style={{ background:T.surfaceHi }}>
+                {['Issue Key', 'Summary', 'Project', 'Status', 'Priority', 'Due Date', 'Type'].map((label) => (
+                  <th key={label} style={{ textAlign:'left', padding:'11px 14px', fontSize:10, color:T.textMute, textTransform:'uppercase', letterSpacing:'.06em', borderBottom:`1px solid ${T.border}` }}>{label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {state.items.map((item) => (
+                <tr key={item.issueId} style={{ borderBottom:`1px solid ${T.border}` }}>
+                  <td style={{ padding:'12px 14px', fontSize:12, fontWeight:700, fontFamily:MONO }}>
+                    <a href={item.issueUrl} target="_blank" rel="noreferrer" style={{ color:T.jira, textDecoration:'none' }}>{item.issueKey}</a>
+                  </td>
+                  <td style={{ padding:'12px 14px', fontSize:12, color:T.textPri }}>{item.summary || 'Tanpa summary'}</td>
+                  <td style={{ padding:'12px 14px', fontSize:12, color:T.textSec }}>{item.projectName || '—'}</td>
+                  <td style={{ padding:'12px 14px', fontSize:12, color:T.textSec }}>{item.statusName || '—'}</td>
+                  <td style={{ padding:'12px 14px', fontSize:12, color:T.textSec }}>{item.priorityName || '—'}</td>
+                  <td style={{ padding:'12px 14px', fontSize:12, color:T.textPri }}>{item.dueDate ? new Date(item.dueDate).toLocaleDateString('id-ID') : '—'}</td>
+                  <td style={{ padding:'12px 14px', fontSize:12, color:T.textSec }}>{item.issueTypeName || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
 }

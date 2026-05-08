@@ -7,4 +7,5 @@ const router = (0, express_1.Router)();
 router.use(authMiddleware_1.authenticateToken); // Protect dashboard APIs
 router.get('/metrics', dashboardController_1.getMetrics);
 router.get('/leaderboard', dashboardController_1.getLeaderboard);
+router.get('/jira-schedule/:userId', dashboardController_1.getUpcomingJiraSchedule);
 exports.default = router;

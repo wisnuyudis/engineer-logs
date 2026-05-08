@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getLeaderboard = exports.getMetrics = void 0;
+exports.getUpcomingJiraSchedule = exports.getLeaderboard = exports.getMetrics = void 0;
 const client_1 = require("@prisma/client");
+const kpiManual_1 = require("../utils/kpiManual");
+const jiraService_1 = require("../services/jiraService");
 const prisma = new client_1.PrismaClient();
 const getMetrics = async (req, res) => {
     try {
@@ -69,3 +71,61 @@ const getLeaderboard = async (req, res) => {
     }
 };
 exports.getLeaderboard = getLeaderboard;
+const getUpcomingJiraSchedule = async (req, res) => {
+    try {
+        const actorId = req.user?.userId;
+        const targetUserId = String(req.params.userId || '');
+        if (!actorId)
+            return res.status(401).json({ error: 'Unauthorized' });
+        if (!targetUserId)
+            return res.status(400).json({ error: 'User target wajib diisi' });
+        const targetUser = await prisma.user.findUnique({
+            where: { id: targetUserId },
+            select: {
+                id: true,
+                name: true,
+                role: true,
+                team: true,
+                jiraAccountId: true,
+            },
+        });
+        if (!targetUser) {
+            return res.status(404).json({ error: 'User tidak ditemukan' });
+        }
+        const isSelf = actorId === targetUser.id;
+        const allowed = isSelf || (0, kpiManual_1.canManageUserKpi)(req.user || {}, targetUser);
+        if (!allowed) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        if (String(targetUser.team || '') !== 'delivery') {
+            return res.status(400).json({ error: 'Section Jira schedule hanya tersedia untuk user delivery' });
+        }
+        if (!targetUser.jiraAccountId) {
+            return res.json({
+                user: {
+                    id: targetUser.id,
+                    name: targetUser.name,
+                    jiraAccountId: null,
+                },
+                items: [],
+                missingJiraAccount: true,
+            });
+        }
+        const items = await (0, jiraService_1.fetchUpcomingJiraScheduleByAssignee)(targetUser.jiraAccountId, 15);
+        return res.json({
+            user: {
+                id: targetUser.id,
+                name: targetUser.name,
+                jiraAccountId: targetUser.jiraAccountId,
+            },
+            items,
+            missingJiraAccount: false,
+        });
+    }
+    catch (error) {
+        if (req.log)
+            req.log.error(error, 'Upcoming Jira schedule fetch failed');
+        return res.status(500).json({ error: 'Failed to fetch upcoming Jira schedule' });
+    }
+};
+exports.getUpcomingJiraSchedule = getUpcomingJiraSchedule;

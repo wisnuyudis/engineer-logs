@@ -103,7 +103,7 @@ export function ProfileView({ user, activities, onUpdate }) {
             </div>
             {saved&&<div style={{ marginBottom:12,padding:"7px 12px",background:T.greenLo,border:`1px solid ${T.green}30`,borderRadius:7,fontSize:12,color:T.green }}>✓ Profil berhasil diperbarui</div>}
             <div style={{ display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12 }}>
-              {[{k:"name",l:"Nama",e:true},{k:"email",l:"Email",e:false},{k:"position",l:"Jabatan",e:true},{k:"dept",l:"Departemen",e:true}].map(f=>(
+              {[{k:"name",l:"Nama",e:true},{k:"email",l:"Email",e:false}].map(f=>(
                 <div key={f.k} style={{ minWidth:0 }}>
                   <Lbl>{f.l}</Lbl>
                   {edit&&f.e ? <Inp value={draft[f.k]||""} onChange={e=>setD(p=>({...p,[f.k]:e.target.value}))} />
