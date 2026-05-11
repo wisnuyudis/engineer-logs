@@ -141,7 +141,8 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
       </div>
 
       <Card p={0} style={{ overflow:"hidden" }}>
-        <div style={{ position:"sticky",top:0,zIndex:2,display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:T.surfaceHi,fontSize:11,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".05em" }}>
+        <div style={{ overflowX:"auto" }}>
+        <div style={{ minWidth:860, position:"sticky",top:0,zIndex:2,display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",borderBottom:`1px solid ${T.border}`,background:T.surfaceHi,fontSize:11,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".05em" }}>
           <div />
           <button style={headerBtnStyle} onClick={()=>onSort('date')}>Tanggal{sortMark('date')}</button>
           <button style={headerBtnStyle} onClick={()=>onSort('topic')}>Info{sortMark('topic')}</button>
@@ -168,7 +169,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
             <div key={a.id} style={{ borderBottom:`1px solid ${T.border}` }}>
               <div
                 onClick={()=>toggleExpanded(a.id)}
-                style={{ display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",alignItems:"start",cursor:"pointer",background:expanded?`${T.indigo}08`:T.surface,transition:"background .15s", }}
+                style={{ minWidth:860, display:"grid",gridTemplateColumns:"28px 110px 170px 170px 1fr 90px 110px",gap:12,padding:"12px 16px",alignItems:"start",cursor:"pointer",background:expanded?`${T.indigo}08`:T.surface,transition:"background .15s", }}
               >
                 <div style={{ fontSize:14,color:T.textMute }}>{expanded ? '▾' : '▸'}</div>
                 <div>
@@ -206,7 +207,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
               </div>
 
               {expanded && (
-                <div style={{ padding:"14px 20px 16px 56px",background:T.surface }}>
+                <div style={{ minWidth:860, padding:"14px 20px 16px 56px",background:T.surface }}>
                   {!isSynced && (
                     <div style={{ display:"flex",justifyContent:"flex-end",marginBottom:12 }}>
                       <Btn
@@ -241,6 +242,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
             </div>
           );
         })}
+        </div>
       </Card>
 
       {meta.total > 0 && (

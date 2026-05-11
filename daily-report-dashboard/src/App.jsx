@@ -32,6 +32,8 @@ export default function App() {
       return 'dark';
     }
   });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 1024 : false));
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -47,6 +49,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname, isMobile]);
 
   useEffect(() => {
     const handleAuthUpdated = (event) => {
@@ -147,7 +159,7 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
       <div style={{ display: "flex", minHeight: "100vh" }}>
         
-        <Sidebar user={user} onLogout={() => {
+        <Sidebar user={user} isMobile={isMobile} mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} onLogout={() => {
           api.post('/auth/logout').catch(() => null).finally(() => {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -156,14 +168,25 @@ export default function App() {
           });
         }} />
 
-        <main style={{ marginLeft: 220, flex: 1, padding: "22px 26px", minWidth: 0 }}>
+        <main style={{ marginLeft: isMobile ? 0 : 252, flex: 1, padding: isMobile ? "16px 14px 24px" : "22px 26px", minWidth: 0 }}>
           <div style={{ maxWidth: 1480, margin: "0 auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, flexWrap:"wrap", marginBottom: 22 }}>
+              <div style={{ display:"flex", alignItems:isMobile ? "flex-start" : "center", gap:12 }}>
+                {isMobile && (
+                  <button
+                    onClick={() => setMobileNavOpen(true)}
+                    aria-label="Open menu"
+                    style={{ width:42, height:42, borderRadius:12, border:`1px solid ${T.border}`, background:T.surfaceHi, color:T.textPri, cursor:"pointer", fontSize:18, flexShrink:0 }}
+                  >
+                    ☰
+                  </button>
+                )}
               <div>
                 <div style={{ fontSize: 9, color: T.textMute, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 3 }}>
                   {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                 </div>
                 <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: T.textPri, fontFamily: DISPLAY, letterSpacing: "-.02em" }}>{pageTitle}</h1>
+              </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Avi av={user.avatar} team={user.team} sz={28} />
@@ -205,8 +228,8 @@ export default function App() {
         title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
         style={{
           position: 'fixed',
-          right: 22,
-          bottom: hasPageFab ? 92 : 22,
+          right: isMobile ? 14 : 22,
+          bottom: hasPageFab ? (isMobile ? 84 : 92) : (isMobile ? 14 : 22),
           width: 58,
           height: 58,
           borderRadius: '999px',
