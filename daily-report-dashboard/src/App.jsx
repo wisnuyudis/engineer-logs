@@ -151,7 +151,7 @@ export default function App() {
   const view = location.pathname;
   const pageTitle = TITLES[view] || TITLES["/"];
   const isLoading = loadingMembers || loadingActs || loadingTax;
-  const hasPageFab = view === '/members' || view === '/activities';
+  const hasPageFab = view === '/members';
 
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.textPri }}>

@@ -120,7 +120,10 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
             Klik baris untuk melihat detail lengkap. Kolom tabel bisa diurutkan dari header.
           </div>
         </div>
-        <div style={{ display:"flex",gap:8,flexWrap:"wrap",alignItems:"center" }}>
+        <div style={{ display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",justifyContent:"flex-end" }}>
+          <Btn v="primary" onClick={()=>setLog(true)} style={{ justifyContent:"center" }}>
+            + Log Aktivitas
+          </Btn>
           {adminView && (
             <select
               value={memberFilter}
@@ -284,8 +287,6 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
           onCancel={()=>setEditActivity(null)}
         />
       </Modal>
-      <button onClick={()=>setLog(true)} style={{ position:"fixed",bottom:28,right:28,width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${T.indigo},${T.indigoHi})`,color:"#fff",border:"none",fontSize:22,cursor:"pointer",boxShadow:`0 4px 20px ${T.indigo}60`,display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,transition:"transform .15s" }}
-        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>+</button>
     </div>
   );
 }
