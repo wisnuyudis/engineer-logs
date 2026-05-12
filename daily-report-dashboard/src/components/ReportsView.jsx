@@ -143,7 +143,19 @@ export function ReportsView({ activities, members, currentUser }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 14 }}>
+      <style>{`
+        .reports-layout {
+          display:grid;
+          grid-template-columns:240px minmax(0,1fr);
+          gap:14px;
+        }
+        @media (max-width: 980px) {
+          .reports-layout {
+            grid-template-columns:1fr;
+          }
+        }
+      `}</style>
+      <div className="reports-layout">
         <Card p={16}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 14 }}>Filter</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -457,7 +469,7 @@ export function ReportsView({ activities, members, currentUser }) {
           </div>
           <Card p={0} style={{ overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: T.surfaceHi }}>
                     {[

@@ -261,6 +261,36 @@ export function KpiManagementView({ currentUser }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <style>{`
+        .kpi-toolbar-grid {
+          display:grid;
+          grid-template-columns:minmax(260px,1.2fr) minmax(220px,.8fr);
+          gap:14px;
+        }
+        .kpi-main-grid {
+          display:grid;
+          grid-template-columns:minmax(0,1.5fr) minmax(280px,.9fr);
+          gap:16px;
+          align-items:start;
+        }
+        .kpi-pair-grid {
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:10px;
+          margin-bottom:10px;
+        }
+        @media (max-width: 1024px) {
+          .kpi-toolbar-grid,
+          .kpi-main-grid {
+            grid-template-columns:1fr;
+          }
+        }
+        @media (max-width: 640px) {
+          .kpi-pair-grid {
+            grid-template-columns:1fr;
+          }
+        }
+      `}</style>
       <Card p={18}>
         <div style={{ display:'flex', justifyContent:'space-between', gap:16, flexWrap:'wrap', alignItems:'flex-start' }}>
             <div>
@@ -283,7 +313,7 @@ export function KpiManagementView({ currentUser }) {
       </Card>
 
       <Card p={18}>
-        <div style={{ display:'grid', gridTemplateColumns:'minmax(260px,1.2fr) minmax(220px,.8fr)', gap:14 }}>
+        <div className="kpi-toolbar-grid">
           <div>
             <Lbl>User</Lbl>
             <select
@@ -328,7 +358,7 @@ export function KpiManagementView({ currentUser }) {
       )}
 
       {selectedUser && (
-        <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.5fr) minmax(320px,.9fr)', gap:16, alignItems:'start' }}>
+        <div className="kpi-main-grid">
           <Card p={18}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14 }}>
               <div>
@@ -378,7 +408,7 @@ export function KpiManagementView({ currentUser }) {
                           <Inp label="NPS" type="number" min="-1" max="4" step="0.01" value={manualInputs.implNps ?? ''} onChange={(e)=>setManualInputs((prev)=>({ ...prev, implNps: e.target.value }))} mono />
                         </div>
                       </div>
-                      <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10 }}>
+                      <div className="kpi-pair-grid">
                         <HybridMetric
                           label="Task Accuracy"
                           score={scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.score ?? null}
@@ -422,7 +452,7 @@ export function KpiManagementView({ currentUser }) {
                           <div style={{ fontSize:11,color:T.textMute,marginTop:3 }}>(Pelaksanaan PM + Report PM) / 2</div>
                         </div>
                       </div>
-                      <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10 }}>
+                      <div className="kpi-pair-grid">
                         <HybridMetric
                           label="Pelaksanaan PM"
                           score={scorecardData?.scorecard?.breakdown?.pm?.components?.execution?.score ?? null}
@@ -466,7 +496,7 @@ export function KpiManagementView({ currentUser }) {
                         <div style={{ fontSize:13,fontWeight:700,color:T.textPri }}>KPI Corrective Maintenance</div>
                         <div style={{ fontSize:11,color:T.textMute,marginTop:3 }}>(Response Time + Resolution Time) / 2</div>
                       </div>
-                      <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10 }}>
+                      <div className="kpi-pair-grid">
                         <HybridMetric
                           label="Response Time"
                           score={scorecardData?.scorecard?.breakdown?.cm?.components?.response?.score ?? null}
@@ -576,7 +606,7 @@ export function KpiManagementView({ currentUser }) {
                     </div>
                   ))
                 )}
-                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,paddingTop:10,borderTop:`1px solid ${T.border}` }}>
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,paddingTop:10,borderTop:`1px solid ${T.border}`,flexWrap:'wrap' }}>
                   <div style={{ fontSize:11,color:T.textMute }}>
                     {isEngineerDelivery
                       ? <>Input manual aktif: <strong style={{ color:T.textPri }}>Implementation NPS</strong> dan <strong style={{ color:T.textPri }}>Operational</strong>.</>

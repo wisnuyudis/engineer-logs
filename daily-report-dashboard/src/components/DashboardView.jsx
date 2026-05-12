@@ -127,7 +127,57 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
 
   return (
     <div style={{ position:"relative" }}>
-      <div style={{ display:"flex",gap:3,marginBottom:22,background:T.surfaceHi,padding:3,borderRadius:10,border:`1px solid ${T.border}`,width:"fit-content" }}>
+      <style>{`
+        .dashboard-tabs {
+          display:flex;
+          gap:3px;
+          margin-bottom:22px;
+          background:${T.surfaceHi};
+          padding:3px;
+          border-radius:10px;
+          border:1px solid ${T.border};
+          width:fit-content;
+          flex-wrap:wrap;
+        }
+        .dashboard-overview-grid {
+          display:grid;
+          grid-template-columns:minmax(0,1.35fr) minmax(280px,0.65fr);
+          gap:14px;
+          align-items:start;
+        }
+        .dashboard-overview-pair {
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:14px;
+        }
+        .dashboard-composition-grid {
+          display:grid;
+          grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+          gap:14px;
+        }
+        .leaderboard-row {
+          display:flex;
+          align-items:center;
+          gap:14px;
+          padding:13px 20px;
+        }
+        @media (max-width: 1180px) {
+          .dashboard-overview-grid {
+            grid-template-columns:1fr;
+          }
+        }
+        @media (max-width: 760px) {
+          .dashboard-overview-pair {
+            grid-template-columns:1fr;
+          }
+          .leaderboard-row {
+            align-items:flex-start;
+            gap:10px;
+            padding:12px 14px;
+          }
+        }
+      `}</style>
+      <div className="dashboard-tabs">
         {tabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"6px 16px",borderRadius:8,fontFamily:FONT,fontSize:12,fontWeight:tab===t.id?700:400,cursor:"pointer",border:"none",
             background:tab===t.id?T.indigo:"transparent",color:tab===t.id?"#fff":T.textSec,transition:"all .15s" }}>
@@ -161,15 +211,15 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
             ))}
           </div>
 
-          <div style={{ display:"grid",gridTemplateColumns:"minmax(0,1.35fr) minmax(320px,0.65fr)",gap:14,alignItems:"start" }}>
+          <div className="dashboard-overview-grid">
             <div style={{ display:"flex",flexDirection:"column",gap:14, minWidth:0 }}>
               <Card p={18}>
                 <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Komposisi Aktivitas — Jira vs Non-Jira</div>
-                <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
+                <div className="dashboard-composition-grid">
                   {leaderboard.slice(0,6).map(m => {
                     const jiraPct = m.totalHours ? Math.round((m.totalHours * 0.7) / m.totalHours * 100) : 0;
                     return (
-                      <div key={m.id} style={{ flex:"1 1 140px",minWidth:140 }}>
+                      <div key={m.id} style={{ minWidth:0 }}>
                         <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5 }}>
                           <Avi av={m.avatar} team={m.team} sz={22} />
                           <span style={{ fontSize:11,color:T.textPri,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name.split(" ")[0]}</span>
@@ -189,7 +239,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                 </div>
               </Card>
 
-              <div style={{ display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:14 }}>
+              <div className="dashboard-overview-pair">
                 <Card p={18}>
                   <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Delivery — Jam Mingguan</div>
                   <ResponsiveContainer width="100%" height={140}>
@@ -277,12 +327,12 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
             <span style={{ fontSize:11,color:T.textMute }}>{leaderboard.length} member aktif</span>
           </div>
           {leaderboard.map((m,i)=>(
-            <div key={m.id} style={{ display:"flex",alignItems:"center",gap:14,padding:"13px 20px",borderBottom:`1px solid ${T.border}`,background:i===0?`${T.green}08`:T.surface }}>
-              <span style={{ fontSize:18,width:28,flexShrink:0,textAlign:"center" }}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</span>
+            <div key={m.id} className="leaderboard-row" style={{ borderBottom:`1px solid ${T.border}`,background:i===0?`${T.green}08`:T.surface }}>
+              <span style={{ fontSize:16,width:24,flexShrink:0,textAlign:"center" }}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</span>
               <Avi av={m.avatar} team={m.team} sz={36} />
               <div style={{ flex:1,minWidth:0 }}>
-                <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:5 }}>
-                  <span style={{ fontSize:13,fontWeight:i<3?700:400,color:T.textPri }}>{m.name}</span>
+                <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:5,flexWrap:"wrap" }}>
+                  <span style={{ fontSize:12,fontWeight:i<3?700:400,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis" }}>{m.name}</span>
                   <RoleBadge role={m.role} />
                 </div>
                 <div style={{ height:5,background:T.border,borderRadius:3,overflow:"hidden",marginBottom:4 }}>
@@ -290,15 +340,15 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                     background:`linear-gradient(90deg,${m.team==="presales"?T.violet:T.teal} 70%, ${T.textMute} 70%)`,
                     width:`${Math.round((m.totalHours * 60)/maxMins*100)}%` }} />
                 </div>
-                <div style={{ fontSize:10,color:T.textMute,display:"flex",gap:10 }}>
+                <div style={{ fontSize:10,color:T.textMute,display:"flex",gap:10,flexWrap:"wrap" }}>
                   <span>{m.activitiesCount} aktivitas</span>
                   <span>Eff {m.efficiency}%</span>
                 </div>
               </div>
               <div style={{ textAlign:"right",flexShrink:0 }}>
-                <div style={{ fontSize:18,fontWeight:800,color:m.team==="presales"?T.violet:T.teal,fontFamily:MONO }}>{fmtH(m.totalHours*60)}</div>
+                <div style={{ fontSize:14,fontWeight:800,color:m.team==="presales"?T.violet:T.teal,fontFamily:MONO }}>{fmtH(m.totalHours*60)}</div>
                 {m.kpi!==null && (
-                  <div style={{ marginTop:4,fontSize:11,fontWeight:700,color:kpiColor(m.kpi),fontFamily:MONO,
+                  <div style={{ marginTop:4,fontSize:10,fontWeight:700,color:kpiColor(m.kpi),fontFamily:MONO,
                     background:`${kpiColor(m.kpi)}18`,padding:"2px 8px",borderRadius:8,border:`1px solid ${kpiColor(m.kpi)}30` }}>
                     KPI {m.kpi===-1?"-1":m.kpi?.toFixed(1)}
                   </div>
