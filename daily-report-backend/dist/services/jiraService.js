@@ -49,6 +49,8 @@ const flattenJiraComment = (node) => {
         return node.text || '';
     return flattenJiraComment(node.content);
 };
+const normalizeSummary = (value) => String(value || '').trim().toLowerCase();
+const isProjectPrefix = (projectName, prefix) => String(projectName || '').toUpperCase().startsWith(prefix);
 let jiraFieldNameMapCache = null;
 const loadJiraFieldNameMap = async () => {
     if (jiraFieldNameMapCache)
@@ -228,7 +230,6 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
     const requestTypeField = fieldMap['request type'] || fieldMap['customer request type'] || fieldMap['work type'];
     const conditions = [
         `assignee = "${assigneeAccountId}"`,
-        `issuetype not in subTaskIssueTypes()`,
         `issuetype != Epic`,
     ];
     if (actualStartField) {
@@ -241,6 +242,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
     }
     const jql = `${conditions.join(' AND ')} ORDER BY statusCategoryChangedDate DESC`;
     const matchedIssues = [];
+    const pmParentGroups = new Map();
     let nextPageToken;
     const maxResults = 50;
     while (true) {
@@ -248,7 +250,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
             jql,
             maxResults,
             nextPageToken,
-            fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', actualStartField, requestTypeField].filter(Boolean),
+            fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', 'parent', actualStartField, requestTypeField].filter(Boolean),
         };
         const res = await jiraFetch('/rest/api/3/search/jql', {
             method: 'POST',
@@ -263,18 +265,48 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
         const data = await res.json();
         const issues = Array.isArray(data.issues) ? data.issues : [];
         for (const issue of issues) {
+            const summary = issue.fields?.summary || null;
             const issueTypeName = issue.fields?.issuetype?.name || null;
             const isSubtask = Boolean(issue.fields?.issuetype?.subtask);
+            const projectName = issue.fields?.project?.name || null;
+            const statusCategoryKey = String(issue.fields?.status?.statusCategory?.key || '').toLowerCase();
+            const isCompleted = statusCategoryKey === 'done';
+            const normalizedSummary = normalizeSummary(summary);
+            const isPmSubtask = isSubtask && isProjectPrefix(projectName, '[MA]');
+            const parentKey = issue.fields?.parent?.key || null;
+            const parentId = issue.fields?.parent?.id || null;
+            if (!isCompleted)
+                continue;
+            if (isPmSubtask) {
+                const groupKey = parentKey || parentId || issue.key;
+                const current = pmParentGroups.get(groupKey) || {
+                    parentKey,
+                    sampleKey: issue.key,
+                    hasJobDone: false,
+                    hasReportDone: false,
+                };
+                if (normalizedSummary.startsWith('pekerjaan pm'))
+                    current.hasJobDone = true;
+                if (normalizedSummary.startsWith('report pm'))
+                    current.hasReportDone = true;
+                pmParentGroups.set(groupKey, current);
+                continue;
+            }
             if (isSubtask || String(issueTypeName || '').toLowerCase() === 'epic')
                 continue;
-            const actKey = (0, exports.resolveJiraActKey)(issue.key, issueTypeName, issue.fields?.project?.name || null, extractFieldValue(issue.fields, requestTypeField));
-            if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_enh', 'jira_ops'].includes(actKey)) {
+            const actKey = (0, exports.resolveJiraActKey)(issue.key, issueTypeName, projectName, extractFieldValue(issue.fields, requestTypeField));
+            if (['jira_impl', 'jira_cm', 'jira_enh', 'jira_ops'].includes(actKey)) {
                 matchedIssues.push({ key: issue.key, actKey });
             }
         }
         nextPageToken = data.nextPageToken || undefined;
         if (!nextPageToken || data.isLast || issues.length === 0)
             break;
+    }
+    for (const group of pmParentGroups.values()) {
+        if (group.hasJobDone && group.hasReportDone) {
+            matchedIssues.push({ key: group.parentKey || group.sampleKey, actKey: 'jira_pm' });
+        }
     }
     return {
         count: matchedIssues.length,

@@ -376,7 +376,7 @@ export function KpiManagementView({ currentUser }) {
               <div>
                 <div style={{ fontSize:11,fontWeight:700,color:T.textPri,marginBottom:3 }}>Trigger Aktivitas Jira untuk QB</div>
                 <div style={{ fontSize:11,color:T.textMute }}>
-                  Hitung task Jira <strong style={{ color:T.textPri }}>done</strong> pada quarter ini. Yang dihitung: `[IMP]`, `[MA]`, `[OPS]`, dan `(SUP)` non-subtask/non-epic.
+                  Hitung task Jira <strong style={{ color:T.textPri }}>done</strong> pada quarter ini. Yang dihitung: issue utama selesai untuk `[IMP]`, `[OPS]`, `(SUP)`, serta `1` task PM per parent jika `Pekerjaan PM` dan `Report PM` pada parent yang sama sudah selesai.
                 </div>
               </div>
               <Btn v="sec" onClick={()=>triggerQbMutation.mutate()} disabled={triggerQbMutation.isPending}>

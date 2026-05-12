@@ -47,6 +47,9 @@ const flattenJiraComment = (node: any): string => {
   return flattenJiraComment(node.content);
 };
 
+const normalizeSummary = (value: string | null | undefined) => String(value || '').trim().toLowerCase();
+const isProjectPrefix = (projectName: string | null, prefix: string) => String(projectName || '').toUpperCase().startsWith(prefix);
+
 let jiraFieldNameMapCache: Record<string, string> | null = null;
 
 const loadJiraFieldNameMap = async () => {
@@ -237,7 +240,6 @@ export const fetchCompletedJiraTasksForQuarter = async (
   const requestTypeField = fieldMap['request type'] || fieldMap['customer request type'] || fieldMap['work type'];
   const conditions = [
     `assignee = "${assigneeAccountId}"`,
-    `issuetype not in subTaskIssueTypes()`,
     `issuetype != Epic`,
   ];
   if (actualStartField) {
@@ -250,16 +252,17 @@ export const fetchCompletedJiraTasksForQuarter = async (
   const jql = `${conditions.join(' AND ')} ORDER BY statusCategoryChangedDate DESC`;
 
   const matchedIssues: Array<{ key: string; actKey: string }> = [];
+  const pmParentGroups = new Map<string, { parentKey: string | null; sampleKey: string; hasJobDone: boolean; hasReportDone: boolean }>();
   let nextPageToken: string | undefined;
   const maxResults = 50;
 
   while (true) {
-    const payload = {
-      jql,
-      maxResults,
-      nextPageToken,
-      fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', actualStartField, requestTypeField].filter(Boolean),
-    };
+      const payload = {
+        jql,
+        maxResults,
+        nextPageToken,
+        fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', 'parent', actualStartField, requestTypeField].filter(Boolean),
+      };
     const res = await jiraFetch('/rest/api/3/search/jql', {
       method: 'POST',
       headers: {
@@ -276,24 +279,55 @@ export const fetchCompletedJiraTasksForQuarter = async (
     const issues = Array.isArray(data.issues) ? data.issues : [];
 
     for (const issue of issues) {
+      const summary = issue.fields?.summary || null;
       const issueTypeName = issue.fields?.issuetype?.name || null;
       const isSubtask = Boolean(issue.fields?.issuetype?.subtask);
+      const projectName = issue.fields?.project?.name || null;
+      const statusCategoryKey = String(issue.fields?.status?.statusCategory?.key || '').toLowerCase();
+      const isCompleted = statusCategoryKey === 'done';
+      const normalizedSummary = normalizeSummary(summary);
+      const isPmSubtask = isSubtask && isProjectPrefix(projectName, '[MA]');
+      const parentKey = issue.fields?.parent?.key || null;
+      const parentId = issue.fields?.parent?.id || null;
+
+      if (!isCompleted) continue;
+
+      if (isPmSubtask) {
+        const groupKey = parentKey || parentId || issue.key;
+        const current = pmParentGroups.get(groupKey) || {
+          parentKey,
+          sampleKey: issue.key,
+          hasJobDone: false,
+          hasReportDone: false,
+        };
+        if (normalizedSummary.startsWith('pekerjaan pm')) current.hasJobDone = true;
+        if (normalizedSummary.startsWith('report pm')) current.hasReportDone = true;
+        pmParentGroups.set(groupKey, current);
+        continue;
+      }
+
       if (isSubtask || String(issueTypeName || '').toLowerCase() === 'epic') continue;
 
       const actKey = resolveJiraActKey(
         issue.key,
         issueTypeName,
-        issue.fields?.project?.name || null,
+        projectName,
         extractFieldValue(issue.fields, requestTypeField)
       );
 
-      if (['jira_impl', 'jira_pm', 'jira_cm', 'jira_enh', 'jira_ops'].includes(actKey)) {
+      if (['jira_impl', 'jira_cm', 'jira_enh', 'jira_ops'].includes(actKey)) {
         matchedIssues.push({ key: issue.key, actKey });
       }
     }
 
     nextPageToken = data.nextPageToken || undefined;
     if (!nextPageToken || data.isLast || issues.length === 0) break;
+  }
+
+  for (const group of pmParentGroups.values()) {
+    if (group.hasJobDone && group.hasReportDone) {
+      matchedIssues.push({ key: group.parentKey || group.sampleKey, actKey: 'jira_pm' });
+    }
   }
 
   return {
