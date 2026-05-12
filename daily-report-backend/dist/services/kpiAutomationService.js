@@ -192,7 +192,7 @@ const pmExecutionScore = (lateMinutes) => {
 };
 const pmReportScore = (businessDays) => {
     if (businessDays === null)
-        return -1;
+        return null;
     if (businessDays <= 3)
         return 4;
     if (businessDays <= 5)
@@ -377,16 +377,23 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period) => {
         const relatedJobDoneAt = job ? toIsoDate(job.resolutionDate) : null;
         const reportDoneAt = report ? toIsoDate(report.resolutionDate) : null;
         const reportDays = businessDaysBetween(relatedJobDoneAt, reportDoneAt);
-        const reportScore = report ? pmReportScore(reportDays) : 4;
+        const reportDueDate = report?.dueDate || parentDueDate;
+        const reportScore = !report
+            ? 4
+            : reportDoneAt
+                ? pmReportScore(reportDays)
+                : (isDueDatePassed(reportDueDate) ? -1 : null);
         reportItems.push({
             parentRef,
             parentDueDate,
             issueKey: report?.key || null,
+            dueDate: reportDueDate,
             actualPmDoneAt: relatedJobDoneAt,
             reportDoneAt,
             businessDaysLate: reportDays,
             score: reportScore,
             assumedByPolicy: !report,
+            pendingWithinDueDate: !!report && !reportDoneAt && !isDueDatePassed(reportDueDate),
         });
     }
     const executionScore = averageScores(execItems.map((item) => item.score));
