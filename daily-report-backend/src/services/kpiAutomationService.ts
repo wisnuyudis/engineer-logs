@@ -62,6 +62,12 @@ const endOfDueDate = (value: string | null) => {
   return new Date(`${value}T23:59:59.999Z`);
 };
 
+const isDueDatePassed = (value: string | null, referenceDate = new Date()) => {
+  const due = endOfDueDate(value);
+  if (!due) return false;
+  return due.getTime() < referenceDate.getTime();
+};
+
 const diffMinutes = (start: string | null, end: string | null) => {
   if (!start || !end) return null;
   const startDate = new Date(start);
@@ -402,7 +408,9 @@ const computePreventiveMaintenanceDomain = (
     if (job) {
       const jobDoneAt = toIsoDate(job.resolutionDate);
       const lateMinutes = diffMinutesFromDueEnd(job.dueDate, jobDoneAt);
-      const score = jobDoneAt ? pmExecutionScore(lateMinutes) : -1;
+      const score = jobDoneAt
+        ? pmExecutionScore(lateMinutes)
+        : (isDueDatePassed(job.dueDate) ? -1 : null);
       execItems.push({
         parentRef,
         parentDueDate,
@@ -412,6 +420,7 @@ const computePreventiveMaintenanceDomain = (
         lateMinutes: roundScore(lateMinutes),
         lateHuman: formatHumanDuration(lateMinutes),
         score,
+        pendingWithinDueDate: !jobDoneAt && !isDueDatePassed(job.dueDate),
       });
     }
 

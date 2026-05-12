@@ -17,7 +17,7 @@ export const KPI_PROFILES: Record<string, KpiProfileDef> = {
   engineer_delivery: {
     key: 'engineer_delivery',
     label: 'Engineer Delivery',
-    roleLabels: ['delivery', 'SE', 'mgr_dl', 'Head Delivery'],
+    roleLabels: ['delivery', 'SE'],
     domains: [
       { key: 'impl', label: 'KPI Implementasi', formula: '(Task + Dok + NPS) / 3' },
       { key: 'pm', label: 'KPI Prev. Maint.', formula: '(Pelaks + Lap) / avg' },

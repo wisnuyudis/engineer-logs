@@ -5,6 +5,7 @@ import { PersonalKPI } from './shared/PersonalKPI';
 import api from '../lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { hasKpiProfile } from '../constants/taxonomy';
 
 export function ProfileView({ user, activities, onUpdate }) {
   const [edit,setE]=useState(false);
@@ -113,7 +114,7 @@ export function ProfileView({ user, activities, onUpdate }) {
             </div>
           </Card>
 
-          <PersonalKPI user={user} activities={activities} />
+          {hasKpiProfile(user.role) && <PersonalKPI user={user} activities={activities} />}
         </div>
 
         <div className="profile-stack">

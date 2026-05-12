@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { T, FONT, MONO, DISPLAY } from '../theme/tokens';
-import { ROLES, isMgr, isAdmin, teamOf } from '../constants/taxonomy';
+import { ROLES, isMgr, isAdmin, teamOf, hasKpiProfile } from '../constants/taxonomy';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import { calcKPI } from '../utils/kpi';
@@ -15,6 +15,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
   const canSeeTeam = isMgr(currentUser.role);
   const myTeam = teamOf(currentUser.role);
   const isAdminRole = isAdmin(currentUser.role);
+  const canSeeOwnKpi = hasKpiProfile(currentUser.role);
   const [tab, setTab] = useState(canSeeTeam ? "overview" : "kpi");
   const [memberDetailId, setMemberDetail] = useState(null);
   const [memberDropOpen, setMDO] = useState(false);
@@ -113,8 +114,12 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
   const tabs = canSeeTeam
     ? isAdminRole
       ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
-      : [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"},{id:"kpi",label:"📈 KPI Saya"}]
-    : [{id:"kpi",label:"📈 KPI Saya"}];
+      : canSeeOwnKpi
+        ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"},{id:"kpi",label:"📈 KPI Saya"}]
+        : [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
+    : canSeeOwnKpi
+      ? [{id:"kpi",label:"📈 KPI Saya"}]
+      : [];
 
   const memberDetailUser = visibleMembers.find(m=>m.id===memberDetailId) || visibleMembers[0] || null;
 
@@ -359,7 +364,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
         </Card>
       )}
 
-      {tab==="kpi" && !isAdminRole && (
+      {tab==="kpi" && !isAdminRole && canSeeOwnKpi && (
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <JiraScheduleCard user={currentUser} />
           <PersonalKPI user={currentUser} activities={activities} />
@@ -447,7 +452,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                 </div>
               </Card>
               <JiraScheduleCard user={memberDetailUser} />
-              <PersonalKPI user={memberDetailUser} activities={activities} />
+              {hasKpiProfile(memberDetailUser.role) && <PersonalKPI user={memberDetailUser} activities={activities} />}
             </div>
           ) : (
             <Card p={30}><div style={{ textAlign:"center",color:T.textMute }}>Tidak ada member yang bisa dilihat.</div></Card>

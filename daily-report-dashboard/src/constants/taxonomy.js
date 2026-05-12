@@ -48,13 +48,12 @@ export const isAdmin = (role) => ["Admin", "admin", "superadmin", "Superadmin", 
 
 export const isMgr = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin", "Head Delivery", "Head Presales", "mgr_ps", "mgr_dl"].includes(role);
 export const canManageKpi = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery"].includes(role);
-export const hasKpiProfile = (role) => ["delivery", "SE", "mgr_dl", "Head Delivery", "PM", "pm"].includes(role);
+export const hasKpiProfile = (role) => ["delivery", "SE", "PM", "pm"].includes(role);
 
 export const getKpiTarget = (domainKey, user) => {
   if (user?.role === "PM" && domainKey === "pm") return 30; // 30 jam target
   const tgts = {
     "SE": { "impl":40, "pm":15, "cm":15, "enh":10, "ops":5 },
-    "Head Delivery": { "impl":20, "pm":10, "cm":5, "enh":5, "ops":5 }
   };
   return tgts[user?.role]?.[domainKey] || 0;
 };
