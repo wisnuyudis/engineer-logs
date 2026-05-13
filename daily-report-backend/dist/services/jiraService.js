@@ -179,7 +179,7 @@ const fetchJiraIssue = async (issueKeyOrId) => {
         fieldMap['actual start'],
         fieldMap['actual start date'],
     ].filter(Boolean);
-    const queryFields = ['summary', 'issuetype', 'project', ...extraFields].join(',');
+    const queryFields = ['summary', 'issuetype', 'project', 'status', 'priority', 'duedate', 'resolutiondate', 'assignee', ...extraFields].join(',');
     const res = await jiraFetch(`/rest/api/3/issue/${issueKeyOrId}?fields=${encodeURIComponent(queryFields)}&expand=names`);
     if (!res.ok) {
         if (res.status === 404) {
@@ -195,6 +195,12 @@ const fetchJiraIssue = async (issueKeyOrId) => {
         issueTypeName: data.fields?.issuetype?.name || null,
         projectKey: data.fields?.project?.key || null,
         projectName: data.fields?.project?.name || null,
+        statusName: data.fields?.status?.name || null,
+        priorityName: data.fields?.priority?.name || null,
+        dueDate: data.fields?.duedate || null,
+        resolutionDate: data.fields?.resolutiondate || null,
+        assigneeDisplayName: data.fields?.assignee?.displayName || null,
+        assigneeAccountId: data.fields?.assignee?.accountId || null,
         workTypeName: extractNamedFieldValue(data.fields, data.names, 'Work Type')
             || extractNamedFieldValue(data.fields, data.names, 'Request Type')
             || extractNamedFieldValue(data.fields, data.names, 'Customer Request Type')
