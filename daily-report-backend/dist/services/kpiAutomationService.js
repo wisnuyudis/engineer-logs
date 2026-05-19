@@ -224,7 +224,7 @@ const parsePrioritySeverity = (priorityName) => {
         return 3;
     return 4;
 };
-const computeImplementationDomain = (issues, npsEntries, period) => {
+const computeImplementationDomain = (issues, npsEntries, period, implParentEpicKeys = new Map()) => {
     const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[IMP]')
         && !!issue.dueDate
         && inQuarter(issue.dueDate, period));
@@ -287,11 +287,21 @@ const computeImplementationDomain = (issues, npsEntries, period) => {
     const lateDocCount = docStatus.filter((doc) => doc.present && !doc.onTime).length;
     const documentationApplicable = foundDocCount > 0;
     const documentationScore = !documentationApplicable ? null : (missingDocCount === 0 && lateDocCount === 0 ? 4 : 3);
-    const projectKeys = Array.from(new Set(relevant.map((issue) => issue.parentKey).filter((key) => Boolean(key))));
+    const epicKeyToParentTasks = new Map();
+    for (const issue of relevant) {
+        if (!issue.parentKey)
+            continue;
+        const epicKey = implParentEpicKeys.get(issue.parentKey) || issue.parentKey;
+        const parentTasks = epicKeyToParentTasks.get(epicKey) || new Set();
+        parentTasks.add(issue.parentKey);
+        epicKeyToParentTasks.set(epicKey, parentTasks);
+    }
+    const projectKeys = Array.from(epicKeyToParentTasks.keys());
     const npsItems = projectKeys.map((projectKey) => {
         const entry = npsEntries.find((item) => item.scope === 'impl_project' && item.jiraIssueKey === projectKey);
         return {
             issueKey: projectKey,
+            parentTaskKeys: Array.from(epicKeyToParentTasks.get(projectKey) || []),
             score: entry?.score ?? null,
             filled: entry?.score !== null && entry?.score !== undefined,
         };
@@ -630,6 +640,7 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
     let subtasks;
     let supportIssues;
     let pmParents;
+    let implParents;
     try {
         [subtasks, supportIssues] = await Promise.all([
             (0, jiraService_1.searchJiraIssues)({
@@ -648,6 +659,15 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
             ? await (0, jiraService_1.searchJiraIssues)({
                 jql: `issuekey in (${parentKeys.map((key) => `"${key}"`).join(',')})`,
                 fields: ['summary', 'issuetype', 'project', 'status', 'duedate'],
+            })
+            : [];
+        const implParentKeys = Array.from(new Set(subtasks
+            .filter((issue) => isProjectPrefix(issue.projectName, '[IMP]') && issue.parentKey)
+            .map((issue) => issue.parentKey)));
+        implParents = implParentKeys.length
+            ? await (0, jiraService_1.searchJiraIssues)({
+                jql: `issuekey in (${implParentKeys.map((key) => `"${key}"`).join(',')})`,
+                fields: ['summary', 'issuetype', 'project', 'status', 'parent'],
             })
             : [];
     }
@@ -685,7 +705,8 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
             persistedNotes: (0, exports.buildEngineerDeliveryPersistedNotes)(manualInputs, domainNotes, null),
         };
     }
-    const implementation = computeImplementationDomain(subtasks, npsEntries, period);
+    const implParentEpicKeys = new Map((implParents || []).map((issue) => [issue.key, issue.parentKey || null]));
+    const implementation = computeImplementationDomain(subtasks, npsEntries, period, implParentEpicKeys);
     const pmParentDueDates = new Map((pmParents || []).flatMap((issue) => [
         [issue.key, issue.dueDate || null],
         [issue.id, issue.dueDate || null],

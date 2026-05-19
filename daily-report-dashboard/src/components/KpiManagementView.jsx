@@ -448,6 +448,7 @@ export function KpiManagementView({ currentUser }) {
                         title="Detail NPS project"
                         columns={[
                           { key:'issueKey', label:'Epic' },
+                          { key:'parentTaskKeys', label:'Task Parent', render: (row) => Array.isArray(row.parentTaskKeys) ? row.parentTaskKeys.join(', ') : '—' },
                           { key:'score', label:'NPS', render: (row) => row.score === null || row.score === undefined ? 'N/A' : row.score },
                           { key:'filled', label:'Status', render: (row) => row.filled ? 'Sudah input' : 'Belum input' },
                         ]}
