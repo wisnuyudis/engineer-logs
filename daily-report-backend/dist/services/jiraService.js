@@ -280,6 +280,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
             const normalizedSummary = normalizeSummary(summary);
             const isPmSubtask = isSubtask && isProjectPrefix(projectName, '[MA]');
             const isImplementationSubtask = isSubtask && isProjectPrefix(projectName, '[IMP]');
+            const isOperationalSubtask = isSubtask && isProjectPrefix(projectName, '[OP]');
             const parentKey = issue.fields?.parent?.key || null;
             const parentId = issue.fields?.parent?.id || null;
             if (!isCompleted)
@@ -301,6 +302,10 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
             }
             if (isImplementationSubtask) {
                 matchedIssues.push({ key: issue.key, actKey: 'jira_impl' });
+                continue;
+            }
+            if (isOperationalSubtask) {
+                matchedIssues.push({ key: issue.key, actKey: 'jira_ops' });
                 continue;
             }
             if (isSubtask || String(issueTypeName || '').toLowerCase() === 'epic')
