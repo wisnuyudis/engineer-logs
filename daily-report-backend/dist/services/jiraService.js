@@ -454,11 +454,37 @@ const fetchKpiNpsCandidates = async (startDate, endDate) => {
     for (const keys of chunk(implEpics.map((issue) => issue.key), 50)) {
         if (!keys.length)
             continue;
-        const bastIssues = await (0, exports.searchJiraIssues)({
+        const childTasks = await (0, exports.searchJiraIssues)({
+            jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) AND issuetype not in subTaskIssueTypes() ORDER BY updated DESC`,
+            fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
+        });
+        const epicByTaskKey = new Map(childTasks
+            .filter((task) => task.parentKey)
+            .map((task) => [task.key, task.parentKey]));
+        for (const taskKeys of chunk(Array.from(epicByTaskKey.keys()), 50)) {
+            if (!taskKeys.length)
+                continue;
+            const bastIssues = await (0, exports.searchJiraIssues)({
+                jql: `parent in (${taskKeys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
+                fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
+            });
+            for (const bast of bastIssues) {
+                if (!bast.parentKey)
+                    continue;
+                const epicKey = epicByTaskKey.get(bast.parentKey);
+                if (!epicKey || bastAssigneesByParent.has(epicKey))
+                    continue;
+                bastAssigneesByParent.set(epicKey, {
+                    accountId: bast.assigneeAccountId,
+                    displayName: bast.assigneeDisplayName,
+                });
+            }
+        }
+        const directBastIssues = await (0, exports.searchJiraIssues)({
             jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
             fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
         });
-        for (const bast of bastIssues) {
+        for (const bast of directBastIssues) {
             if (!bast.parentKey || bastAssigneesByParent.has(bast.parentKey))
                 continue;
             bastAssigneesByParent.set(bast.parentKey, {
