@@ -42,6 +42,14 @@ function ScoreSelect({ value, onChange }) {
   );
 }
 
+function InputStatusBadge({ done }) {
+  return (
+    <Tag color={done ? T.green : T.amber} lo={done ? T.greenLo : T.amberLo}>
+      {done ? 'Sudah input' : 'Belum input'}
+    </Tag>
+  );
+}
+
 export function KpiNpsView({ currentUser }) {
   const queryClient = useQueryClient();
   const [year, setYear] = useState(new Date().getFullYear());
@@ -155,6 +163,12 @@ export function KpiNpsView({ currentUser }) {
           border-bottom:1px solid ${T.border};
           vertical-align:top;
         }
+        .kpi-nps-row-missing {
+          background:linear-gradient(90deg, ${T.amberLo} 0%, transparent 42%);
+        }
+        .kpi-nps-row-filled {
+          background:linear-gradient(90deg, ${T.greenLo} 0%, transparent 34%);
+        }
         .kpi-nps-comment {
           width:100%;
           min-width:180px;
@@ -238,8 +252,10 @@ export function KpiNpsView({ currentUser }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: T.textPri }}>Daftar NPS {buildQuarterLabel(year, quarter)}</div>
-            <div style={{ fontSize: 11, color: T.textMute, marginTop: 3 }}>
-              {isFetching ? 'Mengambil data Jira...' : `${counts.filled} sudah diinput · ${counts.missing} N/A`}
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop: 8 }}>
+              <Tag color={T.green} lo={T.greenLo}>{counts.filled} sudah input</Tag>
+              <Tag color={T.amber} lo={T.amberLo}>{counts.missing} belum input</Tag>
+              {isFetching && <Tag color={T.textMute} lo={T.border}>Sync Jira...</Tag>}
             </div>
           </div>
           <Tag color={counts.missing ? T.amber : T.green} lo={counts.missing ? T.amberLo : T.greenLo}>
@@ -266,6 +282,7 @@ export function KpiNpsView({ currentUser }) {
                   <th>Summary</th>
                   <th>PM Assigned</th>
                   <th>Done At</th>
+                  <th>Status Input</th>
                   <th>NPS</th>
                   <th>Komentar</th>
                   <th>Aksi</th>
@@ -277,7 +294,7 @@ export function KpiNpsView({ currentUser }) {
                   const key = `${item.scope}:${item.jiraIssueKey}`;
                   const draft = drafts[key] || { score: String(item.score ?? 3), comment: item.comment || '' };
                   return (
-                    <tr key={key}>
+                    <tr key={key} className={item.hasScore ? 'kpi-nps-row-filled' : 'kpi-nps-row-missing'}>
                       <td>
                         <Tag color={meta.color} lo={meta.lo}>{meta.short}</Tag>
                         <div style={{ fontSize: 10, color: T.textMute, marginTop: 6 }}>{meta.label}</div>
@@ -287,8 +304,8 @@ export function KpiNpsView({ currentUser }) {
                           {item.jiraIssueKey}
                         </a>
                         <div style={{ marginTop: 6 }}>
-                          <Tag color={item.hasScore ? T.green : T.amber} lo={item.hasScore ? T.greenLo : T.amberLo}>
-                            {item.hasScore ? item.score : 'N/A'}
+                          <Tag color={item.hasScore ? T.green : T.textMute} lo={item.hasScore ? T.greenLo : T.border}>
+                            NPS {item.hasScore ? item.score : 'N/A'}
                           </Tag>
                         </div>
                       </td>
@@ -302,6 +319,12 @@ export function KpiNpsView({ currentUser }) {
                       </td>
                       <td>{item.assignedPmDisplayName || '-'}</td>
                       <td>{formatDateTime(item.resolutionDate)}</td>
+                      <td>
+                        <InputStatusBadge done={item.hasScore} />
+                        <div style={{ fontSize:10,color:T.textMute,marginTop:6 }}>
+                          {item.hasScore ? `Tersimpan ${formatDateTime(item.updatedAt)}` : 'Nilai belum tersimpan'}
+                        </div>
+                      </td>
                       <td>
                         <ScoreSelect value={draft.score} onChange={(score) => updateDraft(item, { score })} />
                       </td>
