@@ -602,7 +602,10 @@ export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) 
     };
   });
 
-  const opIssues = opTasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]'));
+  const opIssues = opTasks.filter((issue) => (
+    isProjectPrefix(issue.projectName, '[OP]')
+    && normalizeSummary(issue.issueTypeName) !== 'bug'
+  ));
   const bastAssigneesByOpTask = new Map<string, { accountId: string | null; displayName: string | null }>();
 
   for (const keys of chunk(opIssues.map((issue) => issue.key), 50)) {

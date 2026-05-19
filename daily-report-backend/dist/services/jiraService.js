@@ -510,7 +510,8 @@ const fetchKpiNpsCandidates = async (startDate, endDate) => {
             assignedPmDisplayName: bastAssignee?.displayName || null,
         };
     });
-    const opIssues = opTasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]'));
+    const opIssues = opTasks.filter((issue) => (isProjectPrefix(issue.projectName, '[OP]')
+        && normalizeSummary(issue.issueTypeName) !== 'bug'));
     const bastAssigneesByOpTask = new Map();
     for (const keys of chunk(opIssues.map((issue) => issue.key), 50)) {
         if (!keys.length)
