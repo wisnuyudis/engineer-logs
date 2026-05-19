@@ -602,9 +602,28 @@ export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) 
     };
   });
 
-  const opCandidates = opTasks
-    .filter((issue) => isProjectPrefix(issue.projectName, '[OP]'))
-    .map<KpiNpsJiraCandidate>((issue) => ({
+  const opIssues = opTasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]'));
+  const bastAssigneesByOpTask = new Map<string, { accountId: string | null; displayName: string | null }>();
+
+  for (const keys of chunk(opIssues.map((issue) => issue.key), 50)) {
+    if (!keys.length) continue;
+    const bastIssues = await searchJiraIssues({
+      jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
+      fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
+    });
+    for (const bast of bastIssues) {
+      if (!bast.parentKey || bastAssigneesByOpTask.has(bast.parentKey)) continue;
+      bastAssigneesByOpTask.set(bast.parentKey, {
+        accountId: bast.assigneeAccountId,
+        displayName: bast.assigneeDisplayName,
+      });
+    }
+  }
+
+  const opCandidates = opIssues
+    .map<KpiNpsJiraCandidate>((issue) => {
+      const bastAssignee = bastAssigneesByOpTask.get(issue.key);
+      return {
       scope: 'op_task',
       jiraIssueId: issue.id,
       jiraIssueKey: issue.key,
@@ -615,9 +634,10 @@ export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) 
       issueTypeName: issue.issueTypeName,
       statusName: issue.statusName,
       resolutionDate: issue.resolutionDate,
-      assignedPmAccountId: issue.assigneeAccountId,
-      assignedPmDisplayName: issue.assigneeDisplayName,
-    }));
+      assignedPmAccountId: bastAssignee?.accountId || issue.assigneeAccountId,
+      assignedPmDisplayName: bastAssignee?.displayName || issue.assigneeDisplayName,
+    };
+  });
 
   return [...implCandidates, ...opCandidates];
 };

@@ -510,22 +510,42 @@ const fetchKpiNpsCandidates = async (startDate, endDate) => {
             assignedPmDisplayName: bastAssignee?.displayName || null,
         };
     });
-    const opCandidates = opTasks
-        .filter((issue) => isProjectPrefix(issue.projectName, '[OP]'))
-        .map((issue) => ({
-        scope: 'op_task',
-        jiraIssueId: issue.id,
-        jiraIssueKey: issue.key,
-        issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
-        projectKey: issue.projectKey,
-        projectName: issue.projectName,
-        summary: issue.summary,
-        issueTypeName: issue.issueTypeName,
-        statusName: issue.statusName,
-        resolutionDate: issue.resolutionDate,
-        assignedPmAccountId: issue.assigneeAccountId,
-        assignedPmDisplayName: issue.assigneeDisplayName,
-    }));
+    const opIssues = opTasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]'));
+    const bastAssigneesByOpTask = new Map();
+    for (const keys of chunk(opIssues.map((issue) => issue.key), 50)) {
+        if (!keys.length)
+            continue;
+        const bastIssues = await (0, exports.searchJiraIssues)({
+            jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
+            fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
+        });
+        for (const bast of bastIssues) {
+            if (!bast.parentKey || bastAssigneesByOpTask.has(bast.parentKey))
+                continue;
+            bastAssigneesByOpTask.set(bast.parentKey, {
+                accountId: bast.assigneeAccountId,
+                displayName: bast.assigneeDisplayName,
+            });
+        }
+    }
+    const opCandidates = opIssues
+        .map((issue) => {
+        const bastAssignee = bastAssigneesByOpTask.get(issue.key);
+        return {
+            scope: 'op_task',
+            jiraIssueId: issue.id,
+            jiraIssueKey: issue.key,
+            issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
+            projectKey: issue.projectKey,
+            projectName: issue.projectName,
+            summary: issue.summary,
+            issueTypeName: issue.issueTypeName,
+            statusName: issue.statusName,
+            resolutionDate: issue.resolutionDate,
+            assignedPmAccountId: bastAssignee?.accountId || issue.assigneeAccountId,
+            assignedPmDisplayName: bastAssignee?.displayName || issue.assigneeDisplayName,
+        };
+    });
     return [...implCandidates, ...opCandidates];
 };
 exports.fetchKpiNpsCandidates = fetchKpiNpsCandidates;
