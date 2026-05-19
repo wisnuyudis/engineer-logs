@@ -39,6 +39,12 @@ type QuarterRange = {
   endDate: string;
 };
 
+export type KpiNpsScoreInput = {
+  scope: 'impl_project' | 'op_task';
+  jiraIssueKey: string;
+  score: number | null;
+};
+
 const REQUIRED_IMPL_DOCS = [
   'Method Of Produce',
   'System Requirement Document',
@@ -255,7 +261,7 @@ const parsePrioritySeverity = (priorityName: string | null) => {
 
 const computeImplementationDomain = (
   issues: Awaited<ReturnType<typeof searchJiraIssues>>,
-  implNps: number | null,
+  npsEntries: KpiNpsScoreInput[],
   period: QuarterRange
 ) => {
   const relevant = issues.filter((issue) =>
@@ -272,7 +278,7 @@ const computeImplementationDomain = (
         components: {
           taskAccuracy: { score: null, eligibleSubtaskCount: 0, onTimeSubtaskCount: 0, lateSubtaskCount: 0, openSubtaskCount: 0, onTimePct: null },
           documentation: { score: null, expectedDocCount: REQUIRED_IMPL_DOCS.length, foundDocCount: 0, lateDocCount: 0, missingDocCount: 0, matchedDocs: [], applicable: false },
-          nps: { score: implNps, source: 'manual' },
+          nps: { score: null, source: 'kpi_nps', itemCount: 0, items: [] as any[] },
         },
       },
     };
@@ -325,8 +331,18 @@ const computeImplementationDomain = (
   const lateDocCount = docStatus.filter((doc) => doc.present && !doc.onTime).length;
   const documentationApplicable = foundDocCount > 0;
   const documentationScore = !documentationApplicable ? null : (missingDocCount === 0 && lateDocCount === 0 ? 4 : 3);
+  const projectKeys = Array.from(new Set(relevant.map((issue) => issue.parentKey).filter((key): key is string => Boolean(key))));
+  const npsItems = projectKeys.map((projectKey) => {
+    const entry = npsEntries.find((item) => item.scope === 'impl_project' && item.jiraIssueKey === projectKey);
+    return {
+      issueKey: projectKey,
+      score: entry?.score ?? null,
+      filled: entry?.score !== null && entry?.score !== undefined,
+    };
+  });
+  const npsScore = averageScores(npsItems.map((item) => item.score));
   const score = hasScorableAutoEvidence([taskScore, documentationScore])
-    ? averageScores([taskScore, documentationScore, implNps])
+    ? averageScores([taskScore, documentationScore, npsScore])
     : null;
 
   return {
@@ -353,7 +369,14 @@ const computeImplementationDomain = (
           matchedDocs: docStatus,
           applicable: documentationApplicable,
         },
-        nps: { score: implNps, source: 'manual' },
+        nps: {
+          score: npsScore,
+          source: 'kpi_nps',
+          itemCount: npsItems.length,
+          filledCount: npsItems.filter((item) => item.filled).length,
+          missingCount: npsItems.filter((item) => !item.filled).length,
+          items: npsItems,
+        },
       },
     },
   };
@@ -628,7 +651,8 @@ export const computeEngineerDeliveryKpi = async (
   profile: KpiProfileDef,
   user: KpiUser,
   period: QuarterRange,
-  storedScorecard?: StoredScorecard | null
+  storedScorecard?: StoredScorecard | null,
+  npsEntries: KpiNpsScoreInput[] = []
 ) => {
   const persistedState = parseEngineerDeliveryPersistedState(storedScorecard?.notes, storedScorecard?.scores);
   const manualInputs = persistedState.manualInputs;
@@ -644,7 +668,7 @@ export const computeEngineerDeliveryKpi = async (
     ops: manualInputs.opsScore,
   };
   const breakdown: EngineerDeliveryBreakdown = {
-    impl: { mode: 'auto', issueCount: 0, components: { taskAccuracy: { score: null }, documentation: { score: null }, nps: { score: manualInputs.implNps, source: 'manual' } } },
+    impl: { mode: 'auto', issueCount: 0, components: { taskAccuracy: { score: null }, documentation: { score: null }, nps: { score: null, source: 'kpi_nps' } } },
     pm: { mode: 'auto', parentCount: 0, components: { execution: { score: null }, report: { score: null } } },
     cm: { mode: 'auto', issueCount: 0, components: { response: { score: null }, resolution: { score: null } } },
     enh: { mode: 'auto', issueCount: 0, components: { response: { score: null } } },
@@ -744,7 +768,7 @@ export const computeEngineerDeliveryKpi = async (
     };
   }
 
-  const implementation = computeImplementationDomain(subtasks, manualInputs.implNps, period);
+  const implementation = computeImplementationDomain(subtasks, npsEntries, period);
   const pmParentDueDates = new Map<string, string | null>(
     (pmParents || []).flatMap((issue) => [
       [issue.key, issue.dueDate || null] as const,

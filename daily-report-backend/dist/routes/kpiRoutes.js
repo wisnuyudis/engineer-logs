@@ -7,6 +7,8 @@ const router = (0, express_1.Router)();
 router.use(authMiddleware_1.authenticateToken);
 router.get('/profiles', kpiController_1.getKpiProfiles);
 router.get('/users', kpiController_1.getKpiAssignableUsers);
+router.get('/nps', kpiController_1.getKpiNpsEntries);
+router.put('/nps', kpiController_1.upsertKpiNpsEntry);
 router.get('/scorecards/:userId', kpiController_1.getUserKpiScorecard);
 router.put('/scorecards/:userId', kpiController_1.upsertUserKpiScorecard);
 router.post('/scorecards/:userId/recalculate-qb', kpiController_1.recalculateQbMetrics);

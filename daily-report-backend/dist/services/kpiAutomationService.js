@@ -224,7 +224,7 @@ const parsePrioritySeverity = (priorityName) => {
         return 3;
     return 4;
 };
-const computeImplementationDomain = (issues, implNps, period) => {
+const computeImplementationDomain = (issues, npsEntries, period) => {
     const relevant = issues.filter((issue) => isProjectPrefix(issue.projectName, '[IMP]')
         && !!issue.dueDate
         && inQuarter(issue.dueDate, period));
@@ -237,7 +237,7 @@ const computeImplementationDomain = (issues, implNps, period) => {
                 components: {
                     taskAccuracy: { score: null, eligibleSubtaskCount: 0, onTimeSubtaskCount: 0, lateSubtaskCount: 0, openSubtaskCount: 0, onTimePct: null },
                     documentation: { score: null, expectedDocCount: REQUIRED_IMPL_DOCS.length, foundDocCount: 0, lateDocCount: 0, missingDocCount: 0, matchedDocs: [], applicable: false },
-                    nps: { score: implNps, source: 'manual' },
+                    nps: { score: null, source: 'kpi_nps', itemCount: 0, items: [] },
                 },
             },
         };
@@ -287,8 +287,18 @@ const computeImplementationDomain = (issues, implNps, period) => {
     const lateDocCount = docStatus.filter((doc) => doc.present && !doc.onTime).length;
     const documentationApplicable = foundDocCount > 0;
     const documentationScore = !documentationApplicable ? null : (missingDocCount === 0 && lateDocCount === 0 ? 4 : 3);
+    const projectKeys = Array.from(new Set(relevant.map((issue) => issue.parentKey).filter((key) => Boolean(key))));
+    const npsItems = projectKeys.map((projectKey) => {
+        const entry = npsEntries.find((item) => item.scope === 'impl_project' && item.jiraIssueKey === projectKey);
+        return {
+            issueKey: projectKey,
+            score: entry?.score ?? null,
+            filled: entry?.score !== null && entry?.score !== undefined,
+        };
+    });
+    const npsScore = averageScores(npsItems.map((item) => item.score));
     const score = hasScorableAutoEvidence([taskScore, documentationScore])
-        ? averageScores([taskScore, documentationScore, implNps])
+        ? averageScores([taskScore, documentationScore, npsScore])
         : null;
     return {
         score,
@@ -314,7 +324,14 @@ const computeImplementationDomain = (issues, implNps, period) => {
                     matchedDocs: docStatus,
                     applicable: documentationApplicable,
                 },
-                nps: { score: implNps, source: 'manual' },
+                nps: {
+                    score: npsScore,
+                    source: 'kpi_nps',
+                    itemCount: npsItems.length,
+                    filledCount: npsItems.filter((item) => item.filled).length,
+                    missingCount: npsItems.filter((item) => !item.filled).length,
+                    items: npsItems,
+                },
             },
         },
     };
@@ -562,7 +579,7 @@ const computeEnhancementDomain = (issues) => {
         },
     };
 };
-const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard) => {
+const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard, npsEntries = []) => {
     const persistedState = (0, exports.parseEngineerDeliveryPersistedState)(storedScorecard?.notes, storedScorecard?.scores);
     const manualInputs = persistedState.manualInputs;
     const domainNotes = persistedState.domainNotes;
@@ -576,7 +593,7 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
         ops: manualInputs.opsScore,
     };
     const breakdown = {
-        impl: { mode: 'auto', issueCount: 0, components: { taskAccuracy: { score: null }, documentation: { score: null }, nps: { score: manualInputs.implNps, source: 'manual' } } },
+        impl: { mode: 'auto', issueCount: 0, components: { taskAccuracy: { score: null }, documentation: { score: null }, nps: { score: null, source: 'kpi_nps' } } },
         pm: { mode: 'auto', parentCount: 0, components: { execution: { score: null }, report: { score: null } } },
         cm: { mode: 'auto', issueCount: 0, components: { response: { score: null }, resolution: { score: null } } },
         enh: { mode: 'auto', issueCount: 0, components: { response: { score: null } } },
@@ -668,7 +685,7 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
             persistedNotes: (0, exports.buildEngineerDeliveryPersistedNotes)(manualInputs, domainNotes, null),
         };
     }
-    const implementation = computeImplementationDomain(subtasks, manualInputs.implNps, period);
+    const implementation = computeImplementationDomain(subtasks, npsEntries, period);
     const pmParentDueDates = new Map((pmParents || []).flatMap((issue) => [
         [issue.key, issue.dueDate || null],
         [issue.id, issue.dueDate || null],

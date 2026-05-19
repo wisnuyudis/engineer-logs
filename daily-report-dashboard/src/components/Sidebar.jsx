@@ -1,5 +1,5 @@
 import { T, FONT, DISPLAY } from '../theme/tokens';
-import { canManageKpi, teamOf } from '../constants/taxonomy';
+import { canManageKpi, canManageKpiNps, teamOf } from '../constants/taxonomy';
 import { Avi, RoleBadge, TeamBadge, Divider } from './ui/Primitives';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -17,6 +17,9 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
   const adminItems = [];
   if (canManageKpi(user.role)) {
     adminItems.push({ id: "/kpi-admin", icon: "◌", label: "KPI" });
+  }
+  if (canManageKpiNps(user.role)) {
+    adminItems.push({ id: "/kpi-nps", icon: "◎", label: "KPI NPS" });
   }
   if (user.role === 'admin') {
     adminItems.push({ id: "/audit", icon: "⌘", label: "Audit Trail" });

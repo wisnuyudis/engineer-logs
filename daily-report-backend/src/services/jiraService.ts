@@ -132,7 +132,7 @@ export const resolveJiraActKey = (
 
   if (project.startsWith('[MA]')) return 'jira_pm';
   if (project.startsWith('[IMP]')) return 'jira_impl';
-  if (project.startsWith('[OPS]')) return 'jira_ops';
+  if (project.startsWith('[OP]')) return 'jira_ops';
   if (key.startsWith('SUP-') && issueType === '[system] problem') return 'jira_cm';
   if (key.startsWith('SUP-') && issueType === '[system] change') return 'jira_enh';
   if (workType.includes('service request')) return 'jira_ops';
@@ -140,7 +140,7 @@ export const resolveJiraActKey = (
   if (key.startsWith('MAINT-') || issueType.includes('preventive')) return 'jira_pm';
   if (key.startsWith('CM-') || key.startsWith('SUP-') || issueType.includes('incident') || issueType.includes('bug')) return 'jira_cm';
   if (issueType.includes('enhancement') || issueType.includes('change request') || issueType.includes('improvement')) return 'jira_enh';
-  if (key.startsWith('OPS-') || key.startsWith('KB4-') || issueType.includes('operation')) return 'jira_ops';
+  if (key.startsWith('OP-') || key.startsWith('OPS-') || key.startsWith('KB4-') || issueType.includes('operation')) return 'jira_ops';
   return process.env.JIRA_DEFAULT_ACT_KEY || 'jira_impl';
 };
 
@@ -358,6 +358,7 @@ export type JiraSearchIssue = {
   projectName: string | null;
   workTypeName: string | null;
   assigneeAccountId: string | null;
+  assigneeDisplayName: string | null;
   parentId: string | null;
   parentKey: string | null;
   startDate: string | null;
@@ -368,6 +369,8 @@ export type JiraSearchIssue = {
   updatedAt: string | null;
   resolutionDate: string | null;
   statusName: string | null;
+  statusCategoryKey: string | null;
+  statusCategoryName: string | null;
   priorityName: string | null;
   timeSpentSeconds: number;
   comments: Array<{ id: string; createdAt: string | null; bodyText: string }>;
@@ -461,6 +464,7 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
           || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Request Type')
           || extractNamedFieldValue(issue.fields, data.names || issue.names, 'Customer Request Type'),
         assigneeAccountId: issue.fields?.assignee?.accountId || null,
+        assigneeDisplayName: issue.fields?.assignee?.displayName || null,
         parentId: issue.fields?.parent?.id ? String(issue.fields.parent.id) : null,
         parentKey: issue.fields?.parent?.key || null,
         startDate: extractNamedFieldValueByMap(issue.fields, fieldMap, ['Start date']),
@@ -471,6 +475,8 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
         updatedAt: issue.fields?.updated || null,
         resolutionDate: issue.fields?.resolutiondate || null,
         statusName: issue.fields?.status?.name || null,
+        statusCategoryKey: issue.fields?.status?.statusCategory?.key || null,
+        statusCategoryName: issue.fields?.status?.statusCategory?.name || null,
         priorityName: issue.fields?.priority?.name || null,
         timeSpentSeconds: Number(issue.fields?.timespent || 0),
         comments: Array.isArray(issue.fields?.comment?.comments)
@@ -488,6 +494,104 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
   }
 
   return matchedIssues;
+};
+
+export type KpiNpsJiraCandidate = {
+  scope: 'impl_project' | 'op_task';
+  jiraIssueId: string;
+  jiraIssueKey: string;
+  issueUrl: string;
+  projectKey: string | null;
+  projectName: string | null;
+  summary: string | null;
+  issueTypeName: string | null;
+  statusName: string | null;
+  resolutionDate: string | null;
+  assignedPmAccountId: string | null;
+  assignedPmDisplayName: string | null;
+};
+
+const chunk = <T>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
+export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) => {
+  const baseUrl = (process.env.JIRA_BASE_URL || '').replace(/\/+$/, '');
+  const doneInPeriod = [
+    'statusCategory = Done',
+    `resolved >= "${startDate}"`,
+    `resolved <= "${endDate}"`,
+  ].join(' AND ');
+
+  const [epics, opTasks] = await Promise.all([
+    searchJiraIssues({
+      jql: `issuetype = Epic AND ${doneInPeriod} ORDER BY resolved DESC`,
+      fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', 'assignee'],
+    }),
+    searchJiraIssues({
+      jql: `issuetype not in subTaskIssueTypes() AND issuetype != Epic AND ${doneInPeriod} ORDER BY resolved DESC`,
+      fields: ['summary', 'issuetype', 'project', 'status', 'resolutiondate', 'assignee'],
+    }),
+  ]);
+
+  const implEpics = epics.filter((issue) => isProjectPrefix(issue.projectName, '[IMP]'));
+  const bastAssigneesByParent = new Map<string, { accountId: string | null; displayName: string | null }>();
+
+  for (const keys of chunk(implEpics.map((issue) => issue.key), 50)) {
+    if (!keys.length) continue;
+    const bastIssues = await searchJiraIssues({
+      jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
+      fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
+    });
+    for (const bast of bastIssues) {
+      if (!bast.parentKey || bastAssigneesByParent.has(bast.parentKey)) continue;
+      bastAssigneesByParent.set(bast.parentKey, {
+        accountId: bast.assigneeAccountId,
+        displayName: bast.assigneeDisplayName,
+      });
+    }
+  }
+
+  const implCandidates = implEpics.map<KpiNpsJiraCandidate>((issue) => {
+    const bastAssignee = bastAssigneesByParent.get(issue.key);
+    return {
+      scope: 'impl_project',
+      jiraIssueId: issue.id,
+      jiraIssueKey: issue.key,
+      issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
+      projectKey: issue.projectKey,
+      projectName: issue.projectName,
+      summary: issue.summary,
+      issueTypeName: issue.issueTypeName,
+      statusName: issue.statusName,
+      resolutionDate: issue.resolutionDate,
+      assignedPmAccountId: bastAssignee?.accountId || null,
+      assignedPmDisplayName: bastAssignee?.displayName || null,
+    };
+  });
+
+  const opCandidates = opTasks
+    .filter((issue) => isProjectPrefix(issue.projectName, '[OP]'))
+    .map<KpiNpsJiraCandidate>((issue) => ({
+      scope: 'op_task',
+      jiraIssueId: issue.id,
+      jiraIssueKey: issue.key,
+      issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
+      projectKey: issue.projectKey,
+      projectName: issue.projectName,
+      summary: issue.summary,
+      issueTypeName: issue.issueTypeName,
+      statusName: issue.statusName,
+      resolutionDate: issue.resolutionDate,
+      assignedPmAccountId: issue.assigneeAccountId,
+      assignedPmDisplayName: issue.assigneeDisplayName,
+    }));
+
+  return [...implCandidates, ...opCandidates];
 };
 
 export const fetchUpcomingJiraScheduleByAssignee = async (assigneeAccountId: string, dayWindow = 15) => {

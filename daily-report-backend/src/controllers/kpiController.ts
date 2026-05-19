@@ -11,15 +11,20 @@ import {
   normalizeYear,
   resolveKpiProfile,
 } from '../utils/kpiManual';
-import { fetchCompletedJiraTasksForQuarter } from '../services/jiraService';
+import { fetchCompletedJiraTasksForQuarter, fetchKpiNpsCandidates } from '../services/jiraService';
 import {
   buildEngineerDeliveryPersistedNotes,
   computeEngineerDeliveryKpi,
+  KpiNpsScoreInput,
   parseEngineerDeliveryPersistedState,
 } from '../services/kpiAutomationService';
 import { writeAudit } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
+
+const normalizeRole = (role?: string | null) => String(role || '').trim().toLowerCase();
+const canManageKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery', 'pm'].includes(normalizeRole(role));
+const canSeeAllKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery'].includes(normalizeRole(role));
 
 const getQuarterDateRange = (year: number, quarter: string) => {
   switch (quarter) {
@@ -38,6 +43,36 @@ const resolveHybridManualScore = (value: unknown, fallback: number | null) => {
     throw new Error('Nilai manual KPI harus berada di antara -1 sampai 4.');
   }
   return Number(num.toFixed(2));
+};
+
+const getKpiNpsScoreInputs = async (year: number, quarter: string): Promise<KpiNpsScoreInput[]> => {
+  const entries = await prisma.kpiNpsEntry.findMany({
+    where: {
+      year,
+      quarter,
+      score: { not: null },
+    },
+    select: {
+      scope: true,
+      jiraIssueKey: true,
+      score: true,
+    },
+  });
+
+  return entries
+    .filter((entry) => entry.scope === 'impl_project' || entry.scope === 'op_task')
+    .map((entry) => ({
+      scope: entry.scope as 'impl_project' | 'op_task',
+      jiraIssueKey: entry.jiraIssueKey,
+      score: entry.score,
+    }));
+};
+
+const getAuthorizedKpiNpsCandidates = async (actor: { role?: string | null; jiraAccountId?: string | null }, year: number, quarter: string) => {
+  const { startDate, endDate } = getQuarterDateRange(year, quarter);
+  const candidates = await fetchKpiNpsCandidates(startDate, endDate);
+  if (canSeeAllKpiNps(actor.role)) return candidates;
+  return candidates.filter((candidate) => candidate.assignedPmAccountId && candidate.assignedPmAccountId === actor.jiraAccountId);
 };
 
 const mapScorecardResponse = (
@@ -199,7 +234,8 @@ export const getUserKpiScorecard = async (req: AuthRequest, res: Response) => {
     });
 
     if (profile.key === 'engineer_delivery') {
-      const computed = await computeEngineerDeliveryKpi(profile, user, getQuarterDateRange(year, quarter), scorecard);
+      const npsEntries = await getKpiNpsScoreInputs(year, quarter);
+      const computed = await computeEngineerDeliveryKpi(profile, user, getQuarterDateRange(year, quarter), scorecard, npsEntries);
       const syntheticScorecard = scorecard
         ? {
             ...scorecard,
@@ -294,6 +330,7 @@ export const upsertUserKpiScorecard = async (req: AuthRequest, res: Response) =>
         implNps: resolveHybridManualScore(manualInputs.implNps, persisted.manualInputs.implNps),
         opsScore: resolveHybridManualScore(manualInputs.opsScore, persisted.manualInputs.opsScore),
       };
+      const npsEntries = await getKpiNpsScoreInputs(year, quarter);
       const computed = await computeEngineerDeliveryKpi(
         profile,
         user,
@@ -301,7 +338,8 @@ export const upsertUserKpiScorecard = async (req: AuthRequest, res: Response) =>
         {
           ...existing,
           notes: buildEngineerDeliveryPersistedNotes(nextManualInputs, notes),
-        }
+        },
+        npsEntries
       );
 
       const scorecard = await prisma.kpiScorecard.upsert({
@@ -430,6 +468,148 @@ export const getKpiProfiles = async (_req: AuthRequest, res: Response) => {
   res.json(Object.values(KPI_PROFILES));
 };
 
+export const getKpiNpsEntries = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!canManageKpiNps(req.user?.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const year = normalizeYear(req.query.year as string);
+    const quarter = normalizeQuarter(req.query.quarter as string);
+    const actor = await prisma.user.findUnique({
+      where: { id: String(req.user?.userId || '') },
+      select: { id: true, role: true, jiraAccountId: true },
+    });
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    if (!canSeeAllKpiNps(actor.role) && !actor.jiraAccountId) {
+      return res.status(400).json({ error: 'Akun Jira PM belum terhubung.' });
+    }
+
+    const candidates = await getAuthorizedKpiNpsCandidates(actor, year, quarter);
+    const entries = candidates.length
+      ? await prisma.kpiNpsEntry.findMany({
+          where: {
+            year,
+            quarter,
+            OR: candidates.map((candidate) => ({
+              scope: candidate.scope,
+              jiraIssueKey: candidate.jiraIssueKey,
+            })),
+          },
+        })
+      : [];
+    const entryMap = new Map(entries.map((entry) => [`${entry.scope}:${entry.jiraIssueKey}`, entry]));
+
+    res.json({
+      period: { year, quarter, label: buildQuarterLabel(year, quarter) },
+      canSeeAll: canSeeAllKpiNps(actor.role),
+      items: candidates.map((candidate) => {
+        const entry = entryMap.get(`${candidate.scope}:${candidate.jiraIssueKey}`);
+        return {
+          ...candidate,
+          score: entry?.score ?? null,
+          comment: entry?.comment || '',
+          enteredById: entry?.enteredById || null,
+          updatedAt: entry?.updatedAt || null,
+          hasScore: entry?.score !== null && entry?.score !== undefined,
+        };
+      }),
+    });
+  } catch (error: any) {
+    req.log?.error(error, 'Failed to fetch KPI NPS entries');
+    res.status(400).json({ error: error?.message || 'Failed to fetch KPI NPS entries' });
+  }
+};
+
+export const upsertKpiNpsEntry = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!canManageKpiNps(req.user?.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const year = normalizeYear(req.body?.year);
+    const quarter = normalizeQuarter(req.body?.quarter);
+    const scope = String(req.body?.scope || '');
+    const jiraIssueKey = String(req.body?.jiraIssueKey || '').trim().toUpperCase();
+    const score = Number(req.body?.score);
+    const comment = req.body?.comment == null ? null : String(req.body.comment);
+
+    if (!['impl_project', 'op_task'].includes(scope)) {
+      return res.status(400).json({ error: 'Scope NPS tidak valid.' });
+    }
+    if (!jiraIssueKey) {
+      return res.status(400).json({ error: 'Issue key wajib diisi.' });
+    }
+    if (!Number.isInteger(score) || score < 1 || score > 4) {
+      return res.status(400).json({ error: 'Nilai NPS harus berupa angka 1-4.' });
+    }
+
+    const actor = await prisma.user.findUnique({
+      where: { id: String(req.user?.userId || '') },
+      select: { id: true, role: true, jiraAccountId: true },
+    });
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+
+    const candidates = await getAuthorizedKpiNpsCandidates(actor, year, quarter);
+    const candidate = candidates.find((item) => item.scope === scope && item.jiraIssueKey === jiraIssueKey);
+    if (!candidate) {
+      return res.status(403).json({ error: 'Issue ini tidak tersedia untuk input NPS Anda pada periode tersebut.' });
+    }
+
+    const entry = await prisma.kpiNpsEntry.upsert({
+      where: {
+        year_quarter_scope_jiraIssueKey: {
+          year,
+          quarter,
+          scope,
+          jiraIssueKey,
+        },
+      },
+      update: {
+        jiraIssueId: candidate.jiraIssueId,
+        projectKey: candidate.projectKey,
+        projectName: candidate.projectName,
+        summary: candidate.summary,
+        issueTypeName: candidate.issueTypeName,
+        assignedPmAccountId: candidate.assignedPmAccountId,
+        assignedPmDisplayName: candidate.assignedPmDisplayName,
+        score,
+        comment,
+        enteredById: req.user?.userId,
+      },
+      create: {
+        year,
+        quarter,
+        scope,
+        jiraIssueId: candidate.jiraIssueId,
+        jiraIssueKey,
+        projectKey: candidate.projectKey,
+        projectName: candidate.projectName,
+        summary: candidate.summary,
+        issueTypeName: candidate.issueTypeName,
+        assignedPmAccountId: candidate.assignedPmAccountId,
+        assignedPmDisplayName: candidate.assignedPmDisplayName,
+        score,
+        comment,
+        enteredById: req.user?.userId,
+      },
+    });
+
+    await writeAudit(req, {
+      action: 'kpi.nps_upsert',
+      entityType: 'kpi_nps_entry',
+      entityId: entry.id,
+      after: entry,
+      metadata: { year, quarter, scope, jiraIssueKey },
+    });
+
+    res.json(entry);
+  } catch (error: any) {
+    req.log?.error(error, 'Failed to save KPI NPS entry');
+    res.status(400).json({ error: error?.message || 'Failed to save KPI NPS entry' });
+  }
+};
+
 export const recalculateQbMetrics = async (req: AuthRequest, res: Response) => {
   try {
     if (!canManageKpi(req.user?.role)) {
@@ -479,10 +659,11 @@ export const recalculateQbMetrics = async (req: AuthRequest, res: Response) => {
     });
 
     if (profile.key === 'engineer_delivery') {
+      const npsEntries = await getKpiNpsScoreInputs(year, quarter);
       const computed = await computeEngineerDeliveryKpi(profile, user, { startDate, endDate }, {
         ...existing,
         completedJiraTaskCount: jiraResult.count,
-      });
+      }, npsEntries);
 
       const scorecard = await prisma.kpiScorecard.upsert({
         where: {

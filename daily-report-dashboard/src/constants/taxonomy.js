@@ -48,6 +48,7 @@ export const isAdmin = (role) => ["Admin", "admin", "superadmin", "Superadmin", 
 
 export const isMgr = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin", "Head Delivery", "Head Presales", "mgr_ps", "mgr_dl"].includes(role);
 export const canManageKpi = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery"].includes(role);
+export const canManageKpiNps = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery", "PM", "pm"].includes(role);
 export const hasKpiProfile = (role) => ["delivery", "SE", "PM", "pm"].includes(role);
 
 export const getKpiTarget = (domainKey, user) => {

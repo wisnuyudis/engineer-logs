@@ -41,6 +41,7 @@ function computeEngineerDeliveryPreview(scorecardData, manualInputs) {
   const implAutoScores = [
     breakdown.impl?.components?.taskAccuracy?.score ?? null,
     breakdown.impl?.components?.documentation?.score ?? null,
+    breakdown.impl?.components?.nps?.score ?? null,
   ];
   const pmAutoScores = [
     breakdown.pm?.components?.execution?.score ?? null,
@@ -48,7 +49,7 @@ function computeEngineerDeliveryPreview(scorecardData, manualInputs) {
   ];
   const nextScores = {
     impl: hasAutoEvidence(implAutoScores)
-      ? avgScores([...implAutoScores, normalizeManualValue(manualInputs.implNps, scorecard.manualInputs?.implNps ?? 3)])
+      ? avgScores(implAutoScores)
       : null,
     pm: hasAutoEvidence(pmAutoScores)
       ? avgScores(pmAutoScores)
@@ -160,7 +161,7 @@ export function KpiManagementView({ currentUser }) {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [scores, setScores] = useState({});
   const [notes, setNotes] = useState({});
-  const [manualInputs, setManualInputs] = useState({ implNps: 3, opsScore: '' });
+  const [manualInputs, setManualInputs] = useState({ opsScore: '' });
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['kpi-users'],
@@ -191,7 +192,6 @@ export function KpiManagementView({ currentUser }) {
     setScores(scorecardData.scorecard.scores || {});
     setNotes(scorecardData.scorecard.notes || {});
     setManualInputs({
-      implNps: scorecardData.scorecard.manualInputs?.implNps ?? 3,
       opsScore: scorecardData.scorecard.manualInputs?.opsScore ?? '',
     });
   }, [scorecardData]);
@@ -212,7 +212,6 @@ export function KpiManagementView({ currentUser }) {
             year,
             quarter,
             manualInputs: {
-              implNps: manualInputs.implNps === '' ? null : Number(manualInputs.implNps),
               opsScore: manualInputs.opsScore === '' ? null : Number(manualInputs.opsScore),
             },
             notes,
@@ -302,7 +301,7 @@ export function KpiManagementView({ currentUser }) {
               </div>
               <div style={{ fontSize:12,color:T.textMute,maxWidth:640 }}>
                 {isEngineerDelivery
-                  ? 'Engineer Delivery memakai kalkulasi otomatis dari evidence Jira. Input manual hanya tersisa untuk NPS Implementation dan skor Operational.'
+                  ? 'Engineer Delivery memakai kalkulasi otomatis dari evidence Jira. NPS Implementation dibaca dari menu KPI NPS; input manual hanya tersisa untuk skor Operational.'
                   : 'Nilai per domain diinput manual. Sistem hanya menghitung rata-rata domain aktif, pelanggaran, dan status bonus.'}
               </div>
             </div>
@@ -376,7 +375,7 @@ export function KpiManagementView({ currentUser }) {
               <div>
                 <div style={{ fontSize:11,fontWeight:700,color:T.textPri,marginBottom:3 }}>Trigger Aktivitas Jira untuk QB</div>
                 <div style={{ fontSize:11,color:T.textMute }}>
-                  Hitung task Jira <strong style={{ color:T.textPri }}>done</strong> pada quarter ini. Yang dihitung: setiap sub-task implementasi `[IMP]` yang selesai, issue utama selesai untuk `[OPS]` dan `(SUP)`, serta `1` task PM per parent jika `Pekerjaan PM` dan `Report PM` pada parent yang sama sudah selesai.
+                  Hitung task Jira <strong style={{ color:T.textPri }}>done</strong> pada quarter ini. Yang dihitung: setiap sub-task implementasi `[IMP]` yang selesai, issue utama selesai untuk `[OP]` dan `(SUP)`, serta `1` task PM per parent jika `Pekerjaan PM` dan `Report PM` pada parent yang sama sudah selesai.
                 </div>
               </div>
               <Btn v="sec" onClick={()=>triggerQbMutation.mutate()} disabled={triggerQbMutation.isPending}>
@@ -404,9 +403,7 @@ export function KpiManagementView({ currentUser }) {
                           <div style={{ fontSize:13,fontWeight:700,color:T.textPri }}>KPI Implementasi</div>
                           <div style={{ fontSize:11,color:T.textMute,marginTop:3 }}>(Task Accuracy + Dokumentasi + NPS) / 3</div>
                         </div>
-                        <div style={{ width:120 }}>
-                          <Inp label="NPS" type="number" min="-1" max="4" step="0.01" value={manualInputs.implNps ?? ''} onChange={(e)=>setManualInputs((prev)=>({ ...prev, implNps: e.target.value }))} mono />
-                        </div>
+                        <Tag color={T.teal} lo={T.tealLo}>KPI NPS</Tag>
                       </div>
                       <div className="kpi-pair-grid">
                         <HybridMetric
@@ -418,6 +415,11 @@ export function KpiManagementView({ currentUser }) {
                           label="Dokumentasi"
                           score={scorecardData?.scorecard?.breakdown?.impl?.components?.documentation?.score ?? null}
                           detail={`${scorecardData?.scorecard?.breakdown?.impl?.components?.documentation?.foundDocCount || 0}/${scorecardData?.scorecard?.breakdown?.impl?.components?.documentation?.expectedDocCount || 5} dokumen ditemukan · ${scorecardData?.scorecard?.breakdown?.impl?.components?.documentation?.lateDocCount || 0} terlambat`}
+                        />
+                        <HybridMetric
+                          label="NPS Project"
+                          score={scorecardData?.scorecard?.breakdown?.impl?.components?.nps?.score ?? null}
+                          detail={`${scorecardData?.scorecard?.breakdown?.impl?.components?.nps?.filledCount || 0}/${scorecardData?.scorecard?.breakdown?.impl?.components?.nps?.itemCount || 0} project sudah diinput · ${scorecardData?.scorecard?.breakdown?.impl?.components?.nps?.missingCount || 0} N/A`}
                         />
                       </div>
                       <HybridDetailsTable
@@ -441,6 +443,15 @@ export function KpiManagementView({ currentUser }) {
                           { key:'onTime', label:'On Time', render: (row) => row.present ? (row.onTime ? 'Ya' : 'Tidak') : '—' },
                         ]}
                         rows={scorecardData?.scorecard?.breakdown?.impl?.components?.documentation?.matchedDocs || []}
+                      />
+                      <HybridDetailsTable
+                        title="Detail NPS project"
+                        columns={[
+                          { key:'issueKey', label:'Epic' },
+                          { key:'score', label:'NPS', render: (row) => row.score === null || row.score === undefined ? 'N/A' : row.score },
+                          { key:'filled', label:'Status', render: (row) => row.filled ? 'Sudah input' : 'Belum input' },
+                        ]}
+                        rows={scorecardData?.scorecard?.breakdown?.impl?.components?.nps?.items || []}
                       />
                       <Inp label="Catatan" value={notes?.impl ?? ''} onChange={(e)=>setNotes((prev)=>({ ...prev, impl: e.target.value }))} placeholder="Opsional" />
                     </div>
@@ -609,7 +620,7 @@ export function KpiManagementView({ currentUser }) {
                 <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,paddingTop:10,borderTop:`1px solid ${T.border}`,flexWrap:'wrap' }}>
                   <div style={{ fontSize:11,color:T.textMute }}>
                     {isEngineerDelivery
-                      ? <>Input manual aktif: <strong style={{ color:T.textPri }}>Implementation NPS</strong> dan <strong style={{ color:T.textPri }}>Operational</strong>.</>
+                      ? <>Input manual aktif: <strong style={{ color:T.textPri }}>Operational</strong>. NPS Implementation dikelola dari menu <strong style={{ color:T.textPri }}>KPI NPS</strong>.</>
                       : <>Rentang nilai: <strong style={{ color:T.textPri }}>-1</strong> sampai <strong style={{ color:T.textPri }}>4</strong>. Kosong berarti tidak dihitung.</>}
                   </div>
                   <Btn v="primary" onClick={()=>saveMutation.mutate()} disabled={saveMutation.isPending}>

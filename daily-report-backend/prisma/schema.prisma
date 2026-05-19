@@ -134,6 +134,28 @@ model KpiScorecard {
   @@unique([userId, year, quarter], name: "userId_year_quarter")
 }
 
+model KpiNpsEntry {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  year                  Int
+  quarter               String
+  scope                 String   // impl_project, op_task
+  jiraIssueId           String?
+  jiraIssueKey          String
+  projectKey            String?
+  projectName           String?
+  summary               String?
+  issueTypeName         String?
+  assignedPmAccountId   String?
+  assignedPmDisplayName String?
+  score                 Int?
+  comment               String?
+  enteredById           String?  @db.ObjectId
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([year, quarter, scope, jiraIssueKey], name: "year_quarter_scope_jiraIssueKey")
+}
+
 model AuthSession {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   userId        String   @db.ObjectId
