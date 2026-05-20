@@ -101,7 +101,7 @@ export function SmtpSettingsView({ currentUser }) {
             <div style={{ fontSize:10,color:T.textMute,marginBottom:4,textTransform:'uppercase',letterSpacing:'.07em' }}>System Settings</div>
             <div style={{ fontSize:18,fontWeight:800,color:T.textPri,fontFamily:DISPLAY,marginBottom:6 }}>SMTP Settings</div>
             <div style={{ fontSize:12,color:T.textMute,maxWidth:720,lineHeight:1.5 }}>
-              Konfigurasi ini dipakai untuk email invite member. Email pengirim dan tujuan invite dibatasi ke domain <strong style={{ color:T.textPri }}>@sdt.co.id</strong>.
+              Konfigurasi ini dipakai untuk email invite member. Email pengirim boleh <strong style={{ color:T.textPri }}>@sdt.co.id</strong> atau <strong style={{ color:T.textPri }}>@gmail.com</strong>, sedangkan email member tetap dibatasi ke <strong style={{ color:T.textPri }}>@sdt.co.id</strong>.
             </div>
           </div>
           <Tag color={data?.configured ? T.green : T.amber} lo={data?.configured ? T.greenLo : T.amberLo}>

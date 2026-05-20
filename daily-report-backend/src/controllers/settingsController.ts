@@ -2,7 +2,7 @@ import { Response } from 'express';
 import nodemailer from 'nodemailer';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { getStoredSmtpConfig, maskSmtpConfig, resolveSmtpConfig, upsertSmtpConfig } from '../services/smtpSettingsService';
-import { isAllowedCompanyEmail, normalizeEmail } from '../utils/emailPolicy';
+import { ALLOWED_SMTP_FROM_DOMAINS, isAllowedCompanyEmail, isAllowedSmtpFromEmail, normalizeEmail } from '../utils/emailPolicy';
 import { writeAudit } from '../utils/auditTrail';
 
 const isAdminRole = (role?: string | null) => String(role || '').toLowerCase() === 'admin';
@@ -53,7 +53,9 @@ export const updateSmtpSettings = async (req: AuthRequest, res: Response) => {
     if (!payload.host) return res.status(400).json({ error: 'SMTP host wajib diisi.' });
     if (!Number.isFinite(payload.port) || payload.port <= 0) return res.status(400).json({ error: 'SMTP port tidak valid.' });
     if (!payload.user) return res.status(400).json({ error: 'SMTP username wajib diisi.' });
-    if (!isAllowedCompanyEmail(payload.fromEmail)) return res.status(400).json({ error: 'Email pengirim harus menggunakan domain @sdt.co.id.' });
+    if (!isAllowedSmtpFromEmail(payload.fromEmail)) {
+      return res.status(400).json({ error: `Email pengirim harus menggunakan domain ${ALLOWED_SMTP_FROM_DOMAINS.join(' atau ')}.` });
+    }
 
     const saved = await upsertSmtpConfig(payload);
     await writeAudit(req, {

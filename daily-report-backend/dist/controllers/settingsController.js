@@ -58,8 +58,9 @@ const updateSmtpSettings = async (req, res) => {
             return res.status(400).json({ error: 'SMTP port tidak valid.' });
         if (!payload.user)
             return res.status(400).json({ error: 'SMTP username wajib diisi.' });
-        if (!(0, emailPolicy_1.isAllowedCompanyEmail)(payload.fromEmail))
-            return res.status(400).json({ error: 'Email pengirim harus menggunakan domain @sdt.co.id.' });
+        if (!(0, emailPolicy_1.isAllowedSmtpFromEmail)(payload.fromEmail)) {
+            return res.status(400).json({ error: `Email pengirim harus menggunakan domain ${emailPolicy_1.ALLOWED_SMTP_FROM_DOMAINS.join(' atau ')}.` });
+        }
         const saved = await (0, smtpSettingsService_1.upsertSmtpConfig)(payload);
         await (0, auditTrail_1.writeAudit)(req, {
             action: 'settings.smtp_update',
