@@ -9,6 +9,16 @@ const smtpSettingsService_1 = require("../services/smtpSettingsService");
 const emailPolicy_1 = require("../utils/emailPolicy");
 const auditTrail_1 = require("../utils/auditTrail");
 const isAdminRole = (role) => String(role || '').toLowerCase() === 'admin';
+const getSmtpErrorDetail = (error) => {
+    const parts = [
+        error?.message,
+        error?.code ? `code=${error.code}` : null,
+        error?.command ? `command=${error.command}` : null,
+        error?.responseCode ? `responseCode=${error.responseCode}` : null,
+        error?.response ? `response=${String(error.response).slice(0, 240)}` : null,
+    ].filter(Boolean);
+    return parts.join(' | ') || 'Unknown SMTP error';
+};
 const getSmtpSettings = async (req, res) => {
     try {
         if (!isAdminRole(req.user?.role))
@@ -80,7 +90,11 @@ const testSmtpSettings = async (req, res) => {
             port: config.port,
             secure: config.secure,
             auth: { user: config.user, pass: config.pass },
+            connectionTimeout: 15000,
+            greetingTimeout: 10000,
+            socketTimeout: 20000,
         });
+        await transporter.verify();
         const info = await transporter.sendMail({
             from: `"${config.fromName}" <${config.fromEmail}>`,
             to,
@@ -90,8 +104,12 @@ const testSmtpSettings = async (req, res) => {
         res.json({ message: 'SMTP test sent', messageId: info.messageId });
     }
     catch (error) {
+        const detail = getSmtpErrorDetail(error);
         req.log?.error(error, 'Failed to test SMTP settings');
-        res.status(400).json({ error: 'Gagal mengirim test email SMTP.' });
+        res.status(400).json({
+            error: `Gagal mengirim test email SMTP: ${detail}`,
+            detail,
+        });
     }
 };
 exports.testSmtpSettings = testSmtpSettings;

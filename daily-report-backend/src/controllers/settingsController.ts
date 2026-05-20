@@ -7,6 +7,17 @@ import { writeAudit } from '../utils/auditTrail';
 
 const isAdminRole = (role?: string | null) => String(role || '').toLowerCase() === 'admin';
 
+const getSmtpErrorDetail = (error: any) => {
+  const parts = [
+    error?.message,
+    error?.code ? `code=${error.code}` : null,
+    error?.command ? `command=${error.command}` : null,
+    error?.responseCode ? `responseCode=${error.responseCode}` : null,
+    error?.response ? `response=${String(error.response).slice(0, 240)}` : null,
+  ].filter(Boolean);
+  return parts.join(' | ') || 'Unknown SMTP error';
+};
+
 export const getSmtpSettings = async (req: AuthRequest, res: Response) => {
   try {
     if (!isAdminRole(req.user?.role)) return res.status(403).json({ error: 'Insufficient permissions' });
@@ -73,7 +84,12 @@ export const testSmtpSettings = async (req: AuthRequest, res: Response) => {
       port: config.port,
       secure: config.secure,
       auth: { user: config.user, pass: config.pass },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
     });
+
+    await transporter.verify();
 
     const info = await transporter.sendMail({
       from: `"${config.fromName}" <${config.fromEmail}>`,
@@ -83,8 +99,12 @@ export const testSmtpSettings = async (req: AuthRequest, res: Response) => {
     });
 
     res.json({ message: 'SMTP test sent', messageId: info.messageId });
-  } catch (error) {
+  } catch (error: any) {
+    const detail = getSmtpErrorDetail(error);
     req.log?.error(error, 'Failed to test SMTP settings');
-    res.status(400).json({ error: 'Gagal mengirim test email SMTP.' });
+    res.status(400).json({
+      error: `Gagal mengirim test email SMTP: ${detail}`,
+      detail,
+    });
   }
 };
