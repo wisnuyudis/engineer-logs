@@ -590,7 +590,8 @@ const computeEnhancementDomain = (issues) => {
     };
 };
 const computeOperationalDomain = (subtasks, parentTasks, npsEntries, manualScore) => {
-    const relevantSubtasks = subtasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]') && issue.parentKey);
+    const relevantParentKeys = new Set(parentTasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]')).map((issue) => issue.key));
+    const relevantSubtasks = subtasks.filter((issue) => issue.parentKey && relevantParentKeys.has(issue.parentKey));
     const parentByKey = new Map(parentTasks.map((issue) => [issue.key, issue]));
     const grouped = new Map();
     for (const issue of relevantSubtasks) {
@@ -599,7 +600,10 @@ const computeOperationalDomain = (subtasks, parentTasks, npsEntries, manualScore
         current.push(issue);
         grouped.set(key, current);
     }
-    const items = Array.from(grouped.entries())
+    const items = parentTasks
+        .filter((issue) => relevantParentKeys.has(issue.key))
+        .sort((left, right) => left.key.localeCompare(right.key))
+        .map((parent) => [parent.key, grouped.get(parent.key) || []])
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([taskKey, children]) => {
         const parent = parentByKey.get(taskKey);
@@ -699,13 +703,23 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
         `"Actual Start" >= "${period.startDate}"`,
         `"Actual Start" <= "${period.endDate}"`,
     ].join(' AND ');
+    const opTaskJql = [
+        `assignee = "${user.jiraAccountId}"`,
+        'issuetype not in subTaskIssueTypes()',
+        'issuetype != Epic',
+        'project IS NOT EMPTY',
+        `resolved >= "${period.startDate}"`,
+        `resolved <= "${period.endDate}"`,
+        'statusCategory = Done',
+    ].join(' AND ');
     let subtasks;
     let supportIssues;
+    let opTaskCandidates;
     let pmParents;
     let implParents;
     let opParents;
     try {
-        [subtasks, supportIssues] = await Promise.all([
+        [subtasks, supportIssues, opTaskCandidates] = await Promise.all([
             (0, jiraService_1.searchJiraIssues)({
                 jql: `${subtaskJql} ORDER BY updated DESC`,
                 fields: ['summary', 'issuetype', 'project', 'assignee', 'parent', 'duedate', 'resolutiondate', 'created', 'updated', 'status'],
@@ -713,6 +727,10 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
             (0, jiraService_1.searchJiraIssues)({
                 jql: `${supportJql} ORDER BY updated DESC`,
                 fields: ['summary', 'issuetype', 'project', 'assignee', 'created', 'updated', 'resolutiondate', 'status', 'priority', 'comment', 'timespent'],
+            }),
+            (0, jiraService_1.searchJiraIssues)({
+                jql: `${opTaskJql} ORDER BY resolved DESC`,
+                fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'duedate', 'resolutiondate', 'assignee'],
             }),
         ]);
         const parentKeys = Array.from(new Set(subtasks
@@ -733,15 +751,8 @@ const computeEngineerDeliveryKpi = async (profile, user, period, storedScorecard
                 fields: ['summary', 'issuetype', 'project', 'status', 'parent'],
             })
             : [];
-        const opParentKeys = Array.from(new Set(subtasks
-            .filter((issue) => isProjectPrefix(issue.projectName, '[OP]') && issue.parentKey)
-            .map((issue) => issue.parentKey)));
-        opParents = opParentKeys.length
-            ? await (0, jiraService_1.searchJiraIssues)({
-                jql: `issuekey in (${opParentKeys.map((key) => `"${key}"`).join(',')})`,
-                fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'duedate', 'resolutiondate'],
-            })
-            : [];
+        opParents = (opTaskCandidates || []).filter((issue) => isProjectPrefix(issue.projectName, '[OP]')
+            && normalizeSummary(issue.issueTypeName) !== 'bug');
     }
     catch (error) {
         if (lastAutomationSnapshot) {

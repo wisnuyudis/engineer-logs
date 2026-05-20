@@ -665,7 +665,8 @@ const computeOperationalDomain = (
   npsEntries: KpiNpsScoreInput[],
   manualScore: number | null
 ) => {
-  const relevantSubtasks = subtasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]') && issue.parentKey);
+  const relevantParentKeys = new Set(parentTasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]')).map((issue) => issue.key));
+  const relevantSubtasks = subtasks.filter((issue) => issue.parentKey && relevantParentKeys.has(issue.parentKey));
   const parentByKey = new Map(parentTasks.map((issue) => [issue.key, issue]));
   const grouped = new Map<string, typeof relevantSubtasks>();
 
@@ -676,7 +677,10 @@ const computeOperationalDomain = (
     grouped.set(key, current);
   }
 
-  const items = Array.from(grouped.entries())
+  const items = parentTasks
+    .filter((issue) => relevantParentKeys.has(issue.key))
+    .sort((left, right) => left.key.localeCompare(right.key))
+    .map((parent) => [parent.key, grouped.get(parent.key) || []] as const)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([taskKey, children]) => {
       const parent = parentByKey.get(taskKey);
@@ -789,13 +793,24 @@ export const computeEngineerDeliveryKpi = async (
     `"Actual Start" <= "${period.endDate}"`,
   ].join(' AND ');
 
+  const opTaskJql = [
+    `assignee = "${user.jiraAccountId}"`,
+    'issuetype not in subTaskIssueTypes()',
+    'issuetype != Epic',
+    'project IS NOT EMPTY',
+    `resolved >= "${period.startDate}"`,
+    `resolved <= "${period.endDate}"`,
+    'statusCategory = Done',
+  ].join(' AND ');
+
   let subtasks;
   let supportIssues;
+  let opTaskCandidates;
   let pmParents;
   let implParents;
   let opParents;
   try {
-    [subtasks, supportIssues] = await Promise.all([
+    [subtasks, supportIssues, opTaskCandidates] = await Promise.all([
       searchJiraIssues({
         jql: `${subtaskJql} ORDER BY updated DESC`,
         fields: ['summary', 'issuetype', 'project', 'assignee', 'parent', 'duedate', 'resolutiondate', 'created', 'updated', 'status'],
@@ -803,6 +818,10 @@ export const computeEngineerDeliveryKpi = async (
       searchJiraIssues({
         jql: `${supportJql} ORDER BY updated DESC`,
         fields: ['summary', 'issuetype', 'project', 'assignee', 'created', 'updated', 'resolutiondate', 'status', 'priority', 'comment', 'timespent'],
+      }),
+      searchJiraIssues({
+        jql: `${opTaskJql} ORDER BY resolved DESC`,
+        fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'duedate', 'resolutiondate', 'assignee'],
       }),
     ]);
     const parentKeys = Array.from(
@@ -831,19 +850,10 @@ export const computeEngineerDeliveryKpi = async (
           fields: ['summary', 'issuetype', 'project', 'status', 'parent'],
         })
       : [];
-    const opParentKeys = Array.from(
-      new Set(
-        subtasks
-          .filter((issue) => isProjectPrefix(issue.projectName, '[OP]') && issue.parentKey)
-          .map((issue) => issue.parentKey as string)
-      )
+    opParents = (opTaskCandidates || []).filter((issue) =>
+      isProjectPrefix(issue.projectName, '[OP]')
+      && normalizeSummary(issue.issueTypeName) !== 'bug'
     );
-    opParents = opParentKeys.length
-      ? await searchJiraIssues({
-          jql: `issuekey in (${opParentKeys.map((key) => `"${key}"`).join(',')})`,
-          fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'duedate', 'resolutiondate'],
-        })
-      : [];
   } catch (error: any) {
     if (lastAutomationSnapshot) {
       warnings.push(`Jira automation fallback aktif. Snapshot terakhir dipakai karena kalkulasi terbaru gagal: ${error?.message || 'Unknown Jira error'}`);
