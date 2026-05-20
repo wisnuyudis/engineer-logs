@@ -111,6 +111,27 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
 
   const maxWeekly = Math.max(...weeklySeries.flatMap((d) => [d.delivery, d.presales]), 1);
 
+  const activityComposition = useMemo(() => {
+    return leaderboard.slice(0, 6).map((member) => {
+      const memberActs = activities.filter((activity) => activity.userId === member.id || activity.user === member.name);
+      const jiraMinutes = memberActs
+        .filter((activity) => ACTS[activity.actKey]?.source === 'jira')
+        .reduce((sum, activity) => sum + Number(activity.dur || 0), 0);
+      const nonJiraMinutes = memberActs
+        .filter((activity) => ACTS[activity.actKey]?.source !== 'jira')
+        .reduce((sum, activity) => sum + Number(activity.dur || 0), 0);
+      const totalMinutes = jiraMinutes + nonJiraMinutes;
+      const jiraPct = totalMinutes ? Math.round((jiraMinutes / totalMinutes) * 100) : 0;
+      return {
+        ...member,
+        jiraMinutes,
+        nonJiraMinutes,
+        totalMinutes,
+        jiraPct,
+      };
+    });
+  }, [ACTS, activities, leaderboard]);
+
   const tabs = canSeeTeam
     ? isAdminRole
       ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
@@ -221,8 +242,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
               <Card p={18}>
                 <div style={{ fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12 }}>Komposisi Aktivitas — Jira vs Non-Jira</div>
                 <div className="dashboard-composition-grid">
-                  {leaderboard.slice(0,6).map(m => {
-                    const jiraPct = m.totalHours ? Math.round((m.totalHours * 0.7) / m.totalHours * 100) : 0;
+                  {activityComposition.map(m => {
                     return (
                       <div key={m.id} style={{ minWidth:0 }}>
                         <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5 }}>
@@ -230,10 +250,11 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                           <span style={{ fontSize:11,color:T.textPri,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name.split(" ")[0]}</span>
                         </div>
                         <div style={{ height:64,background:T.surfaceHi,borderRadius:8,overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"flex-end" }}>
-                          <div style={{ height:`${jiraPct}%`,background:T.jira,opacity:.85 }} />
-                          <div style={{ height:`${100-jiraPct}%`,background:T.textMute,opacity:.3 }} />
+                          <div style={{ height:`${m.jiraPct}%`,background:T.jira,opacity:.85 }} title={`Jira ${fmtH(m.jiraMinutes)}`} />
+                          <div style={{ height:`${100-m.jiraPct}%`,background:T.textMute,opacity:.3 }} title={`Non-Jira ${fmtH(m.nonJiraMinutes)}`} />
                         </div>
-                        <div style={{ fontSize:9,color:T.jira,fontWeight:700,marginTop:3,textAlign:"center",fontFamily:MONO }}>~{jiraPct}% Jira</div>
+                        <div style={{ fontSize:9,color:T.jira,fontWeight:700,marginTop:3,textAlign:"center",fontFamily:MONO }}>{m.jiraPct}% Jira</div>
+                        <div style={{ fontSize:9,color:T.textMute,marginTop:2,textAlign:"center" }}>{fmtH(m.jiraMinutes)} / {fmtH(m.totalMinutes)}</div>
                       </div>
                     );
                   })}
