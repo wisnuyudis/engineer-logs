@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { T, FONT, DISPLAY, MONO } from '../theme/tokens';
 
 import { Card, Inp, PwInp, Btn, Divider, Avi, RoleBadge } from './ui/Primitives';
@@ -12,6 +13,19 @@ export function LoginPage({ onLogin }) {
   const [err,setErr]=useState("");
   const [loading,setL]=useState(false);
   const [mfa,setMfa]=useState(null);
+  const [qrDataUrl,setQrDataUrl]=useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!mfa?.mfaSetupRequired || !mfa?.otpauthUrl) {
+      setQrDataUrl("");
+      return;
+    }
+    QRCode.toDataURL(mfa.otpauthUrl, { width: 220, margin: 2, errorCorrectionLevel: 'M' })
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(""); });
+    return () => { cancelled = true; };
+  }, [mfa]);
 
   const completeLogin = (data) => {
     localStorage.setItem('token', data.accessToken || data.token);
@@ -99,13 +113,19 @@ export function LoginPage({ onLogin }) {
                 <div style={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:10,padding:12,marginBottom:12 }}>
                   <div style={{ display:"flex",justifyContent:"center",marginBottom:12 }}>
                     <div style={{ background:"#fff",padding:10,borderRadius:10,border:`1px solid ${T.border}` }}>
-                      <img
-                        src={`https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=${encodeURIComponent(mfa.otpauthUrl)}`}
-                        alt="QR Code MFA"
-                        width="220"
-                        height="220"
-                        style={{ display:"block" }}
-                      />
+                      {qrDataUrl ? (
+                        <img
+                          src={qrDataUrl}
+                          alt="QR Code MFA"
+                          width="220"
+                          height="220"
+                          style={{ display:"block" }}
+                        />
+                      ) : (
+                        <div style={{ width:220,height:220,display:"flex",alignItems:"center",justifyContent:"center",color:"#111",fontSize:12 }}>
+                          Membuat QR...
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{ fontSize:10,color:T.textMute,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:6 }}>Manual Secret</div>
