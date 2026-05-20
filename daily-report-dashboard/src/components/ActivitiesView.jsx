@@ -42,6 +42,17 @@ const formatBytes = (bytes = 0) => {
 
 const attachmentUrl = (attachment, mode) => `/activities/attachments/${attachment.id}/${mode}`;
 
+const normalizeSpreadsheetRows = (rows) => {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .slice(0, 80)
+    .map((row) => {
+      if (Array.isArray(row)) return row;
+      if (row && typeof row === 'object') return Object.values(row);
+      return [row];
+    });
+};
+
 export function ActivitiesView({ currentUser, members = [], onAdd }) {
   const ACTS = useTaxonomy();
   const [logOpen, setLog] = useState(false);
@@ -178,7 +189,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
       if (kind === 'xlsx') {
         const { default: readXlsxFile } = await import('read-excel-file/browser');
         const rows = await readXlsxFile(blob);
-        setPreview({ open:true, loading:false, error:"", attachment, kind, objectUrl:"", blob, rows: rows.slice(0, 80) });
+        setPreview({ open:true, loading:false, error:"", attachment, kind, objectUrl:"", blob, rows: normalizeSpreadsheetRows(rows) });
         return;
       }
 
@@ -492,7 +503,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
           <div style={{ maxHeight:"72vh",overflow:"auto",border:`1px solid ${T.border}`,borderRadius:12,background:"#fff" }}>
             <table className="attachment-xlsx-table">
               <tbody>
-                {preview.rows.map((row, rowIndex) => (
+                {normalizeSpreadsheetRows(preview.rows).map((row, rowIndex) => (
                   <tr key={rowIndex}>
                     {row.map((cell, cellIndex) => (
                       <td key={cellIndex}>{cell === null || cell === undefined ? "" : String(cell)}</td>
