@@ -34,6 +34,42 @@ const uniquePipelineValue = (activities) => {
   return Array.from(latestByLead.values()).reduce((sum, item) => sum + item.value, 0);
 };
 
+const buildPersonalStats = (periodActivities, ACTS) => {
+  const totalMinutes = periodActivities.reduce((sum, activity) => sum + Number(activity.dur || 0), 0);
+  const pipelineValue = uniquePipelineValue(periodActivities);
+  const byCategory = new Map();
+
+  for (const activity of periodActivities) {
+    const def = ACTS[activity.actKey] || {};
+    const key = activity.actKey || 'uncategorized';
+    const current = byCategory.get(key) || {
+      key,
+      label: def.label || key,
+      source: def.source || 'app',
+      color: def.color || (def.team === 'presales' ? T.violet : T.indigoHi),
+      minutes: 0,
+      count: 0,
+      pipelineActivities: [],
+    };
+    current.minutes += Number(activity.dur || 0);
+    current.count += 1;
+    current.pipelineActivities.push(activity);
+    byCategory.set(key, current);
+  }
+
+  return {
+    totalMinutes,
+    totalActivities: periodActivities.length,
+    pipelineValue,
+    categories: Array.from(byCategory.values())
+      .map((category) => ({
+        ...category,
+        pipelineValue: uniquePipelineValue(category.pipelineActivities),
+      }))
+      .sort((a, b) => b.minutes - a.minutes),
+  };
+};
+
 export function DashboardView({ currentUser, activities, members, onAdminEditNps }) {
   const ACTS = useTaxonomy();
   const canSeeTeam = isMgr(currentUser.role);
@@ -177,39 +213,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
     personalActs.filter((activity) => activity.date >= currentQuarterRange.start && activity.date <= currentQuarterRange.end)
   ), [currentQuarterRange.end, currentQuarterRange.start, personalActs]);
 
-  const personalStats = useMemo(() => {
-    const totalMinutes = personalPeriodActs.reduce((sum, activity) => sum + Number(activity.dur || 0), 0);
-    const pipelineValue = uniquePipelineValue(personalPeriodActs);
-    const byCategory = new Map();
-    for (const activity of personalPeriodActs) {
-      const def = ACTS[activity.actKey] || {};
-      const key = activity.actKey || 'uncategorized';
-      const current = byCategory.get(key) || {
-        key,
-        label: def.label || key,
-        source: def.source || 'app',
-        color: def.color || (def.team === 'presales' ? T.violet : T.indigoHi),
-        minutes: 0,
-        count: 0,
-        pipelineActivities: [],
-      };
-      current.minutes += Number(activity.dur || 0);
-      current.count += 1;
-      current.pipelineActivities.push(activity);
-      byCategory.set(key, current);
-    }
-    return {
-      totalMinutes,
-      totalActivities: personalPeriodActs.length,
-      pipelineValue,
-      categories: Array.from(byCategory.values())
-        .map((category) => ({
-          ...category,
-          pipelineValue: uniquePipelineValue(category.pipelineActivities),
-        }))
-        .sort((a, b) => b.minutes - a.minutes),
-    };
-  }, [ACTS, personalPeriodActs]);
+  const personalStats = useMemo(() => buildPersonalStats(personalPeriodActs, ACTS), [ACTS, personalPeriodActs]);
 
   const tabs = canSeeTeam
     ? isAdminRole
@@ -222,6 +226,18 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
       : [{id:"personal",label:"📊 Dashboard Saya"}];
 
   const memberDetailUser = visibleMembers.find(m=>m.id===memberDetailId) || visibleMembers[0] || null;
+  const memberDetailPeriodActs = useMemo(() => {
+    if (!memberDetailUser) return [];
+    return activities.filter((activity) => (
+      (activity.userId === memberDetailUser.id || activity.user === memberDetailUser.name)
+      && activity.date >= currentQuarterRange.start
+      && activity.date <= currentQuarterRange.end
+    ));
+  }, [activities, currentQuarterRange.end, currentQuarterRange.start, memberDetailUser?.id, memberDetailUser?.name]);
+  const memberDetailPersonalStats = useMemo(
+    () => buildPersonalStats(memberDetailPeriodActs, ACTS),
+    [ACTS, memberDetailPeriodActs]
+  );
 
   const overviewStats = [
     { l:"Total Aktivitas",  v:metrics?.totalActivities || 0, s:"seluruh tim", col:T.indigoHi },
@@ -572,6 +588,15 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
               </Card>
               <JiraScheduleCard user={memberDetailUser} />
               {hasKpiProfile(memberDetailUser.role) && <PersonalKPI user={memberDetailUser} activities={activities} />}
+              {!hasKpiProfile(memberDetailUser.role) && (
+                <PersonalDashboard
+                  user={memberDetailUser}
+                  isPresalesUser={teamOf(memberDetailUser.role) === 'presales'}
+                  period={currentQuarterRange}
+                  stats={memberDetailPersonalStats}
+                  title="Dashboard Member"
+                />
+              )}
             </div>
           ) : (
             <Card p={30}><div style={{ textAlign:"center",color:T.textMute }}>Tidak ada member yang bisa dilihat.</div></Card>
@@ -582,7 +607,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
   );
 }
 
-function PersonalDashboard({ user, isPresalesUser, period, stats }) {
+function PersonalDashboard({ user, isPresalesUser, period, stats, title = "Dashboard Saya" }) {
   const summary = [
     { label: "Total Jam Kerja", value: fmtH(stats.totalMinutes), sub: `${period.quarter} ${period.year}`, color: T.teal },
     { label: "Total Aktivitas", value: stats.totalActivities, sub: "activity log periode ini", color: T.indigoHi },
@@ -596,7 +621,7 @@ function PersonalDashboard({ user, isPresalesUser, period, stats }) {
         <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
           <div>
             <div style={{ fontSize:11, fontWeight:700, color:T.textSec, textTransform:"uppercase", letterSpacing:".07em", marginBottom:4 }}>
-              Dashboard Saya
+              {title}
             </div>
             <div style={{ fontSize:18, fontWeight:800, color:T.textPri, fontFamily:DISPLAY }}>{user.name}</div>
             <div style={{ fontSize:12, color:T.textMute, marginTop:3 }}>
