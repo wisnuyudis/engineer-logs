@@ -42,17 +42,6 @@ const formatBytes = (bytes = 0) => {
 
 const attachmentUrl = (attachment, mode) => `/activities/attachments/${attachment.id}/${mode}`;
 
-const normalizeSpreadsheetRows = (rows) => {
-  if (!Array.isArray(rows)) return [];
-  return rows
-    .slice(0, 80)
-    .map((row) => {
-      if (Array.isArray(row)) return row;
-      if (row && typeof row === 'object') return Object.values(row);
-      return [row];
-    });
-};
-
 export function ActivitiesView({ currentUser, members = [], onAdd }) {
   const ACTS = useTaxonomy();
   const [logOpen, setLog] = useState(false);
@@ -176,7 +165,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
 
   const openPreview = async (attachment) => {
     const kind = attachmentKind(attachment);
-    if (!['pdf', 'docx', 'xlsx'].includes(kind)) {
+    if (!['pdf', 'docx'].includes(kind)) {
       toast.error('Format file ini belum bisa dipreview.');
       return;
     }
@@ -186,13 +175,6 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
 
     try {
       const blob = await loadAttachmentBlob(attachment, 'preview');
-      if (kind === 'xlsx') {
-        const { default: readXlsxFile } = await import('read-excel-file/browser');
-        const rows = await readXlsxFile(blob);
-        setPreview({ open:true, loading:false, error:"", attachment, kind, objectUrl:"", blob, rows: normalizeSpreadsheetRows(rows) });
-        return;
-      }
-
       const objectUrl = URL.createObjectURL(blob);
       setPreview({ open:true, loading:false, error:"", attachment, kind, objectUrl, blob, rows:[] });
     } catch (error) {
@@ -234,26 +216,6 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
         .attachment-preview-docx .docx {
           margin:0 auto 16px;
           box-shadow:0 10px 30px rgba(15,23,42,.18);
-        }
-        .attachment-xlsx-table {
-          width:100%;
-          border-collapse:collapse;
-          background:#fff;
-          color:#0f172a;
-        }
-        .attachment-xlsx-table td {
-          border:1px solid #dbe3ef;
-          padding:7px 9px;
-          font-size:12px;
-          vertical-align:top;
-          max-width:260px;
-          overflow:hidden;
-          text-overflow:ellipsis;
-          white-space:nowrap;
-        }
-        .attachment-xlsx-table tr:first-child td {
-          background:#eef2ff;
-          font-weight:800;
         }
       `}</style>
       <div style={{ display:"flex",gap:12,marginBottom:14,flexWrap:"wrap",alignItems:"flex-end",justifyContent:"space-between" }}>
@@ -415,7 +377,9 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
                                 </div>
                               </div>
                               <div style={{ display:"flex",gap:6 }}>
-                                <Btn v="ghost" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={(e)=>{ e.stopPropagation(); openPreview(att); }}>Preview</Btn>
+                                {attachmentKind(att) !== 'xlsx' && (
+                                  <Btn v="ghost" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={(e)=>{ e.stopPropagation(); openPreview(att); }}>Preview</Btn>
+                                )}
                                 <Btn v="sec" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={(e)=>{ e.stopPropagation(); downloadAttachment(att); }}>Download</Btn>
                               </div>
                             </div>
@@ -498,21 +462,6 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
         )}
         {!preview.loading && !preview.error && preview.kind === 'docx' && (
           <div ref={docxPreviewRef} className="attachment-preview-docx" />
-        )}
-        {!preview.loading && !preview.error && preview.kind === 'xlsx' && (
-          <div style={{ maxHeight:"72vh",overflow:"auto",border:`1px solid ${T.border}`,borderRadius:12,background:"#fff" }}>
-            <table className="attachment-xlsx-table">
-              <tbody>
-                {normalizeSpreadsheetRows(preview.rows).map((row, rowIndex) => (
-                  <tr key={rowIndex}>
-                    {row.map((cell, cellIndex) => (
-                      <td key={cellIndex}>{cell === null || cell === undefined ? "" : String(cell)}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
       </Modal>
     </div>
