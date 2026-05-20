@@ -178,6 +178,9 @@ export const createActivity = async (req: AuthRequest, res: Response) => {
 
     const masterAct = await prisma.masterActivity.findUnique({ where: { actKey: data.actKey } });
     if (!masterAct) return res.status(400).json({ error: 'Kategori aktivitas tidak valid' });
+    if (data.actKey === 'pm_presentation') {
+      return res.status(400).json({ error: 'Kategori Q PM Presentation sudah tidak digunakan.' });
+    }
     if (masterAct.source === 'jira') {
       return res.status(400).json({ error: 'Kategori sinkron otomatis tidak bisa diinput manual. Tambahkan worklog langsung di Jira.' });
     }
@@ -247,6 +250,9 @@ export const updateActivity = async (req: AuthRequest, res: Response) => {
 
     const masterAct = await prisma.masterActivity.findUnique({ where: { actKey: data.actKey } });
     if (!masterAct) return res.status(400).json({ error: 'Kategori aktivitas tidak valid' });
+    if (data.actKey === 'pm_presentation') {
+      return res.status(400).json({ error: 'Kategori Q PM Presentation sudah tidak digunakan.' });
+    }
     if (masterAct.source === 'jira') {
       return res.status(400).json({ error: 'Kategori sinkron otomatis tidak bisa dipilih untuk input manual.' });
     }

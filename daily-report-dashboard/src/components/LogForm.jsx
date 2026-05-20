@@ -1,20 +1,20 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { T, FONT, MONO } from '../theme/tokens';
-import { teamOf, actsFor, PS_STAGES } from '../constants/taxonomy';
+import { teamOf, actsFor } from '../constants/taxonomy';
 import { Btn, Lbl, Inp } from './ui/Primitives';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
 export function LogForm({ user, onSave, onCancel, initialData = null, submitLabel }) {
   const ACTS = useTaxonomy();
-  const myTeam = teamOf(user.role);
   const availActs = useMemo(
-    () => Object.fromEntries(Object.entries(actsFor(user.role, ACTS)).filter(([, value]) => value.source !== "jira")),
+    () => Object.fromEntries(Object.entries(actsFor(user.role, ACTS)).filter(([key, value]) => value.source !== "jira" && key !== "pm_presentation")),
     [user.role, ACTS]
   );
   const firstActKey = Object.keys(availActs)[0] || "";
-  const [actKey, setActKey] = useState(initialData?.actKey || Object.keys(availActs)[0] || "");
+  const initialActKey = initialData?.actKey === "pm_presentation" ? firstActKey : initialData?.actKey;
+  const [actKey, setActKey] = useState(initialActKey || firstActKey || "");
   const [startTime, setStart] = useState(initialData?.startTime || "09:00");
   const [endTime,   setEnd]   = useState(initialData?.endTime || "10:00");
   const [date,      setDate]  = useState(() => initialData?.date || new Date().toISOString().split("T")[0]);
@@ -32,7 +32,7 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
   const [prName, setPrName] = useState(initialData?.prName || "");
   const [prId, setPrId]     = useState(initialData?.leadId || "");
   const [value, setValue]   = useState(initialData?.prospectValue != null ? String(initialData.prospectValue) : "");
-  const [stage, setStage]   = useState("Contacted");
+  const [showProspectInfo, setShowProspectInfo] = useState(Boolean(initialData?.prName || initialData?.leadId || initialData?.prospectValue));
   // Attachments
   const [files, setFiles]   = useState([]);
   const [dragOver, setDrag] = useState(false);
@@ -43,7 +43,7 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
   const needsCustomer   = ["pm_presentation"].includes(actKey);
   const needsPmNps      = actKey === "pm_presentation";
   const needsContact    = actKey === "koordinasi";
-  const needsTopic      = def.source === "app" && !isPS && !needsContact;
+  const needsTopic      = def.source === "app" && !needsContact;
 
   const todayStr = new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
@@ -53,7 +53,7 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
 
   useEffect(() => {
     if (!initialData) return;
-    setActKey(initialData.actKey || firstActKey || "");
+    setActKey(initialData.actKey === "pm_presentation" ? firstActKey : initialData.actKey || firstActKey || "");
     setStart(initialData.startTime || "09:00");
     setEnd(initialData.endTime || "10:00");
     setDate(initialData.date || new Date().toISOString().split("T")[0]);
@@ -66,6 +66,7 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
     setPrName(initialData.prName || "");
     setPrId(initialData.leadId || "");
     setValue(initialData.prospectValue != null ? String(initialData.prospectValue) : "");
+    setShowProspectInfo(Boolean(initialData.prName || initialData.leadId || initialData.prospectValue));
     setFiles([]);
     setErr({});
   }, [initialData, firstActKey]);
@@ -103,12 +104,13 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
     if(!selectedActKey) e.actKey="Jenis aktivitas wajib";
     if(needsCustomer && !customerName.trim()) e.customerName="Nama Customer wajib";
     if(needsPmNps && (pmNps<0||pmNps>4)) e.pmNps="NPS harus 0-4";
-    if(isPS && !prId.trim()) e.prId="Prospect ID wajib";
+    if(needsTopic && !topic.trim()) e.topic="Topik / Judul Aktivitas wajib";
     setErr(e);
     if(Object.keys(e).length) return;
 
     setBusy(true);
     try {
+      const shouldSendProspectInfo = isPS && (showProspectInfo || prName.trim() || prId.trim() || value);
       const payload = {
         actKey: selectedActKey,
         date: date || new Date().toISOString().slice(0, 10),
@@ -119,9 +121,9 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
         note: note || "",
         ...(needsCustomer ? { customerName: customerName.trim() } : {}),
         ...(needsPmNps ? { nps: pmNps } : {}),
-        ...(needsTopic ? { topic } : {}),
+        ...(needsTopic ? { topic: topic.trim() } : {}),
         ...(needsContact ? { topic: contact } : {}), // Map contact to topic for simplicity
-        ...(isPS ? { prName, leadId: prId, prospectValue: Number(value)||0 } : {}) // Note: backend schema mapped prId to leadId
+        ...(shouldSendProspectInfo ? { prName: prName.trim(), leadId: prId.trim(), prospectValue: value === "" ? null : Number(value) || 0 } : {})
       };
       
       const isEdit = Boolean(initialData?.id);
@@ -211,21 +213,27 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
 
       {/* Pre-sales fields */}
       {isPS && (
-        <div style={{ background:T.violetLo,border:`1.5px solid ${T.violet}30`,borderRadius:10,padding:"14px 16px" }}>
-          <div style={{ fontSize:11,fontWeight:700,color:T.violet,letterSpacing:".04em",marginBottom:12 }}>🎯 INFO PROSPECT / LEAD</div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 130px",gap:10,marginBottom:10 }}>
-            <Inp label="Nama Prospect" value={prName} placeholder="PT. Contoh Jaya" onChange={e=>setPrName(e.target.value)} />
-            <Inp label="Lead ID" required mono value={prId} error={err.prId} placeholder="LEAD-XXX" onChange={e=>{setPrId(e.target.value);setErr(p=>({...p,prId:""}));}} />
-          </div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
-            <Inp label="Estimasi Nilai (Rp)" type="number" value={value} placeholder="1000000000" onChange={e=>setValue(e.target.value)} />
+        <div style={{ background:T.violetLo,border:`1.5px solid ${T.violet}30`,borderRadius:10,padding:"12px 14px" }}>
+          <button
+            type="button"
+            onClick={() => setShowProspectInfo(v => !v)}
+            style={{ width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,background:"transparent",border:"none",padding:0,cursor:"pointer",fontFamily:FONT }}
+          >
             <div>
-              <Lbl>Stage</Lbl>
-              <select value={stage} onChange={e=>setStage(e.target.value)} style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${T.border}`,borderRadius:8,padding:"8px 12px",color:T.textPri,fontSize:13,outline:"none",fontFamily:FONT }}>
-                {PS_STAGES.map(s=><option key={s} value={s}>{s}</option>)}
-              </select>
+              <div style={{ fontSize:11,fontWeight:700,color:T.violet,letterSpacing:".04em",textAlign:"left" }}>🎯 INFO PROSPECT / LEAD</div>
+              <div style={{ fontSize:10,color:T.textMute,marginTop:3,textAlign:"left" }}>Opsional. Isi hanya jika aktivitas ini terkait lead atau pipeline.</div>
             </div>
-          </div>
+            <span style={{ fontSize:11,fontWeight:800,color:T.violet }}>{showProspectInfo ? "Sembunyikan" : "Tampilkan"}</span>
+          </button>
+          {showProspectInfo && (
+            <div style={{ marginTop:12 }}>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 130px",gap:10,marginBottom:10 }}>
+                <Inp label="Nama Prospect" value={prName} placeholder="PT. Contoh Jaya" onChange={e=>setPrName(e.target.value)} />
+                <Inp label="Lead ID" mono value={prId} error={err.prId} placeholder="LEAD-XXX" onChange={e=>{setPrId(e.target.value);setErr(p=>({...p,prId:""}));}} />
+              </div>
+              <Inp label="Estimasi Nilai (Rp)" type="number" value={value} placeholder="1000000000" onChange={e=>setValue(e.target.value)} />
+            </div>
+          )}
         </div>
       )}
 

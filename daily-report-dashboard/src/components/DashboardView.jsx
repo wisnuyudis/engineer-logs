@@ -10,6 +10,30 @@ import { Card, Avi, RoleBadge, TeamBadge, Tag } from './ui/Primitives';
 import { PersonalKPI } from './shared/PersonalKPI';
 import api from '../lib/api';
 
+const pipelineUpdatedAt = (activity) => {
+  const raw = activity.updatedAt || activity.createdAt || activity.date || '';
+  const timestamp = new Date(raw).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const uniquePipelineValue = (activities) => {
+  const latestByLead = new Map();
+  for (const activity of activities) {
+    if (activity.prospectValue === null || activity.prospectValue === undefined || activity.prospectValue === '') continue;
+    const value = Number(activity.prospectValue);
+    if (Number.isNaN(value)) continue;
+
+    const leadId = String(activity.leadId || activity.prId || '').trim().toLowerCase();
+    const key = leadId || activity.id || `${activity.date}-${activity.actKey}-${activity.topic || ''}`;
+    const current = latestByLead.get(key);
+    const updatedAt = pipelineUpdatedAt(activity);
+    if (!current || updatedAt >= current.updatedAt) {
+      latestByLead.set(key, { value, updatedAt });
+    }
+  }
+  return Array.from(latestByLead.values()).reduce((sum, item) => sum + item.value, 0);
+};
+
 export function DashboardView({ currentUser, activities, members, onAdminEditNps }) {
   const ACTS = useTaxonomy();
   const canSeeTeam = isMgr(currentUser.role);
@@ -155,7 +179,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
 
   const personalStats = useMemo(() => {
     const totalMinutes = personalPeriodActs.reduce((sum, activity) => sum + Number(activity.dur || 0), 0);
-    const pipelineValue = personalPeriodActs.reduce((sum, activity) => sum + Number(activity.prospectValue || 0), 0);
+    const pipelineValue = uniquePipelineValue(personalPeriodActs);
     const byCategory = new Map();
     for (const activity of personalPeriodActs) {
       const def = ACTS[activity.actKey] || {};
@@ -167,18 +191,23 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
         color: def.color || (def.team === 'presales' ? T.violet : T.indigoHi),
         minutes: 0,
         count: 0,
-        pipelineValue: 0,
+        pipelineActivities: [],
       };
       current.minutes += Number(activity.dur || 0);
       current.count += 1;
-      current.pipelineValue += Number(activity.prospectValue || 0);
+      current.pipelineActivities.push(activity);
       byCategory.set(key, current);
     }
     return {
       totalMinutes,
       totalActivities: personalPeriodActs.length,
       pipelineValue,
-      categories: Array.from(byCategory.values()).sort((a, b) => b.minutes - a.minutes),
+      categories: Array.from(byCategory.values())
+        .map((category) => ({
+          ...category,
+          pipelineValue: uniquePipelineValue(category.pipelineActivities),
+        }))
+        .sort((a, b) => b.minutes - a.minutes),
     };
   }, [ACTS, personalPeriodActs]);
 

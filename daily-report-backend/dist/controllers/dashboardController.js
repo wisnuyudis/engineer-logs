@@ -5,6 +5,29 @@ const client_1 = require("@prisma/client");
 const kpiManual_1 = require("../utils/kpiManual");
 const jiraService_1 = require("../services/jiraService");
 const prisma = new client_1.PrismaClient();
+const pipelineUpdatedAt = (activity) => {
+    const raw = activity.updatedAt || activity.createdAt || activity.date || '';
+    const timestamp = new Date(raw).getTime();
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const uniquePipelineValue = (activities) => {
+    const latestByLead = new Map();
+    for (const activity of activities) {
+        if (activity.prospectValue === null || activity.prospectValue === undefined)
+            continue;
+        const value = Number(activity.prospectValue);
+        if (Number.isNaN(value))
+            continue;
+        const leadId = String(activity.leadId || '').trim().toLowerCase();
+        const key = leadId || activity.id || `${activity.date}-${activity.actKey}-${activity.topic || ''}`;
+        const updatedAt = pipelineUpdatedAt(activity);
+        const current = latestByLead.get(key);
+        if (!current || updatedAt >= current.updatedAt) {
+            latestByLead.set(key, { value, updatedAt });
+        }
+    }
+    return Array.from(latestByLead.values()).reduce((sum, item) => sum + item.value, 0);
+};
 const getMetrics = async (req, res) => {
     try {
         const { team } = req.query; // optional filter
@@ -21,7 +44,7 @@ const getMetrics = async (req, res) => {
         const allActivities = await prisma.activity.findMany();
         const totalHours = allActivities.reduce((acc, curr) => acc + (curr.dur / 60), 0);
         const totalActivities = allActivities.length;
-        const pipelineValue = allActivities.reduce((acc, curr) => acc + (curr.prospectValue || 0), 0);
+        const pipelineValue = uniquePipelineValue(allActivities);
         const avgNpsCount = allActivities.filter(a => a.nps !== null && a.nps !== undefined);
         const avgNps = avgNpsCount.length
             ? avgNpsCount.reduce((acc, curr) => acc + (curr.nps || 0), 0) / avgNpsCount.length

@@ -8,6 +8,23 @@ const cancelKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback("Batalkan input log", "cancel_log")]
 ]);
 
+const prospectKeyboard = Markup.inlineKeyboard([
+  [Markup.button.callback("Lewati info prospect", "prospect_skip")],
+  [Markup.button.callback("Batalkan input log", "cancel_log")]
+]);
+
+const parseProspectInfo = (text: string) => {
+  const [name = '', leadId = '', rawValue = ''] = text.split('|').map((part) => part.trim());
+  const normalizedValue = rawValue.replace(/[^\d.-]/g, '');
+  const prospectValue = normalizedValue ? Number(normalizedValue) : null;
+
+  return {
+    prName: name || null,
+    leadId: leadId || null,
+    prospectValue: Number.isFinite(prospectValue) ? prospectValue : null,
+  };
+};
+
 const cancelIfRequested = async (ctx: any) => {
   const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
   const callbackData = ctx.callbackQuery && 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : '';
@@ -71,7 +88,7 @@ export const logWizard = new Scenes.WizardScene(
       // Ambil aktivitas manual dari DB
       const acts = await prisma.masterActivity.findMany({ where: { isActive: true }, orderBy: { actKey: 'asc' } });
       
-      let filteredActs = acts.filter((a: any) => a.source !== 'jira');
+      let filteredActs = acts.filter((a: any) => a.source !== 'jira' && a.actKey !== 'pm_presentation');
       if (!isAdmin) {
           filteredActs = filteredActs.filter((a: any) => a.team === 'all' || a.team === (user?.team || ''));
       }
@@ -115,22 +132,59 @@ export const logWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
-  // Langkah 4: Evaluasi Topik & Minta Catatan Tambahan (Note)
+  // Langkah 4: Evaluasi Topik & Minta Info Prospect Opsional atau Catatan Tambahan
   async (ctx) => {
     if (await cancelIfRequested(ctx)) return;
     if (!ctx.message || !('text' in ctx.message)) return;
     const text = (ctx.message as any).text;
     (ctx.wizard.state as any).report.topic = text;
 
+    const actList = (ctx.wizard.state as any).report.actList || [];
+    const actDef = actList.find((a: any) => a.actKey === (ctx.wizard.state as any).report.actKey);
+    const isPresalesAct = actDef?.team === 'presales';
+
+    if (isPresalesAct) {
+      (ctx.wizard.state as any).report.awaitingProspect = true;
+      await ctx.reply(
+        "🎯 Info Prospect / Lead bersifat opsional.\n\nKetik dengan format:\nNama Prospect | Lead ID | Estimasi Nilai\n\nContoh:\nPT Contoh Jaya | LEAD-123 | 100000000\n\nAtau tekan Lewati.",
+        prospectKeyboard
+      );
+      return ctx.wizard.next();
+    }
+
     await ctx.reply("📝 Tuliskan *Catatan Progress* / Hambatan Anda (Ketik sekilas saja, akan masuk ke Note log).\n\nKetik /cancel untuk batal.", { parse_mode: 'Markdown', ...cancelKeyboard });
     return ctx.wizard.next();
   },
 
-  // Langkah 5: Evaluasi Note & Minta Durasi
+  // Langkah 5: Evaluasi Info Prospect Opsional atau Note & Minta Durasi
   async (ctx) => {
     if (await cancelIfRequested(ctx)) return;
+    const report = (ctx.wizard.state as any).report;
+
+    if (report.awaitingProspect) {
+      if (ctx.callbackQuery) {
+        const payload = (ctx.callbackQuery as any).data;
+        if (payload === 'prospect_skip') {
+          await ctx.answerCbQuery();
+          report.awaitingProspect = false;
+          await ctx.reply("📝 Tuliskan *Catatan Progress* / Hambatan Anda (Ketik sekilas saja, akan masuk ke Note log).\n\nKetik /cancel untuk batal.", { parse_mode: 'Markdown', ...cancelKeyboard });
+          return;
+        }
+      }
+
+      if (!ctx.message || !('text' in ctx.message)) return;
+      const prospectInfo = parseProspectInfo((ctx.message as any).text);
+      report.prName = prospectInfo.prName;
+      report.leadId = prospectInfo.leadId;
+      report.prospectValue = prospectInfo.prospectValue;
+      report.awaitingProspect = false;
+
+      await ctx.reply("📝 Tuliskan *Catatan Progress* / Hambatan Anda (Ketik sekilas saja, akan masuk ke Note log).\n\nKetik /cancel untuk batal.", { parse_mode: 'Markdown', ...cancelKeyboard });
+      return;
+    }
+
     if (!ctx.message || !('text' in ctx.message)) return;
-    (ctx.wizard.state as any).report.note = (ctx.message as any).text;
+    report.note = (ctx.message as any).text;
 
     await ctx.reply("⏱ Berapa lama pengerjaannya? (Contoh ketik: 1j 20m, 90m, atau 2.5)\n\nKetik /cancel untuk batal.", cancelKeyboard);
     return ctx.wizard.next();
@@ -187,6 +241,9 @@ export const logWizard = new Scenes.WizardScene(
           date: r.date,
           status: r.status,
           source: 'telegram',
+          prName: r.prName || null,
+          leadId: r.leadId || null,
+          prospectValue: r.prospectValue ?? null,
         }
       });
 
