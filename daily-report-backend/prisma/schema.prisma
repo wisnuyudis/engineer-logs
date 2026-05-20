@@ -17,6 +17,9 @@ model User {
   jiraDisplayName String?
   jiraAvatarUrl String?
   jiraConnectedAt DateTime?
+  mfaEnabled   Boolean   @default(false)
+  mfaSecretEnc String?
+  mfaEnabledAt DateTime?
   passwordHash String
   name         String
   avatarUrl    String?

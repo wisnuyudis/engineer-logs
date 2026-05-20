@@ -5,6 +5,8 @@ const authController_1 = require("../controllers/authController");
 const authMiddleware_1 = require("../middlewares/authMiddleware");
 const router = (0, express_1.Router)();
 router.post('/login', authController_1.login);
+router.post('/mfa/login', authController_1.verifyMfaLogin);
+router.post('/mfa/setup/verify', authController_1.verifyMfaSetup);
 router.post('/refresh', authController_1.refreshToken);
 router.post('/logout', authController_1.logout);
 router.get('/profile', authMiddleware_1.authenticateToken, authController_1.getProfile);

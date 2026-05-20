@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import { login, refreshToken, logout, getProfile, updateProfile, changePassword } from '../controllers/authController';
+import { login, refreshToken, logout, getProfile, updateProfile, changePassword, verifyMfaLogin, verifyMfaSetup } from '../controllers/authController';
 import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = Router();
 
 router.post('/login', login);
+router.post('/mfa/login', verifyMfaLogin);
+router.post('/mfa/setup/verify', verifyMfaSetup);
 router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 router.get('/profile', authenticateToken, getProfile);

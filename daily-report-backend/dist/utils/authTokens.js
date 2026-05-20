@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.makeJti = exports.parseCookie = exports.createRefreshTokenCookie = exports.hashToken = exports.verifyRefreshToken = exports.verifyAccessToken = exports.signRefreshToken = exports.signAccessToken = void 0;
+exports.makeJti = exports.parseCookie = exports.createRefreshTokenCookie = exports.hashToken = exports.verifyMfaChallengeToken = exports.verifyRefreshToken = exports.verifyAccessToken = exports.signMfaChallengeToken = exports.signRefreshToken = exports.signAccessToken = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const requireSecret = (name, fallback) => {
@@ -18,14 +18,19 @@ const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
 const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
 const ACCESS_EXPIRES_IN = '15m';
 const REFRESH_EXPIRES_IN = '30d';
+const MFA_CHALLENGE_EXPIRES_IN = '10m';
 const signAccessToken = (payload) => jsonwebtoken_1.default.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });
 exports.signAccessToken = signAccessToken;
 const signRefreshToken = (payload) => jsonwebtoken_1.default.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });
 exports.signRefreshToken = signRefreshToken;
+const signMfaChallengeToken = (payload) => jsonwebtoken_1.default.sign(payload, ACCESS_SECRET, { expiresIn: MFA_CHALLENGE_EXPIRES_IN });
+exports.signMfaChallengeToken = signMfaChallengeToken;
 const verifyAccessToken = (token) => jsonwebtoken_1.default.verify(token, ACCESS_SECRET);
 exports.verifyAccessToken = verifyAccessToken;
 const verifyRefreshToken = (token) => jsonwebtoken_1.default.verify(token, REFRESH_SECRET);
 exports.verifyRefreshToken = verifyRefreshToken;
+const verifyMfaChallengeToken = (token) => jsonwebtoken_1.default.verify(token, ACCESS_SECRET);
+exports.verifyMfaChallengeToken = verifyMfaChallengeToken;
 const hashToken = (token) => crypto_1.default.createHash('sha256').update(token).digest('hex');
 exports.hashToken = hashToken;
 const createRefreshTokenCookie = (token) => ({

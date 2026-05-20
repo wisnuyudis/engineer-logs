@@ -12,6 +12,7 @@ const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
 const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
 const ACCESS_EXPIRES_IN = '15m';
 const REFRESH_EXPIRES_IN = '30d';
+const MFA_CHALLENGE_EXPIRES_IN = '10m';
 
 export type JwtUserPayload = {
   userId: string;
@@ -25,17 +26,29 @@ export type RefreshTokenPayload = {
   jti: string;
 };
 
+export type MfaChallengePayload = {
+  userId: string;
+  purpose: 'login' | 'setup';
+  setupSecret?: string;
+};
+
 export const signAccessToken = (payload: JwtUserPayload) =>
   jwt.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });
 
 export const signRefreshToken = (payload: RefreshTokenPayload) =>
   jwt.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });
 
+export const signMfaChallengeToken = (payload: MfaChallengePayload) =>
+  jwt.sign(payload, ACCESS_SECRET, { expiresIn: MFA_CHALLENGE_EXPIRES_IN });
+
 export const verifyAccessToken = (token: string) =>
   jwt.verify(token, ACCESS_SECRET) as JwtUserPayload;
 
 export const verifyRefreshToken = (token: string) =>
   jwt.verify(token, REFRESH_SECRET) as RefreshTokenPayload;
+
+export const verifyMfaChallengeToken = (token: string) =>
+  jwt.verify(token, ACCESS_SECRET) as MfaChallengePayload;
 
 export const hashToken = (token: string) =>
   crypto.createHash('sha256').update(token).digest('hex');
