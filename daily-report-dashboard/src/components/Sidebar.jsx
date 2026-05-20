@@ -14,16 +14,28 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
     { id: "/members", icon: "◉", label: "Team Members" },
     { id: "/reports", icon: "⊞", label: "Reports" },
   ];
-  const adminItems = [];
+  const adminGroups = [];
+  const kpiChildren = [];
   if (canManageKpi(user.role)) {
-    adminItems.push({ id: "/kpi-admin", icon: "◌", label: "KPI" });
+    kpiChildren.push({ id: "/kpi-admin", icon: "◌", label: "Scorecard" });
   }
   if (canManageKpiNps(user.role)) {
-    adminItems.push({ id: "/kpi-nps", icon: "◎", label: "KPI NPS" });
+    kpiChildren.push({ id: "/kpi-nps", icon: "◎", label: "NPS" });
+  }
+  if (kpiChildren.length) {
+    adminGroups.push({ id: 'kpi', icon: '◆', label: 'KPI', children: kpiChildren });
   }
   if (user.role === 'admin') {
-    adminItems.push({ id: "/audit", icon: "⌘", label: "Audit Trail" });
-    adminItems.push({ id: "/taxonomy", icon: "🗂", label: "Master Kategori" });
+    adminGroups.push({
+      id: 'settings',
+      icon: '⚙',
+      label: 'Setting',
+      children: [
+        { id: "/taxonomy", icon: "🗂", label: "Master Activity" },
+        { id: "/settings/smtp", icon: "✉", label: "SMTP" },
+      ],
+    });
+    adminGroups.push({ id: 'audit', children: [{ id: "/audit", icon: "⌘", label: "Audit Trail" }] });
   }
   
   const team = teamOf(user.role);
@@ -91,16 +103,16 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
             <span style={{ fontSize:13,opacity:active?1:.8 }}>{n.icon}</span>
             <span style={{ letterSpacing:".01em" }}>{n.label}</span>
           </button>;})}
-        {adminItems.length > 0 && (
+        {adminGroups.length > 0 && (
           <>
             <Divider my={12} />
             <Section title="Admin" />
-            {adminItems.map(n=>{
-              const active = activePath === n.id;
-              return <button key={n.id} onClick={()=>{navigate(n.id); onClose?.();}} style={{ width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"none",cursor:"pointer",marginBottom:4,textAlign:"left",fontFamily:FONT,fontSize:12,fontWeight:active?700:500,transition:"all .15s",background:active?`linear-gradient(135deg,${T.violetLo},${T.surfaceHi})`:"transparent",color:active?T.textPri:T.textSec,borderLeft:active?`3px solid ${T.violet}`:"3px solid transparent",boxShadow:active?`0 8px 20px ${T.violet}12`:"none" }}>
-                <span style={{ fontSize:13,opacity:active?1:.8 }}>{n.icon}</span>
-                <span style={{ letterSpacing:".01em" }}>{n.label}</span>
-              </button>;})}
+            {adminGroups.map((group) => {
+              if (group.children.length === 1 && !group.label) {
+                return <NavItem key={group.children[0].id} item={group.children[0]} activePath={activePath} onClick={(id)=>{navigate(id); onClose?.();}} accent={T.violet} accentLo={T.violetLo} />;
+              }
+              return <NavGroup key={group.id} group={group} activePath={activePath} onClick={(id)=>{navigate(id); onClose?.();}} />;
+            })}
           </>
         )}
       </nav>
@@ -127,6 +139,55 @@ function Section({ title }) {
   return (
     <div style={{ fontSize:9,fontWeight:800,color:T.textMute,letterSpacing:".12em",textTransform:"uppercase",padding:"0 4px 8px" }}>
       {title}
+    </div>
+  );
+}
+
+function NavItem({ item, activePath, onClick, accent = T.indigo, accentLo = T.indigoLo, child = false }) {
+  const active = activePath === item.id;
+  return (
+    <button
+      onClick={() => onClick(item.id)}
+      style={{
+        width:"100%",
+        display:"flex",
+        alignItems:"center",
+        gap:10,
+        padding: child ? "8px 12px 8px 24px" : "10px 12px",
+        borderRadius:10,
+        border:"none",
+        cursor:"pointer",
+        marginBottom:4,
+        textAlign:"left",
+        fontFamily:FONT,
+        fontSize: child ? 11 : 12,
+        fontWeight:active?700:500,
+        transition:"all .15s",
+        background:active?`linear-gradient(135deg,${accentLo},${T.surfaceHi})`:"transparent",
+        color:active?T.textPri:T.textSec,
+        borderLeft:active?`3px solid ${accent}`:"3px solid transparent",
+        boxShadow:active?`0 8px 20px ${accent}12`:"none"
+      }}
+    >
+      <span style={{ fontSize:12,opacity:active?1:.75 }}>{item.icon}</span>
+      <span style={{ letterSpacing:".01em" }}>{item.label}</span>
+    </button>
+  );
+}
+
+function NavGroup({ group, activePath, onClick }) {
+  const active = group.children.some((child) => activePath === child.id);
+  return (
+    <div style={{ marginBottom:6 }}>
+      <div style={{ display:"flex",alignItems:"center",gap:10,padding:"9px 12px 7px",fontFamily:FONT,fontSize:11,fontWeight:800,color:active?T.textPri:T.textMute,letterSpacing:".04em",textTransform:"uppercase" }}>
+        <span style={{ fontSize:12,color:active?T.violet:T.textMute }}>{group.icon}</span>
+        <span>{group.label}</span>
+      </div>
+      <div style={{ borderLeft:`1px solid ${active?T.violet+"55":T.border}`,marginLeft:16,paddingLeft:4 }}>
+        {group.children.map((item) => (
+          <NavItem key={item.id} item={item} activePath={activePath} onClick={onClick} accent={T.violet} accentLo={T.violetLo} child />
+        ))}
+      </div>
     </div>
   );
 }

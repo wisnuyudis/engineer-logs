@@ -5,48 +5,42 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { writeAudit } from '../utils/auditTrail';
+import { resolveSmtpConfig } from '../services/smtpSettingsService';
+import { ALLOWED_EMAIL_DOMAIN, isAllowedCompanyEmail, normalizeEmail } from '../utils/emailPolicy';
 
 const prisma = new PrismaClient();
 
-// Setup Nodemailer Transporter lazily so backend startup does not depend on SMTP/DNS.
 let transporter: nodemailer.Transporter | null = null;
+let transporterKey: string | null = null;
 
 async function setupTransporter() {
-  if (transporter) return transporter;
-
-  const host = process.env.SMTP_HOST || 'smtp.ethereal.email';
-  const port = parseInt(process.env.SMTP_PORT || '587');
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (user && pass) {
-    transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass }
-    });
-  } else {
-    // Generate test account
-    const testAccount = await nodemailer.createTestAccount();
-    transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email',
-      port: 587,
-      secure: false, // true for 465, false for other ports
-      auth: {
-        user: testAccount.user, // generated ethereal user
-        pass: testAccount.pass, // generated ethereal password
-      },
-    });
-    console.log(`Ethereal Test Account generated: ${testAccount.user}`);
+  const config = await resolveSmtpConfig();
+  if (!config) {
+    throw new Error('SMTP belum dikonfigurasi. Atur SMTP Settings terlebih dahulu.');
   }
 
-  return transporter;
+  const nextKey = `${config.host}:${config.port}:${config.user}:${config.fromEmail}`;
+  if (transporter && transporterKey === nextKey) return { transporter, config };
+
+  transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass }
+  });
+  transporterKey = nextKey;
+
+  return { transporter, config };
 }
 
 export const inviteUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { name, email, role, team, supervisorId, bypassSmtp, manualPassword } = req.body;
+    const { name, role, team, supervisorId, bypassSmtp, manualPassword } = req.body;
+    const email = normalizeEmail(req.body?.email);
+
+    if (!isAllowedCompanyEmail(email)) {
+      return res.status(400).json({ error: `Email member harus menggunakan domain ${ALLOWED_EMAIL_DOMAIN}.` });
+    }
     
     // Check if email exist
     const exist = await prisma.user.findUnique({ where: { email } });
@@ -77,7 +71,7 @@ export const inviteUser = async (req: AuthRequest, res: Response) => {
       return res.status(200).json({ message: 'Aktivasi langsung berhasil. Member aktif.' });
     } else {
       // NORMAL SMTP FLOW
-      const mailTransporter = await setupTransporter();
+      const { transporter: mailTransporter, config } = await setupTransporter();
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenKey = `invite_${rawToken}`;
       
@@ -112,7 +106,7 @@ export const inviteUser = async (req: AuthRequest, res: Response) => {
 
       // Send Email
       const info = await mailTransporter.sendMail({
-        from: '"EngineerLog Admin" <admin@seraphim.id>',
+        from: `"${config.fromName}" <${config.fromEmail}>`,
         to: email,
         subject: "Invitation to EngineerLog Dashboard",
         html: `
@@ -129,13 +123,12 @@ export const inviteUser = async (req: AuthRequest, res: Response) => {
       });
 
       console.log("Message sent: %s", info.messageId);
-      console.log("Preview URL: %s", nodemailer.getTestMessageUrl(info));
 
-      return res.status(200).json({ message: 'Invitation sent', previewUrl: nodemailer.getTestMessageUrl(info) });
+      return res.status(200).json({ message: 'Invitation sent' });
     }
 
-  } catch (error) {
+  } catch (error: any) {
     if(req.log) req.log.error(error, 'Invite user fail');
-    res.status(500).json({ error: 'Terjadi kesalahan server saat mengundang' });
+    res.status(500).json({ error: error?.message || 'Terjadi kesalahan server saat mengundang' });
   }
 };

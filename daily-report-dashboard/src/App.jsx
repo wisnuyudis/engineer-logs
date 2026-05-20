@@ -12,6 +12,7 @@ import { TaxonomyView } from './components/TaxonomyView';
 import { KpiManagementView } from './components/KpiManagementView';
 import { KpiNpsView } from './components/KpiNpsView';
 import { AuditTrailView } from './components/AuditTrailView';
+import { SmtpSettingsView } from './components/SmtpSettingsView';
 import { TaxonomyContext } from './contexts/TaxonomyContext';
 import { T, FONT, DISPLAY, applyThemeTokens } from './theme/tokens';
 import { RoleBadge, Avi, Btn } from './components/ui/Primitives';
@@ -148,6 +149,7 @@ export default function App() {
     "/kpi-admin": "KPI",
     "/kpi-nps": "KPI NPS",
     "/audit": "Audit Trail",
+    "/settings/smtp": "SMTP Settings",
   };
 
   const view = location.pathname;
@@ -217,6 +219,7 @@ export default function App() {
                   <Route path="/kpi-nps" element={<KpiNpsView currentUser={user} />} />
                   <Route path="/audit" element={<AuditTrailView currentUser={user} />} />
                   <Route path="/taxonomy" element={<TaxonomyView currentUser={user} />} />
+                  <Route path="/settings/smtp" element={<SmtpSettingsView currentUser={user} />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </TaxonomyContext.Provider>

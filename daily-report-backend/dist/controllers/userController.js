@@ -7,6 +7,7 @@ exports.resetUserPassword = exports.deleteUser = exports.updateUser = exports.cr
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const auditTrail_1 = require("../utils/auditTrail");
+const emailPolicy_1 = require("../utils/emailPolicy");
 const prisma = new client_1.PrismaClient();
 const getUsers = async (req, res) => {
     try {
@@ -35,7 +36,11 @@ const getUsers = async (req, res) => {
 exports.getUsers = getUsers;
 const createUser = async (req, res) => {
     try {
-        const { email, password, name, role, team } = req.body;
+        const { password, name, role, team } = req.body;
+        const email = (0, emailPolicy_1.normalizeEmail)(req.body?.email);
+        if (!(0, emailPolicy_1.isAllowedCompanyEmail)(email)) {
+            return res.status(400).json({ error: `Email user harus menggunakan domain ${emailPolicy_1.ALLOWED_EMAIL_DOMAIN}.` });
+        }
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
             return res.status(400).json({ error: 'Email already exists' });

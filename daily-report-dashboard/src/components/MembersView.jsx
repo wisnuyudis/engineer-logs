@@ -2,22 +2,14 @@ import { useState, useMemo } from 'react';
 import { T, FONT, DISPLAY, MONO } from '../theme/tokens';
 import { ROLES, ROLE_OPTIONS, isAdmin, isMgr, hasKpiProfile } from '../constants/taxonomy';
 import { calcKPI } from '../utils/kpi';
-import { Pill, Card, Avi, RoleBadge, Btn, Modal, MHead, Inp, Lbl, PwInp, Tag } from './ui/Primitives';
+import { Pill, Card, Avi, RoleBadge, Btn, Modal, MHead, Inp, Lbl, Tag } from './ui/Primitives';
 import { ScoreRing } from './ui/Score';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
-const SMTP_PROVS=[
-  {id:"gmail",    label:"Gmail",       host:"smtp.gmail.com",                         port:"587"},
-  {id:"sendgrid", label:"SendGrid",    host:"smtp.sendgrid.net",                      port:"587"},
-  {id:"ses",      label:"Amazon SES",  host:"email-smtp.us-east-1.amazonaws.com",     port:"587"},
-  {id:"custom",   label:"Custom SMTP", host:"",                                        port:"587"},
-];
-
 function InviteModal({ open, onClose, members, onAdd }) {
   const [step,setStep]=useState(1);
   const [form,setF]=useState({name:"",email:"",role:"delivery"});
-  const [smtp,setS]=useState({provider:"gmail",host:"smtp.gmail.com",port:"587",user:"",pass:""});
   const [bypassSmtp, setBypass] = useState(false);
   const [manualPassword, setManualPassword] = useState("password123");
   const [errs,setE]=useState({});
@@ -31,19 +23,12 @@ function InviteModal({ open, onClose, members, onAdd }) {
     const e={};
     if(!form.name.trim()) e.name="Nama wajib";
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email="Format email tidak valid";
+    if(form.email.trim() && !form.email.trim().toLowerCase().endsWith('@sdt.co.id')) e.email="Email wajib menggunakan domain @sdt.co.id";
     if(members.find(m=>m.email.toLowerCase()===form.email.toLowerCase())) e.email="Email sudah terdaftar";
     if(needsSupervisor && !form.supervisorId) e.supervisorId="Atasan langsung wajib dipilih";
     if(bypassSmtp && !manualPassword.trim()) e.manualPassword="Password manual wajib diisi";
     setE(e); return !Object.keys(e).length;
   };
-  const validateStep2=()=>{
-    const e={};
-    if(smtp.provider==="custom"&&!smtp.host.trim()) e.host="Host wajib";
-    if(!smtp.user.trim()) e.user="Username / API key wajib";
-    if(!smtp.pass.trim()) e.pass="Password wajib";
-    setE(e); return !Object.keys(e).length;
-  };
-
   const send = async () => {
     setBusy(true);
     try {
@@ -74,7 +59,7 @@ function InviteModal({ open, onClose, members, onAdd }) {
       toast.success('Undangan berhasil dikirim via Email!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Gagal mengirim undangan');
-      setStep(3); // stay on preview
+      setStep(2);
     } finally {
       setBusy(false);
     }
@@ -118,7 +103,6 @@ function InviteModal({ open, onClose, members, onAdd }) {
   const reset=()=>{
     setStep(1);
     setF({name:"",email:"",role:"delivery"});
-    setS({provider:"gmail",host:"smtp.gmail.com",port:"587",user:"",pass:""});
     setBypass(false);
     setManualPassword("password123");
     setE({});
@@ -148,18 +132,18 @@ function InviteModal({ open, onClose, members, onAdd }) {
         )
       ) : (
         <>
-          <MHead title={["","Undang Member Baru","Konfigurasi SMTP","Preview Email"][step]} sub={["","Isi data member yang akan diundang","Setup email server untuk kirim undangan","Cek email sebelum dikirim"][step]} onClose={close} />
+          <MHead title={["","Undang Member Baru","Preview Email"][step]} sub={["","Isi data member yang akan diundang","Cek email sebelum dikirim"][step]} onClose={close} />
 
           {/* Step indicator */}
           {!bypassSmtp && (
             <div style={{ display:"flex",alignItems:"center",gap:4,marginBottom:20 }}>
-              {["Data","SMTP","Preview"].map((s,i)=>{
+              {["Data","Preview"].map((s,i)=>{
                 const done=step>i+1, active=step===i+1;
                 return <div key={i} style={{ display:"flex",alignItems:"center",gap:4 }}>
                   <div style={{ width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",flexShrink:0,
                     background:done?T.green:active?T.indigo:T.border }}>{done?"✓":i+1}</div>
                   <span style={{ fontSize:11,fontWeight:active?700:400,color:done?T.green:active?T.textPri:T.textMute,whiteSpace:"nowrap" }}>{s}</span>
-                  {i<2&&<div style={{ width:16,height:1,background:T.border,margin:"0 2px" }} />}
+                  {i<1&&<div style={{ width:16,height:1,background:T.border,margin:"0 2px" }} />}
                 </div>;
               })}
             </div>
@@ -169,7 +153,7 @@ function InviteModal({ open, onClose, members, onAdd }) {
           {step===1 && (
             <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
               <Inp label="Nama Lengkap" required value={form.name} error={errs.name} onChange={e=>sf("name",e.target.value)} placeholder="Budi Santoso" />
-              <Inp label="Email" required type="email" value={form.email} error={errs.email} onChange={e=>sf("email",e.target.value)} placeholder="budi@seraphim.id" />
+              <Inp label="Email" required type="email" value={form.email} error={errs.email} onChange={e=>sf("email",e.target.value)} placeholder="nama@sdt.co.id" />
               <div>
                 <Lbl>Role</Lbl>
                 <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
@@ -217,12 +201,10 @@ function InviteModal({ open, onClose, members, onAdd }) {
                   if (validateStep1()) {
                     if (bypassSmtp) {
                       sendBypass();
-                    } else {
-                      setStep(2);
-                    }
+                    } else setStep(2);
                   }
                 }}>
-                  {busy ? "Memproses..." : bypassSmtp ? "✓ Buat Akun Langsung" : "Lanjut → SMTP"}
+                  {busy ? "Memproses..." : bypassSmtp ? "✓ Buat Akun Langsung" : "Preview →"}
                 </Btn>
               </div>
             </div>
@@ -231,34 +213,8 @@ function InviteModal({ open, onClose, members, onAdd }) {
           {/* Step 2 */}
           {step===2 && !bypassSmtp && (
             <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
-              <div>
-                <Lbl>Email Provider</Lbl>
-                <div style={{ display:"flex",gap:5,flexWrap:"wrap" }}>
-                  {SMTP_PROVS.map(p=>{
-                    const active=smtp.provider===p.id;
-                    return <button key={p.id} onClick={()=>setS(s=>({...s,provider:p.id,host:p.host,port:p.port}))} style={{ padding:"4px 12px",borderRadius:20,cursor:"pointer",fontFamily:FONT,fontSize:12,border:`1.5px solid ${active?T.indigo:T.border}`,background:active?T.indigoLo:T.surfaceHi,color:active?T.indigoHi:T.textSec,fontWeight:active?700:400 }}>{p.label}</button>;
-                  })}
-                </div>
-              </div>
-              <div style={{ display:"grid",gridTemplateColumns:"1fr 80px",gap:8 }}>
-                <Inp label="SMTP Host" value={smtp.host} error={errs.host} readOnly={smtp.provider!=="custom"} onChange={e=>setS(s=>({...s,host:e.target.value}))} />
-                <Inp label="Port" value={smtp.port} onChange={e=>setS(s=>({...s,port:e.target.value}))} />
-              </div>
-              <Inp label="Username / Email Pengirim" required value={smtp.user} error={errs.user} onChange={e=>{setS(s=>({...s,user:e.target.value}));setE(p=>({...p,user:""}));}} />
-              <PwInp label="Password / API Key" value={smtp.pass} error={errs.pass} onChange={e=>{setS(s=>({...s,pass:e.target.value}));setE(p=>({...p,pass:""}));}} />
-              <div style={{ background:T.amberLo,border:`1px solid ${T.amber}30`,borderRadius:7,padding:"7px 11px",fontSize:11,color:T.amber }}>⚠ Kredensial hanya disimpan di .env server, tidak dikirim ke frontend.</div>
-              <div style={{ display:"flex",gap:8,paddingTop:8,borderTop:`1px solid ${T.border}` }}>
-                <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={()=>setStep(1)}>← Kembali</Btn>
-                <Btn v="primary" style={{ flex:2,justifyContent:"center" }} onClick={()=>validateStep2()&&setStep(3)}>Preview →</Btn>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3 */}
-          {step===3 && !bypassSmtp && (
-            <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
               <div style={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,padding:14 }}>
-                {[["FROM",smtp.user],["TO",`${form.name} <${form.email}>`],["SUBJECT","Undangan bergabung ke EngineerLog"]].map(([k,v])=>(
+                {[["FROM","SMTP Settings"],["TO",`${form.name} <${form.email}>`],["SUBJECT","Undangan bergabung ke EngineerLog"]].map(([k,v])=>(
                   <div key={k} style={{ fontSize:11,color:T.textMute,fontFamily:FONT,marginBottom:2 }}>{k}: <span style={{ color:T.textPri }}>{v}</span></div>
                 ))}
                 <div style={{ borderTop:`1px solid ${T.border}`,marginTop:10,paddingTop:10,fontSize:13,color:T.textSec,lineHeight:1.7 }}>
@@ -270,8 +226,11 @@ function InviteModal({ open, onClose, members, onAdd }) {
                   <div style={{ fontSize:11,color:T.textMute }}>Link berlaku 24 jam.</div>
                 </div>
               </div>
+              <div style={{ background:T.indigoLo,border:`1px solid ${T.indigo}30`,borderRadius:7,padding:"8px 11px",fontSize:11,color:T.indigoHi }}>
+                Pengirim email menggunakan konfigurasi terpusat di menu SMTP Settings.
+              </div>
               <div style={{ display:"flex",gap:8,paddingTop:8,borderTop:`1px solid ${T.border}` }}>
-                <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={()=>setStep(2)}>← Kembali</Btn>
+                <Btn v="ghost" style={{ flex:1,justifyContent:"center" }} onClick={()=>setStep(1)}>← Kembali</Btn>
                 <Btn v="teal" style={{ flex:2,justifyContent:"center",opacity:busy?.65:1 }} onClick={send} disabled={busy}>{busy?"Mengirim...":"✉ Kirim Undangan"}</Btn>
               </div>
             </div>

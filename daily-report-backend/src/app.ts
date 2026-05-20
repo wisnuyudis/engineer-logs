@@ -11,6 +11,7 @@ import taxonomyRoutes from './routes/taxonomyRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import kpiRoutes from './routes/kpiRoutes';
 import auditRoutes from './routes/auditRoutes';
+import settingsRoutes from './routes/settingsRoutes';
 import path from 'path';
 
 const app = express();
@@ -80,5 +81,6 @@ app.use('/api/taxonomy', taxonomyRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/kpi', kpiRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/settings', settingsRoutes);
 
 export default app;

@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const settingsController_1 = require("../controllers/settingsController");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.authenticateToken);
+router.get('/smtp', settingsController_1.getSmtpSettings);
+router.put('/smtp', settingsController_1.updateSmtpSettings);
+router.post('/smtp/test', settingsController_1.testSmtpSettings);
+exports.default = router;

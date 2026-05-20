@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { writeAudit } from '../utils/auditTrail';
+import { ALLOWED_EMAIL_DOMAIN, isAllowedCompanyEmail, normalizeEmail } from '../utils/emailPolicy';
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,12 @@ export const getUsers = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    const { email, password, name, role, team } = req.body;
+    const { password, name, role, team } = req.body;
+    const email = normalizeEmail(req.body?.email);
+
+    if (!isAllowedCompanyEmail(email)) {
+      return res.status(400).json({ error: `Email user harus menggunakan domain ${ALLOWED_EMAIL_DOMAIN}.` });
+    }
     
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
