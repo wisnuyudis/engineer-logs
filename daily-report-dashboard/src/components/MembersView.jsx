@@ -16,7 +16,7 @@ function InviteModal({ open, onClose, members, onAdd }) {
   const [busy,setBusy]=useState(false);
 
   const sf=(k,v)=>{setF(p=>({...p,[k]:v}));setE(p=>({...p,[k]:""}));};
-  const needsSupervisor = ["delivery", "PM", "presales"].includes(form.role);
+  const showSupervisor = ["delivery", "PM", "presales"].includes(form.role);
   const supervisorRoleOptions = form.role === "presales" ? ["mgr_ps"] : ["mgr_dl"];
 
   const validateStep1=()=>{
@@ -25,7 +25,6 @@ function InviteModal({ open, onClose, members, onAdd }) {
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email="Format email tidak valid";
     if(form.email.trim() && !form.email.trim().toLowerCase().endsWith('@sdt.co.id')) e.email="Email wajib menggunakan domain @sdt.co.id";
     if(members.find(m=>m.email.toLowerCase()===form.email.toLowerCase())) e.email="Email sudah terdaftar";
-    if(needsSupervisor && !form.supervisorId) e.supervisorId="Atasan langsung wajib dipilih";
     if(bypassSmtp && !manualPassword.trim()) e.manualPassword="Password manual wajib diisi";
     setE(e); return !Object.keys(e).length;
   };
@@ -167,17 +166,17 @@ function InviteModal({ open, onClose, members, onAdd }) {
                   })}
                 </div>
               </div>
-              {needsSupervisor && (
+              {showSupervisor && (
                 <div>
-                  <Lbl>Atasan Langsung <span style={{ color:T.red }}>*</span></Lbl>
+                  <Lbl>Atasan Langsung</Lbl>
                   <select value={form.supervisorId||""} onChange={e=>sf("supervisorId",e.target.value?String(e.target.value):null)}
                     style={{ width:"100%",background:T.surfaceHi,border:`1.5px solid ${errs.supervisorId?T.red:T.border}`,borderRadius:8,padding:"8px 12px",color:form.supervisorId?T.textPri:T.textMute,fontSize:12,outline:"none",fontFamily:FONT }}>
-                    <option value="">-- Pilih atasan langsung --</option>
+                    <option value="">-- Tidak ada / belum ditentukan --</option>
                     {(members||[]).filter(m=>supervisorRoleOptions.includes(m.role)&&m.status==="active").map(m=>(
                       <option key={m.id} value={m.id}>{m.name} ({ROLES[m.role]?.label})</option>
                     ))}
                   </select>
-                  {errs.supervisorId&&<div style={{ fontSize:11,color:T.red,marginTop:3 }}>{errs.supervisorId}</div>}
+                  <div style={{ fontSize:10,color:T.textMute,marginTop:4 }}>Opsional. Bisa dikosongkan jika belum ada atasan langsung.</div>
                 </div>
               )}
 
