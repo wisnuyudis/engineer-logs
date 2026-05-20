@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { T, FONT, DISPLAY } from '../theme/tokens';
 import { canManageKpi, canManageKpiNps, teamOf } from '../constants/taxonomy';
 import { Avi, RoleBadge, TeamBadge, Divider } from './ui/Primitives';
@@ -7,6 +8,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
   const navigate = useNavigate();
   const location = useLocation();
   const activePath = location.pathname;
+  const [openGroups, setOpenGroups] = useState({});
 
   const coreItems = [
     { id: "/", icon: "▦", label: "Dashboard" },
@@ -111,7 +113,16 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
               if (group.children.length === 1 && !group.label) {
                 return <NavItem key={group.children[0].id} item={group.children[0]} activePath={activePath} onClick={(id)=>{navigate(id); onClose?.();}} accent={T.violet} accentLo={T.violetLo} />;
               }
-              return <NavGroup key={group.id} group={group} activePath={activePath} onClick={(id)=>{navigate(id); onClose?.();}} />;
+              return (
+                <NavGroup
+                  key={group.id}
+                  group={group}
+                  activePath={activePath}
+                  open={openGroups[group.id]}
+                  onToggle={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
+                  onClick={(id)=>{navigate(id); onClose?.();}}
+                />
+              );
             })}
           </>
         )}
@@ -175,19 +186,26 @@ function NavItem({ item, activePath, onClick, accent = T.indigo, accentLo = T.in
   );
 }
 
-function NavGroup({ group, activePath, onClick }) {
+function NavGroup({ group, activePath, onClick, open, onToggle }) {
   const active = group.children.some((child) => activePath === child.id);
+  const expanded = Boolean(open || active);
   return (
     <div style={{ marginBottom:6 }}>
-      <div style={{ display:"flex",alignItems:"center",gap:10,padding:"9px 12px 7px",fontFamily:FONT,fontSize:11,fontWeight:800,color:active?T.textPri:T.textMute,letterSpacing:".04em",textTransform:"uppercase" }}>
+      <button
+        onClick={onToggle}
+        style={{ width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,border:"none",background:active?T.violetLo:"transparent",fontFamily:FONT,fontSize:11,fontWeight:800,color:active?T.textPri:T.textMute,letterSpacing:".04em",textTransform:"uppercase",cursor:"pointer",textAlign:"left" }}
+      >
         <span style={{ fontSize:12,color:active?T.violet:T.textMute }}>{group.icon}</span>
-        <span>{group.label}</span>
-      </div>
-      <div style={{ borderLeft:`1px solid ${active?T.violet+"55":T.border}`,marginLeft:16,paddingLeft:4 }}>
-        {group.children.map((item) => (
-          <NavItem key={item.id} item={item} activePath={activePath} onClick={onClick} accent={T.violet} accentLo={T.violetLo} child />
-        ))}
-      </div>
+        <span style={{ flex:1 }}>{group.label}</span>
+        <span style={{ fontSize:10,color:active?T.violet:T.textMute,transform:expanded?"rotate(90deg)":"rotate(0deg)",transition:"transform .15s" }}>›</span>
+      </button>
+      {expanded && (
+        <div style={{ borderLeft:`1px solid ${active?T.violet+"55":T.border}`,marginLeft:16,paddingLeft:4,marginTop:4 }}>
+          {group.children.map((item) => (
+            <NavItem key={item.id} item={item} activePath={activePath} onClick={onClick} accent={T.violet} accentLo={T.violetLo} child />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
