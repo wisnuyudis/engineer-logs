@@ -26,6 +26,32 @@ const SORT_FIELDS: Record<string, string> = {
   updatedAt: 'updatedAt',
 };
 
+const isAdminOrManagerRole = (role?: string | null) => ['admin', 'mgr_dl', 'mgr_ps'].includes(role || '');
+
+const canAccessAttachment = async (req: AuthRequest, attachmentId: string) => {
+  const actorId = req.user?.userId;
+  const role = req.user?.role;
+  if (!actorId) return null;
+
+  const attachment = await prisma.attachment.findUnique({
+    where: { id: attachmentId },
+    include: { activity: { select: { userId: true } } },
+  });
+  if (!attachment) return null;
+
+  const canAccess = attachment.activity.userId === actorId || isAdminOrManagerRole(role);
+  return canAccess ? attachment : 'forbidden';
+};
+
+const resolveAttachmentFile = (filename: string) => path.join(__dirname, '../../uploads', filename);
+
+const setAttachmentHeaders = (res: Response, attachment: { filename: string; mimetype: string }, disposition: 'inline' | 'attachment') => {
+  const safeName = path.basename(attachment.filename).replace(/"/g, '');
+  res.setHeader('Content-Type', attachment.mimetype || 'application/octet-stream');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"`);
+};
+
 const toPositiveInt = (value: unknown, fallback: number, min = 1, max = 100) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -53,7 +79,7 @@ export const getActivities = async (req: AuthRequest, res: Response) => {
       dateTo,
     } = req.query as Record<string, string | undefined>;
     
-    const isAdminOrMgr = ['admin', 'mgr_dl', 'mgr_ps'].includes(role || '');
+    const isAdminOrMgr = isAdminOrManagerRole(role);
     const shouldPaginate = paginate !== 'false';
     const currentPage = toPositiveInt(page, 1, 1, 100000);
     const currentPageSize = toPositiveInt(pageSize, 10, 1, 100);
@@ -240,7 +266,7 @@ export const updateActivity = async (req: AuthRequest, res: Response) => {
 
     const current = await prisma.activity.findUnique({ where: { id } });
     if (!current) return res.status(404).json({ error: 'Activity not found' });
-    const isAdminOrMgr = ['admin', 'mgr_dl', 'mgr_ps'].includes(role || '');
+    const isAdminOrMgr = isAdminOrManagerRole(role);
     if (!actorId || (current.userId !== actorId && !isAdminOrMgr)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -342,8 +368,16 @@ export const uploadAttachment = async (req: AuthRequest, res: Response) => {
   try {
     const activityId = String(req.params.id);
     const file = req.file;
+    const actorId = req.user?.userId;
+    const role = req.user?.role;
 
     if (!file) return res.status(400).json({ error: 'Tidak ada file yang diunggah' });
+
+    const activity = await prisma.activity.findUnique({ where: { id: activityId } });
+    if (!activity) return res.status(404).json({ error: 'Activity not found' });
+    if (!actorId || (activity.userId !== actorId && !isAdminOrManagerRole(role))) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
 
     const attachment = await prisma.attachment.create({
       data: {
@@ -369,14 +403,49 @@ export const uploadAttachment = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const previewAttachment = async (req: AuthRequest, res: Response) => {
+  try {
+    const attId = String(req.params.attId);
+    const attachment = await canAccessAttachment(req, attId);
+    if (!attachment) return res.status(404).json({ error: 'Attachment not found' });
+    if (attachment === 'forbidden') return res.status(403).json({ error: 'Insufficient permissions' });
+
+    const filePath = resolveAttachmentFile(attachment.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+
+    setAttachmentHeaders(res, attachment, 'inline');
+    return res.sendFile(filePath);
+  } catch (error) {
+    res.status(500).json({ error: 'Gagal membuka preview lampiran' });
+  }
+};
+
+export const downloadAttachment = async (req: AuthRequest, res: Response) => {
+  try {
+    const attId = String(req.params.attId);
+    const attachment = await canAccessAttachment(req, attId);
+    if (!attachment) return res.status(404).json({ error: 'Attachment not found' });
+    if (attachment === 'forbidden') return res.status(403).json({ error: 'Insufficient permissions' });
+
+    const filePath = resolveAttachmentFile(attachment.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+
+    setAttachmentHeaders(res, attachment, 'attachment');
+    return res.sendFile(filePath);
+  } catch (error) {
+    res.status(500).json({ error: 'Gagal mengunduh lampiran' });
+  }
+};
+
 export const deleteAttachment = async (req: AuthRequest, res: Response) => {
   try {
     const attId = String(req.params.attId);
 
-    const attachment = await prisma.attachment.findUnique({ where: { id: attId } });
+    const attachment = await canAccessAttachment(req, attId);
     if (!attachment) return res.status(404).json({ error: 'Attachment not found' });
+    if (attachment === 'forbidden') return res.status(403).json({ error: 'Insufficient permissions' });
 
-    const p = path.join(__dirname, '../../uploads', attachment.filename);
+    const p = resolveAttachmentFile(attachment.filename);
     if (fs.existsSync(p)) fs.unlinkSync(p);
 
     await prisma.attachment.delete({ where: { id: attId } });

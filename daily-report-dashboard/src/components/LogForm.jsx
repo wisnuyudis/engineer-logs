@@ -81,10 +81,15 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
   const durLabel = dur > 0 ? `${Math.floor(dur/60)}j ${dur%60>0?dur%60+"m":""}`.trim() : "—";
 
   // File handling
-  const ALLOWED = ["application/pdf","image/png","image/jpeg","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+  const ALLOWED = [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
   const EXT_MAP  = {
-    "application/pdf":"PDF","image/png":"PNG","image/jpeg":"JPG",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"DOCX"
+    "application/pdf":"PDF",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"DOCX",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"XLSX",
   };
   const addFiles = (raw) => {
     const valid=[], errsLocal=[];
@@ -294,8 +299,8 @@ export function LogForm({ user, onSave, onCancel, initialData = null, submitLabe
 
       {!initialData?.id && (
         <div>
-          <Lbl>Lampiran <span style={{ fontWeight:400,textTransform:"none",letterSpacing:0 }}>(PDF, PNG, JPG, DOCX · maks 20 MB)</span></Lbl>
-          <input ref={fileRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.docx" style={{ display:"none" }} onChange={e=>addFiles(e.target.files)} />
+          <Lbl>Lampiran <span style={{ fontWeight:400,textTransform:"none",letterSpacing:0 }}>(PDF, DOCX, XLSX · maks 20 MB)</span></Lbl>
+          <input ref={fileRef} type="file" multiple accept=".pdf,.docx,.xlsx" style={{ display:"none" }} onChange={e=>addFiles(e.target.files)} />
           <div
             onClick={()=>fileRef.current.click()}
             onDragOver={e=>{e.preventDefault();setDrag(true);}}

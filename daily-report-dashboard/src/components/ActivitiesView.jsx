@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { T, MONO } from '../theme/tokens';
 import { teamOf, isAdmin } from '../constants/taxonomy';
@@ -7,6 +7,7 @@ import { Pill, Card, Modal, MHead, Tag, Btn } from './ui/Primitives';
 import { LogForm } from './LogForm';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import api from '../lib/api';
+import { toast } from 'sonner';
 
 const headerBtnStyle = {
   border: 'none',
@@ -24,6 +25,23 @@ function activityTone(def = {}) {
   return { color: T.indigoHi, lo: T.indigoLo };
 }
 
+const attachmentKind = (attachment = {}) => {
+  const name = String(attachment.filename || attachment.path || '').toLowerCase();
+  const mime = String(attachment.mimetype || '').toLowerCase();
+  if (mime === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+  if (mime.includes('wordprocessingml') || name.endsWith('.docx')) return 'docx';
+  if (mime.includes('spreadsheetml') || name.endsWith('.xlsx')) return 'xlsx';
+  return 'unknown';
+};
+
+const formatBytes = (bytes = 0) => {
+  if (!bytes) return '0 KB';
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.ceil(bytes / 1024)} KB`;
+};
+
+const attachmentUrl = (attachment, mode) => `/activities/attachments/${attachment.id}/${mode}`;
+
 export function ActivitiesView({ currentUser, members = [], onAdd }) {
   const ACTS = useTaxonomy();
   const [logOpen, setLog] = useState(false);
@@ -35,6 +53,8 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
   const [expandedId, setExpandedId] = useState(null);
   const [memberFilter, setMemberFilter] = useState("all");
   const [editActivity, setEditActivity] = useState(null);
+  const [preview, setPreview] = useState({ open:false, loading:false, error:"", attachment:null, kind:"", objectUrl:"", blob:null, rows:[] });
+  const docxPreviewRef = useRef(null);
   const myTeam = teamOf(currentUser.role);
   const adminView = isAdmin(currentUser.role);
 
@@ -107,8 +127,124 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
 
   const toggleExpanded = (id) => setExpandedId((prev) => prev === id ? null : id);
 
+  useEffect(() => () => {
+    if (preview.objectUrl) URL.revokeObjectURL(preview.objectUrl);
+  }, [preview.objectUrl]);
+
+  useEffect(() => {
+    if (!preview.open || preview.kind !== 'docx' || !preview.blob || !docxPreviewRef.current) return;
+    let cancelled = false;
+    const renderDocx = async () => {
+      try {
+        const { renderAsync } = await import('docx-preview');
+        if (cancelled || !docxPreviewRef.current) return;
+        docxPreviewRef.current.innerHTML = '';
+        await renderAsync(preview.blob, docxPreviewRef.current, undefined, {
+          className: 'docx-preview',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+        });
+      } catch {
+        if (!cancelled) setPreview((prev) => ({ ...prev, error: 'Gagal me-render preview DOCX.' }));
+      }
+    };
+    renderDocx();
+    return () => { cancelled = true; };
+  }, [preview.open, preview.kind, preview.blob]);
+
+  const closePreview = () => {
+    if (preview.objectUrl) URL.revokeObjectURL(preview.objectUrl);
+    setPreview({ open:false, loading:false, error:"", attachment:null, kind:"", objectUrl:"", blob:null, rows:[] });
+  };
+
+  const loadAttachmentBlob = async (attachment, mode = 'preview') => {
+    const response = await api.get(attachmentUrl(attachment, mode), { responseType: 'blob' });
+    return response.data;
+  };
+
+  const openPreview = async (attachment) => {
+    const kind = attachmentKind(attachment);
+    if (!['pdf', 'docx', 'xlsx'].includes(kind)) {
+      toast.error('Format file ini belum bisa dipreview.');
+      return;
+    }
+
+    if (preview.objectUrl) URL.revokeObjectURL(preview.objectUrl);
+    setPreview({ open:true, loading:true, error:"", attachment, kind, objectUrl:"", blob:null, rows:[] });
+
+    try {
+      const blob = await loadAttachmentBlob(attachment, 'preview');
+      if (kind === 'xlsx') {
+        const { default: readXlsxFile } = await import('read-excel-file/browser');
+        const rows = await readXlsxFile(blob);
+        setPreview({ open:true, loading:false, error:"", attachment, kind, objectUrl:"", blob, rows: rows.slice(0, 80) });
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
+      setPreview({ open:true, loading:false, error:"", attachment, kind, objectUrl, blob, rows:[] });
+    } catch (error) {
+      setPreview({ open:true, loading:false, error:error?.response?.data?.error || 'Gagal membuka preview lampiran.', attachment, kind, objectUrl:"", blob:null, rows:[] });
+    }
+  };
+
+  const downloadAttachment = async (attachment) => {
+    try {
+      const blob = await loadAttachmentBlob(attachment, 'download');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = attachment.filename || 'attachment';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Gagal mengunduh lampiran.');
+    }
+  };
+
   return (
     <div>
+      <style>{`
+        .attachment-preview-docx {
+          background:#f8fafc;
+          color:#0f172a;
+          border-radius:12px;
+          padding:18px;
+          min-height:420px;
+          overflow:auto;
+        }
+        .attachment-preview-docx .docx-wrapper {
+          background:transparent;
+          padding:0;
+        }
+        .attachment-preview-docx .docx {
+          margin:0 auto 16px;
+          box-shadow:0 10px 30px rgba(15,23,42,.18);
+        }
+        .attachment-xlsx-table {
+          width:100%;
+          border-collapse:collapse;
+          background:#fff;
+          color:#0f172a;
+        }
+        .attachment-xlsx-table td {
+          border:1px solid #dbe3ef;
+          padding:7px 9px;
+          font-size:12px;
+          vertical-align:top;
+          max-width:260px;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+        }
+        .attachment-xlsx-table tr:first-child td {
+          background:#eef2ff;
+          font-weight:800;
+        }
+      `}</style>
       <div style={{ display:"flex",gap:12,marginBottom:14,flexWrap:"wrap",alignItems:"flex-end",justifyContent:"space-between" }}>
         <div style={{ display:"flex",flexDirection:"column",gap:6,flex:1,minWidth:0 }}>
           <div style={{ display:"flex",gap:5,flexWrap:"wrap",alignItems:"center" }}>
@@ -252,6 +388,31 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
                     <Detail label="Customer" value={a.customerName} />
                     <Detail label="Updated At" value={a.updatedAt ? new Date(a.updatedAt).toLocaleString('id-ID') : null} />
                   </div>
+                  {a.attachments?.length > 0 && (
+                    <div style={{ marginTop:16 }}>
+                      <div style={{ fontSize:10,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8 }}>Lampiran</div>
+                      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))",gap:10 }}>
+                        {a.attachments.map((att) => {
+                          const kind = attachmentKind(att).toUpperCase();
+                          return (
+                            <div key={att.id} style={{ padding:"10px 12px",borderRadius:10,border:`1px solid ${T.border}`,background:T.surfaceHi,display:"flex",flexDirection:"column",gap:9,minWidth:0 }}>
+                              <div style={{ display:"flex",alignItems:"center",gap:8,minWidth:0 }}>
+                                <span style={{ fontSize:10,fontWeight:800,color:T.indigoHi,background:T.indigoLo,border:`1px solid ${T.indigo}30`,borderRadius:6,padding:"3px 7px",fontFamily:MONO,flexShrink:0 }}>{kind}</span>
+                                <div style={{ minWidth:0,flex:1 }}>
+                                  <div style={{ fontSize:12,color:T.textPri,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{att.filename}</div>
+                                  <div style={{ fontSize:10,color:T.textMute,marginTop:2 }}>{formatBytes(att.size)}</div>
+                                </div>
+                              </div>
+                              <div style={{ display:"flex",gap:6 }}>
+                                <Btn v="ghost" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={(e)=>{ e.stopPropagation(); openPreview(att); }}>Preview</Btn>
+                                <Btn v="sec" sz="sm" style={{ flex:1,justifyContent:"center" }} onClick={(e)=>{ e.stopPropagation(); downloadAttachment(att); }}>Download</Btn>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -298,6 +459,50 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
           }}
           onCancel={()=>setEditActivity(null)}
         />
+      </Modal>
+      <Modal open={preview.open} onClose={closePreview} width={980}>
+        <MHead
+          title="Preview Lampiran"
+          sub={preview.attachment?.filename || "Dokumen"}
+          onClose={closePreview}
+        />
+        <div style={{ display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12,flexWrap:"wrap" }}>
+          <div style={{ display:"flex",gap:8,alignItems:"center",flexWrap:"wrap" }}>
+            <Tag color={T.indigoHi} lo={T.indigoLo}>{preview.kind?.toUpperCase()}</Tag>
+            <span style={{ fontSize:11,color:T.textMute }}>{formatBytes(preview.attachment?.size)}</span>
+          </div>
+          {preview.attachment && (
+            <Btn v="sec" sz="sm" onClick={()=>downloadAttachment(preview.attachment)}>Download</Btn>
+          )}
+        </div>
+
+        {preview.loading && (
+          <div style={{ padding:30,textAlign:"center",fontSize:13,color:T.textMute }}>Memuat preview dokumen...</div>
+        )}
+        {!preview.loading && preview.error && (
+          <div style={{ padding:18,borderRadius:10,background:T.redLo,color:T.red,fontSize:13,border:`1px solid ${T.red}30` }}>{preview.error}</div>
+        )}
+        {!preview.loading && !preview.error && preview.kind === 'pdf' && preview.objectUrl && (
+          <iframe title="Preview PDF" src={preview.objectUrl} style={{ width:"100%",height:"72vh",border:`1px solid ${T.border}`,borderRadius:12,background:"#fff" }} />
+        )}
+        {!preview.loading && !preview.error && preview.kind === 'docx' && (
+          <div ref={docxPreviewRef} className="attachment-preview-docx" />
+        )}
+        {!preview.loading && !preview.error && preview.kind === 'xlsx' && (
+          <div style={{ maxHeight:"72vh",overflow:"auto",border:`1px solid ${T.border}`,borderRadius:12,background:"#fff" }}>
+            <table className="attachment-xlsx-table">
+              <tbody>
+                {preview.rows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {row.map((cell, cellIndex) => (
+                      <td key={cellIndex}>{cell === null || cell === undefined ? "" : String(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Modal>
     </div>
   );

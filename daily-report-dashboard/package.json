@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.99.2",
-    "axios": "^1.13.6",
+    "axios": "^1.16.1",
+    "docx-preview": "^0.3.7",
     "lucide-react": "^0.577.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.1",
+    "read-excel-file": "^9.0.9",
     "recharts": "^3.8.0",
     "sonner": "^2.0.7"
   },
