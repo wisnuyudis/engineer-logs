@@ -39,6 +39,8 @@ const getKpiNpsScoreInputs = async (year, quarter) => {
             scope: true,
             jiraIssueKey: true,
             score: true,
+            comment: true,
+            updatedAt: true,
         },
     });
     return entries
@@ -47,6 +49,8 @@ const getKpiNpsScoreInputs = async (year, quarter) => {
         scope: entry.scope,
         jiraIssueKey: entry.jiraIssueKey,
         score: entry.score,
+        comment: entry.comment || null,
+        updatedAt: entry.updatedAt?.toISOString?.() || null,
     }));
 };
 const getAuthorizedKpiNpsCandidates = async (actor, year, quarter) => {

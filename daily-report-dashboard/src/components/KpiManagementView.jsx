@@ -153,6 +153,90 @@ function HybridDetailsTable({ title, columns, rows }) {
   );
 }
 
+function OperationalTaskTree({ items }) {
+  if (!items?.length) {
+    return (
+      <div style={{ marginTop:10,padding:'10px 12px',borderRadius:9,background:T.bg,border:`1px solid ${T.border}`,fontSize:11,color:T.textMute }}>
+        Tidak ada detail task [OP] pada periode ini.
+      </div>
+    );
+  }
+
+  const grouped = items.reduce((acc, item) => {
+    const key = item.projectName || item.projectKey || '[OP]';
+    if (!acc.has(key)) acc.set(key, []);
+    acc.get(key).push(item);
+    return acc;
+  }, new Map());
+
+  return (
+    <details open style={{ marginTop:10,background:T.bg,border:`1px solid ${T.border}`,borderRadius:9,overflow:'hidden' }}>
+      <summary style={{ cursor:'pointer',listStyle:'none',padding:'10px 12px',fontSize:11,fontWeight:800,color:T.textPri }}>
+        Detail Task [OP] ({items.length} task)
+      </summary>
+      <div style={{ borderTop:`1px solid ${T.border}`,padding:10,display:'flex',flexDirection:'column',gap:8 }}>
+        {Array.from(grouped.entries()).map(([projectName, tasks]) => (
+          <details key={projectName} open style={{ background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:9,overflow:'hidden' }}>
+            <summary style={{ cursor:'pointer',listStyle:'none',padding:'9px 10px',fontSize:11,fontWeight:800,color:T.textPri }}>
+              {projectName} <span style={{ color:T.textMute,fontWeight:600 }}>· {tasks.length} task</span>
+            </summary>
+            <div style={{ borderTop:`1px solid ${T.border}`,display:'flex',flexDirection:'column',gap:8,padding:8 }}>
+              {tasks.map((task) => (
+                <details key={task.taskKey} style={{ background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,overflow:'hidden' }}>
+                  <summary style={{ cursor:'pointer',listStyle:'none',padding:'9px 10px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap' }}>
+                    <div>
+                      <span style={{ fontFamily:MONO,fontWeight:800,color:T.indigoHi }}>{task.taskKey}</span>
+                      <span style={{ marginLeft:8,fontSize:11,color:T.textPri }}>{task.taskSummary || '-'}</span>
+                    </div>
+                    <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
+                      <Tag color={task.nps?.hasScore ? T.green : T.amber} lo={task.nps?.hasScore ? T.greenLo : T.amberLo}>
+                        NPS {task.nps?.hasScore ? task.nps.score : 'N/A'}
+                      </Tag>
+                      <Tag color={T.textMute} lo={T.border}>{task.subtasks?.length || 0} subtask</Tag>
+                    </div>
+                  </summary>
+                  <div style={{ borderTop:`1px solid ${T.border}`,padding:10 }}>
+                    <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:8,marginBottom:10 }}>
+                      <div style={{ fontSize:10,color:T.textMute }}>Status<br /><strong style={{ color:T.textPri }}>{task.statusName || '-'}</strong></div>
+                      <div style={{ fontSize:10,color:T.textMute }}>Done At<br /><strong style={{ color:T.textPri }}>{task.resolutionDate ? new Date(task.resolutionDate).toLocaleString('id-ID') : '-'}</strong></div>
+                      <div style={{ fontSize:10,color:T.textMute }}>NPS Updated<br /><strong style={{ color:T.textPri }}>{task.nps?.updatedAt ? new Date(task.nps.updatedAt).toLocaleString('id-ID') : '-'}</strong></div>
+                      <div style={{ fontSize:10,color:T.textMute }}>Komentar NPS<br /><strong style={{ color:T.textPri }}>{task.nps?.comment || '-'}</strong></div>
+                    </div>
+                    <div style={{ overflowX:'auto' }}>
+                      <table style={{ width:'100%',borderCollapse:'collapse',fontSize:10,color:T.textPri,minWidth:720 }}>
+                        <thead>
+                          <tr style={{ background:T.surfaceHi }}>
+                            <th style={{ textAlign:'left',padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>Subtask</th>
+                            <th style={{ textAlign:'left',padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>Summary</th>
+                            <th style={{ textAlign:'left',padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>Status</th>
+                            <th style={{ textAlign:'left',padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>Due Date</th>
+                            <th style={{ textAlign:'left',padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>Done At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(task.subtasks || []).map((subtask) => (
+                            <tr key={subtask.issueKey}>
+                              <td style={{ padding:'7px 9px',borderBottom:`1px solid ${T.border}`,fontFamily:MONO,fontWeight:800,color:T.indigoHi }}>{subtask.issueKey}</td>
+                              <td style={{ padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>{subtask.summary || '-'}</td>
+                              <td style={{ padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>{subtask.statusName || '-'}</td>
+                              <td style={{ padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>{subtask.dueDate || '-'}</td>
+                              <td style={{ padding:'7px 9px',borderBottom:`1px solid ${T.border}` }}>{subtask.resolutionDate ? new Date(subtask.resolutionDate).toLocaleString('id-ID') : '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function KpiManagementView({ currentUser }) {
   const queryClient = useQueryClient();
   const currentYear = new Date().getFullYear();
@@ -584,6 +668,9 @@ export function KpiManagementView({ currentUser }) {
                           <Inp label="Nilai" type="number" min="-1" max="4" step="0.01" value={manualInputs.opsScore ?? ''} onChange={(e)=>setManualInputs((prev)=>({ ...prev, opsScore: e.target.value }))} placeholder="Kosong = N/A" mono />
                         </div>
                       </div>
+                      <OperationalTaskTree
+                        items={scorecardData?.scorecard?.breakdown?.ops?.components?.taskTree?.items || []}
+                      />
                       <Inp label="Catatan" value={notes?.ops ?? ''} onChange={(e)=>setNotes((prev)=>({ ...prev, ops: e.target.value }))} placeholder="Opsional" />
                     </div>
                   </>

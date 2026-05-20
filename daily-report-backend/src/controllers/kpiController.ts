@@ -56,6 +56,8 @@ const getKpiNpsScoreInputs = async (year: number, quarter: string): Promise<KpiN
       scope: true,
       jiraIssueKey: true,
       score: true,
+      comment: true,
+      updatedAt: true,
     },
   });
 
@@ -65,6 +67,8 @@ const getKpiNpsScoreInputs = async (year: number, quarter: string): Promise<KpiN
       scope: entry.scope as 'impl_project' | 'op_task',
       jiraIssueKey: entry.jiraIssueKey,
       score: entry.score,
+      comment: entry.comment || null,
+      updatedAt: entry.updatedAt?.toISOString?.() || null,
     }));
 };
 

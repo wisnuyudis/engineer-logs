@@ -43,6 +43,8 @@ export type KpiNpsScoreInput = {
   scope: 'impl_project' | 'op_task';
   jiraIssueKey: string;
   score: number | null;
+  comment?: string | null;
+  updatedAt?: string | null;
 };
 
 const REQUIRED_IMPL_DOCS = [
@@ -657,6 +659,77 @@ const computeEnhancementDomain = (issues: Awaited<ReturnType<typeof searchJiraIs
   };
 };
 
+const computeOperationalDomain = (
+  subtasks: Awaited<ReturnType<typeof searchJiraIssues>>,
+  parentTasks: Awaited<ReturnType<typeof searchJiraIssues>>,
+  npsEntries: KpiNpsScoreInput[],
+  manualScore: number | null
+) => {
+  const relevantSubtasks = subtasks.filter((issue) => isProjectPrefix(issue.projectName, '[OP]') && issue.parentKey);
+  const parentByKey = new Map(parentTasks.map((issue) => [issue.key, issue]));
+  const grouped = new Map<string, typeof relevantSubtasks>();
+
+  for (const issue of relevantSubtasks) {
+    const key = issue.parentKey as string;
+    const current = grouped.get(key) || [];
+    current.push(issue);
+    grouped.set(key, current);
+  }
+
+  const items = Array.from(grouped.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([taskKey, children]) => {
+      const parent = parentByKey.get(taskKey);
+      const nps = npsEntries.find((entry) => entry.scope === 'op_task' && entry.jiraIssueKey === taskKey);
+      return {
+        taskKey,
+        taskSummary: parent?.summary || null,
+        projectKey: parent?.projectKey || children[0]?.projectKey || null,
+        projectName: parent?.projectName || children[0]?.projectName || null,
+        issueTypeName: parent?.issueTypeName || null,
+        statusName: parent?.statusName || null,
+        dueDate: parent?.dueDate || null,
+        resolutionDate: parent?.resolutionDate || null,
+        nps: {
+          score: nps?.score ?? null,
+          hasScore: nps?.score !== null && nps?.score !== undefined,
+          comment: nps?.comment || null,
+          updatedAt: nps?.updatedAt || null,
+        },
+        subtasks: children
+          .sort((left, right) => left.key.localeCompare(right.key))
+          .map((child) => ({
+            issueKey: child.key,
+            summary: child.summary,
+            issueTypeName: child.issueTypeName,
+            statusName: child.statusName,
+            dueDate: child.dueDate,
+            resolutionDate: child.resolutionDate,
+            updatedAt: child.updatedAt,
+            actualStartAt: child.actualStartDate,
+            actualEndAt: child.actualEndDate,
+          })),
+      };
+    });
+
+  return {
+    score: manualScore,
+    breakdown: {
+      mode: 'manual_with_jira_detail',
+      taskCount: items.length,
+      subtaskCount: relevantSubtasks.length,
+      components: {
+        overall: { score: manualScore, source: 'manual' },
+        taskTree: {
+          taskCount: items.length,
+          subtaskCount: relevantSubtasks.length,
+          items,
+        },
+      },
+    },
+  };
+};
+
 export const computeEngineerDeliveryKpi = async (
   profile: KpiProfileDef,
   user: KpiUser,
@@ -720,6 +793,7 @@ export const computeEngineerDeliveryKpi = async (
   let supportIssues;
   let pmParents;
   let implParents;
+  let opParents;
   try {
     [subtasks, supportIssues] = await Promise.all([
       searchJiraIssues({
@@ -755,6 +829,19 @@ export const computeEngineerDeliveryKpi = async (
       ? await searchJiraIssues({
           jql: `issuekey in (${implParentKeys.map((key) => `"${key}"`).join(',')})`,
           fields: ['summary', 'issuetype', 'project', 'status', 'parent'],
+        })
+      : [];
+    const opParentKeys = Array.from(
+      new Set(
+        subtasks
+          .filter((issue) => isProjectPrefix(issue.projectName, '[OP]') && issue.parentKey)
+          .map((issue) => issue.parentKey as string)
+      )
+    );
+    opParents = opParentKeys.length
+      ? await searchJiraIssues({
+          jql: `issuekey in (${opParentKeys.map((key) => `"${key}"`).join(',')})`,
+          fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'duedate', 'resolutiondate'],
         })
       : [];
   } catch (error: any) {
@@ -815,13 +902,14 @@ export const computeEngineerDeliveryKpi = async (
   }));
   const correctiveMaintenance = computeCorrectiveMaintenanceDomain(supportIssuesInQuarter);
   const enhancement = computeEnhancementDomain(supportIssuesInQuarter);
+  const operational = computeOperationalDomain(subtasks, opParents || [], npsEntries, manualInputs.opsScore);
 
   const scores: KpiScoreMap = {
     impl: implementation.score,
     pm: preventiveMaintenance.score,
     cm: correctiveMaintenance.score,
     enh: enhancement.score,
-    ops: manualInputs.opsScore,
+    ops: operational.score,
   };
 
   breakdown.impl = implementation.breakdown;
@@ -842,6 +930,7 @@ export const computeEngineerDeliveryKpi = async (
       rawIssues: supportIssueDebug,
     },
   };
+  breakdown.ops = operational.breakdown;
 
   const summary = computeResolvedKpiSummary(profile, scores, { completedJiraTaskCount });
   const currentSnapshot = {
