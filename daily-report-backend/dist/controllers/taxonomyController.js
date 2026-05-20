@@ -11,6 +11,19 @@ const TAXONOMY_PRESENTATION = {
     jira_enh: { label: 'Enhancement', desc: 'Permintaan enhancement yang tersinkron otomatis dari worklog.' },
     jira_ops: { label: 'Operational Svc', desc: 'Layanan operasional yang tersinkron otomatis dari worklog.' },
 };
+const pickMasterActivityData = (body, includeActKey = false) => {
+    const allowed = ['label', 'icon', 'color', 'colorLo', 'team', 'source', 'kpiDomain', 'desc', 'isActive'];
+    const data = {};
+    if (includeActKey && typeof body.actKey === 'string') {
+        data.actKey = body.actKey.trim();
+    }
+    for (const key of allowed) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) {
+            data[key] = body[key];
+        }
+    }
+    return data;
+};
 // Get all taxonomies
 const getAllTaxonomies = async (req, res) => {
     try {
@@ -54,12 +67,14 @@ exports.toggleTaxonomy = toggleTaxonomy;
 // Create new taxonomy
 const createTaxonomy = async (req, res) => {
     try {
-        const { actKey, ...rest } = req.body;
+        const actKey = String(req.body?.actKey || '').trim();
+        if (!actKey)
+            return res.status(400).json({ error: 'actKey wajib diisi' });
         const exists = await prisma.masterActivity.findUnique({ where: { actKey } });
         if (exists)
             return res.status(400).json({ error: 'Activity key (actKey) sudah terdaftar' });
         const created = await prisma.masterActivity.create({
-            data: { actKey, ...rest }
+            data: pickMasterActivityData(req.body, true),
         });
         await (0, auditTrail_1.writeAudit)(req, {
             action: 'taxonomy.create',
@@ -81,7 +96,7 @@ const updateTaxonomy = async (req, res) => {
         const current = await prisma.masterActivity.findUnique({ where: { id } });
         const updated = await prisma.masterActivity.update({
             where: { id },
-            data: req.body
+            data: pickMasterActivityData(req.body),
         });
         await (0, auditTrail_1.writeAudit)(req, {
             action: 'taxonomy.update',

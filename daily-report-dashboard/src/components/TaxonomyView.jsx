@@ -11,6 +11,20 @@ const INIT_FORM = {
   team: "all", source: "app", kpiDomain: "", desc: "", isActive: true
 };
 
+const buildTaxonomyPayload = (form) => ({
+  ...(form.id ? { id: form.id } : {}),
+  actKey: String(form.actKey || "").trim(),
+  label: form.label || "",
+  icon: form.icon || "",
+  color: form.color || "",
+  colorLo: form.colorLo || "",
+  team: form.team || "all",
+  source: form.source || "app",
+  kpiDomain: form.kpiDomain || "",
+  desc: form.desc || "",
+  isActive: Boolean(form.isActive),
+});
+
 export function TaxonomyView({ currentUser }) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -77,7 +91,7 @@ export function TaxonomyView({ currentUser }) {
       toast.error("actKey dan Label wajib diisi!");
       return;
     }
-    saveMut.mutate(formData);
+    saveMut.mutate(buildTaxonomyPayload(formData));
   };
 
   return (

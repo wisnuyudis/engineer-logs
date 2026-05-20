@@ -13,6 +13,23 @@ const TAXONOMY_PRESENTATION: Record<string, Partial<{ label: string; desc: strin
   jira_ops: { label: 'Operational Svc', desc: 'Layanan operasional yang tersinkron otomatis dari worklog.' },
 };
 
+const pickMasterActivityData = (body: Record<string, unknown>, includeActKey = false) => {
+  const allowed = ['label', 'icon', 'color', 'colorLo', 'team', 'source', 'kpiDomain', 'desc', 'isActive'];
+  const data: Record<string, unknown> = {};
+
+  if (includeActKey && typeof body.actKey === 'string') {
+    data.actKey = body.actKey.trim();
+  }
+
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      data[key] = body[key];
+    }
+  }
+
+  return data;
+};
+
 // Get all taxonomies
 export const getAllTaxonomies = async (req: Request, res: Response) => {
   try {
@@ -54,12 +71,14 @@ export const toggleTaxonomy = async (req: Request, res: Response) => {
 // Create new taxonomy
 export const createTaxonomy = async (req: Request, res: Response) => {
   try {
-    const { actKey, ...rest } = req.body;
+    const actKey = String(req.body?.actKey || '').trim();
+    if (!actKey) return res.status(400).json({ error: 'actKey wajib diisi' });
+
     const exists = await prisma.masterActivity.findUnique({ where: { actKey } });
     if (exists) return res.status(400).json({ error: 'Activity key (actKey) sudah terdaftar' });
 
     const created = await prisma.masterActivity.create({
-      data: { actKey, ...rest }
+      data: pickMasterActivityData(req.body, true) as any,
     });
     await writeAudit(req as AuthRequest, {
       action: 'taxonomy.create',
@@ -80,7 +99,7 @@ export const updateTaxonomy = async (req: Request, res: Response) => {
     const current = await prisma.masterActivity.findUnique({ where: { id } });
     const updated = await prisma.masterActivity.update({
       where: { id },
-      data: req.body
+      data: pickMasterActivityData(req.body) as any,
     });
     await writeAudit(req as AuthRequest, {
       action: 'taxonomy.update',

@@ -16,7 +16,8 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
   const myTeam = teamOf(currentUser.role);
   const isAdminRole = isAdmin(currentUser.role);
   const canSeeOwnKpi = hasKpiProfile(currentUser.role);
-  const [tab, setTab] = useState(canSeeTeam ? "overview" : "kpi");
+  const isPresalesUser = myTeam === 'presales';
+  const [tab, setTab] = useState(canSeeTeam ? "overview" : canSeeOwnKpi ? "kpi" : "personal");
   const [memberDetailId, setMemberDetail] = useState(null);
   const [memberDropOpen, setMDO] = useState(false);
 
@@ -132,6 +133,55 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
     });
   }, [ACTS, activities, leaderboard]);
 
+  const personalActs = useMemo(() => (
+    activities.filter((activity) => activity.userId === currentUser.id || activity.user === currentUser.name)
+  ), [activities, currentUser.id, currentUser.name]);
+
+  const currentQuarterRange = useMemo(() => {
+    const year = new Date().getFullYear();
+    const quarter = currentQuarter();
+    const ranges = {
+      Q1: [`${year}-01-01`, `${year}-03-31`],
+      Q2: [`${year}-04-01`, `${year}-06-30`],
+      Q3: [`${year}-07-01`, `${year}-09-30`],
+      Q4: [`${year}-10-01`, `${year}-12-31`],
+    };
+    return { year, quarter, start: ranges[quarter][0], end: ranges[quarter][1] };
+  }, []);
+
+  const personalPeriodActs = useMemo(() => (
+    personalActs.filter((activity) => activity.date >= currentQuarterRange.start && activity.date <= currentQuarterRange.end)
+  ), [currentQuarterRange.end, currentQuarterRange.start, personalActs]);
+
+  const personalStats = useMemo(() => {
+    const totalMinutes = personalPeriodActs.reduce((sum, activity) => sum + Number(activity.dur || 0), 0);
+    const pipelineValue = personalPeriodActs.reduce((sum, activity) => sum + Number(activity.prospectValue || 0), 0);
+    const byCategory = new Map();
+    for (const activity of personalPeriodActs) {
+      const def = ACTS[activity.actKey] || {};
+      const key = activity.actKey || 'uncategorized';
+      const current = byCategory.get(key) || {
+        key,
+        label: def.label || key,
+        source: def.source || 'app',
+        color: def.color || (def.team === 'presales' ? T.violet : T.indigoHi),
+        minutes: 0,
+        count: 0,
+        pipelineValue: 0,
+      };
+      current.minutes += Number(activity.dur || 0);
+      current.count += 1;
+      current.pipelineValue += Number(activity.prospectValue || 0);
+      byCategory.set(key, current);
+    }
+    return {
+      totalMinutes,
+      totalActivities: personalPeriodActs.length,
+      pipelineValue,
+      categories: Array.from(byCategory.values()).sort((a, b) => b.minutes - a.minutes),
+    };
+  }, [ACTS, personalPeriodActs]);
+
   const tabs = canSeeTeam
     ? isAdminRole
       ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
@@ -140,7 +190,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
         : [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
     : canSeeOwnKpi
       ? [{id:"kpi",label:"📈 KPI Saya"}]
-      : [];
+      : [{id:"personal",label:"📊 Dashboard Saya"}];
 
   const memberDetailUser = visibleMembers.find(m=>m.id===memberDetailId) || visibleMembers[0] || null;
 
@@ -180,6 +230,16 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
           display:grid;
           grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
           gap:14px;
+        }
+        .personal-dashboard-grid {
+          display:grid;
+          grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+          gap:12px;
+        }
+        .personal-category-grid {
+          display:grid;
+          grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+          gap:12px;
         }
         .leaderboard-row {
           display:flex;
@@ -392,6 +452,15 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
         </div>
       )}
 
+      {tab==="personal" && !canSeeTeam && (
+        <PersonalDashboard
+          user={currentUser}
+          isPresalesUser={isPresalesUser}
+          period={currentQuarterRange}
+          stats={personalStats}
+        />
+      )}
+
       {tab==="memberdetail" && (
         <div>
           <div style={{ position:"relative",marginBottom:20,maxWidth:380 }}>
@@ -480,6 +549,104 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PersonalDashboard({ user, isPresalesUser, period, stats }) {
+  const summary = [
+    { label: "Total Jam Kerja", value: fmtH(stats.totalMinutes), sub: `${period.quarter} ${period.year}`, color: T.teal },
+    { label: "Total Aktivitas", value: stats.totalActivities, sub: "activity log periode ini", color: T.indigoHi },
+    { label: "Prospek Pipeline", value: fmtIDR(stats.pipelineValue), sub: isPresalesUser ? "nilai prospek presales" : "khusus aktivitas presales", color: T.violet },
+    { label: "Kategori Aktif", value: stats.categories.length, sub: "kategori pekerjaan tercatat", color: T.amber },
+  ];
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      <Card p={18}>
+        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, color:T.textSec, textTransform:"uppercase", letterSpacing:".07em", marginBottom:4 }}>
+              Dashboard Saya
+            </div>
+            <div style={{ fontSize:18, fontWeight:800, color:T.textPri, fontFamily:DISPLAY }}>{user.name}</div>
+            <div style={{ fontSize:12, color:T.textMute, marginTop:3 }}>
+              Ringkasan aktivitas periode {period.quarter} {period.year}
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
+            <RoleBadge role={user.role} />
+            <TeamBadge team={user.team} />
+          </div>
+        </div>
+      </Card>
+
+      <div className="personal-dashboard-grid">
+        {summary.map((item) => (
+          <Card key={item.label} p={0} glow={item.color} style={{ overflow:"hidden" }}>
+            <div style={{ padding:"15px 17px" }}>
+              <div style={{ fontSize:9, fontWeight:700, color:T.textMute, textTransform:"uppercase", letterSpacing:".08em", marginBottom:6 }}>{item.label}</div>
+              <div style={{ fontSize:22, fontWeight:800, color:item.color, fontFamily:MONO, marginBottom:3 }}>{item.value}</div>
+              <div style={{ fontSize:10, color:T.textMute }}>{item.sub}</div>
+            </div>
+            <div style={{ height:2, background:item.color, opacity:.5 }} />
+          </Card>
+        ))}
+      </div>
+
+      <Card p={18}>
+        <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:12, flexWrap:"wrap", marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, color:T.textSec, textTransform:"uppercase", letterSpacing:".07em" }}>Task per Kategori</div>
+            <div style={{ fontSize:11, color:T.textMute, marginTop:3 }}>
+              Dihitung dari activity log milik user pada periode berjalan.
+            </div>
+          </div>
+          {isPresalesUser && (
+            <Tag color={T.violet} lo={T.violetLo}>Pre-Sales Dashboard</Tag>
+          )}
+        </div>
+
+        {stats.categories.length === 0 ? (
+          <div style={{ padding:"26px 12px", textAlign:"center", color:T.textMute, fontSize:12, border:`1px dashed ${T.border}`, borderRadius:12, background:T.surfaceHi }}>
+            Belum ada aktivitas tercatat pada periode ini.
+          </div>
+        ) : (
+          <div className="personal-category-grid">
+            {stats.categories.map((category) => (
+              <div key={category.key} style={{ background:T.surfaceHi, border:`1px solid ${category.color}25`, borderRadius:12, padding:14, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10, marginBottom:12 }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:T.textPri, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {category.label}
+                    </div>
+                    <div style={{ fontSize:10, color:T.textMute, marginTop:3, fontFamily:MONO }}>{category.key}</div>
+                  </div>
+                  <Tag color={category.source === "jira" ? T.jira : category.color} lo={category.source === "jira" ? T.jiraLo : `${category.color}18`} small>
+                    {category.source || "app"}
+                  </Tag>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:10 }}>
+                  <div>
+                    <div style={{ fontSize:10, color:T.textMute, marginBottom:4 }}>Aktivitas</div>
+                    <div style={{ fontSize:18, fontWeight:800, color:category.color, fontFamily:MONO }}>{category.count}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:10, color:T.textMute, marginBottom:4 }}>Jam</div>
+                    <div style={{ fontSize:18, fontWeight:800, color:category.color, fontFamily:MONO }}>{fmtH(category.minutes)}</div>
+                  </div>
+                </div>
+                {isPresalesUser && category.pipelineValue > 0 && (
+                  <div style={{ marginTop:12, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+                    <div style={{ fontSize:10, color:T.textMute, marginBottom:4 }}>Pipeline</div>
+                    <div style={{ fontSize:13, fontWeight:800, color:T.violet, fontFamily:MONO }}>{fmtIDR(category.pipelineValue)}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
