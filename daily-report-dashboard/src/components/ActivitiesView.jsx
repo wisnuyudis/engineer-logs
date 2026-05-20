@@ -167,6 +167,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
           const def = ACTS[a.actKey] || {};
           const isSynced = a.source === 'jira';
           const expanded = expandedId === a.id;
+          const hasProspectInfo = Boolean(a.prName || a.leadId || a.prospectValue !== null && a.prospectValue !== undefined);
 
           return (
             <div key={a.id} style={{ borderBottom:`1px solid ${T.border}` }}>
@@ -228,16 +229,27 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
                       <div style={{ fontSize:13,color:T.textPri,lineHeight:1.6,whiteSpace:"pre-wrap" }}>{a.note}</div>
                     </div>
                   )}
+                  {hasProspectInfo && (
+                    <div style={{ marginBottom:14,padding:"13px 14px",borderRadius:12,border:`1px solid ${T.violet}30`,background:T.violetLo }}>
+                      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:10,flexWrap:"wrap" }}>
+                        <div style={{ fontSize:10,fontWeight:800,color:T.violet,textTransform:"uppercase",letterSpacing:".06em" }}>Info Prospect / Lead</div>
+                        <Tag color={T.violet} lo={T.surface} small>Pipeline</Tag>
+                      </div>
+                      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(190px, 1fr))",gap:12 }}>
+                        <Detail label="Nama Prospect" value={a.prName} />
+                        <Detail label="Lead ID" value={a.leadId} mono />
+                        <Detail label="Prospect Value" value={a.prospectValue !== null && a.prospectValue !== undefined ? fmtIDR(a.prospectValue) : null} />
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:14 }}>
                     <Detail label="User" value={a.user} />
                     <Detail label="Kategori" value={def.label || a.actKey} />
                     <Detail label="Sumber" value={isSynced ? 'Sinkron Jira' : a.source === 'telegram' ? 'Telegram Bot' : 'Manual App'} />
+                    <Detail label="Topik / Judul" value={a.topic} />
                     <Detail label="Ticket ID" value={a.ticketId} mono />
                     <Detail label="Ticket Title" value={a.ticketTitle} />
                     <Detail label="Customer" value={a.customerName} />
-                    <Detail label="Prospect" value={a.prName} />
-                    <Detail label="Lead ID" value={a.leadId} mono />
-                    <Detail label="Prospect Value" value={a.prospectValue ? fmtIDR(a.prospectValue) : null} />
                     <Detail label="Updated At" value={a.updatedAt ? new Date(a.updatedAt).toLocaleString('id-ID') : null} />
                   </div>
                 </div>
@@ -292,7 +304,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
 }
 
 function Detail({ label, value, mono = false }) {
-  if (!value) return null;
+  if (value === null || value === undefined || value === '') return null;
   return (
     <div>
       <div style={{ fontSize:10,fontWeight:700,color:T.textMute,textTransform:"uppercase",letterSpacing:".05em",marginBottom:2 }}>{label}</div>
