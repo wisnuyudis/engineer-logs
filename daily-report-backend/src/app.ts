@@ -12,6 +12,7 @@ import jiraRoutes from './routes/jiraRoutes';
 import kpiRoutes from './routes/kpiRoutes';
 import auditRoutes from './routes/auditRoutes';
 import settingsRoutes from './routes/settingsRoutes';
+import reportRoutes from './routes/reportRoutes';
 import path from 'path';
 
 const app = express();
@@ -85,5 +86,6 @@ app.use('/api/jira', jiraRoutes);
 app.use('/api/kpi', kpiRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/reports', reportRoutes);
 
 export default app;

@@ -2,9 +2,11 @@ import { useState, useMemo } from 'react';
 import { T, FONT, MONO } from '../theme/tokens';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { ROLES, isAdmin, isMgr } from '../constants/taxonomy';
-import { exportCSV, exportPDF } from '../utils/exports';
+import { exportCSV, exportPDF, exportQuarterlyKpiCSV, exportQuarterlyKpiPDF } from '../utils/exports';
 import { Card, Pill, Lbl, Inp, Btn, Divider, Tag, Avi } from './ui/Primitives';
 import { fmtH } from '../utils/formatters';
+import api from '../lib/api';
+import { toast } from 'sonner';
 
 const getDescendantMemberIds = (rootId, members) => {
   const childrenByParent = new Map();
@@ -44,6 +46,10 @@ export function ReportsView({ activities, members, currentUser }) {
   const [custF, setCustF] = useState('');
   const [sortCol, setSort] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
+  const [exportMode, setExportMode] = useState('activity');
+  const [exportYear, setExportYear] = useState(new Date().getFullYear());
+  const [exportQuarter, setExportQuarter] = useState('Q' + (Math.floor(new Date().getMonth() / 3) + 1));
+  const [exporting, setExporting] = useState(false);
 
   const isAdminRole = isAdmin(currentUser.role);
   const isHeadRole = isMgr(currentUser.role) && !isAdminRole;
@@ -132,6 +138,59 @@ export function ReportsView({ activities, members, currentUser }) {
   }, [activities, members, allowedMemberIds, currentUser, isSelfOnly, teamF, userSel, srcF, custF, dateFrom, dateTo, sortCol, sortDir, ACTS]);
 
   const hasFilter = teamF !== 'all' || userSel.length > 0 || srcF !== 'all' || custF || dateFrom || dateTo;
+  const selectedQuarterRange = useMemo(() => {
+    const ranges = {
+      Q1: [`${exportYear}-01-01`, `${exportYear}-03-31`],
+      Q2: [`${exportYear}-04-01`, `${exportYear}-06-30`],
+      Q3: [`${exportYear}-07-01`, `${exportYear}-09-30`],
+      Q4: [`${exportYear}-10-01`, `${exportYear}-12-31`],
+    };
+    return ranges[exportQuarter] || ranges.Q1;
+  }, [exportQuarter, exportYear]);
+
+  const quarterlyRows = useMemo(() => (
+    visible.filter((activity) => activity.date >= selectedQuarterRange[0] && activity.date <= selectedQuarterRange[1])
+  ), [selectedQuarterRange, visible]);
+
+  const exportMembers = useMemo(() => {
+    const ids = new Set(quarterlyRows.map((activity) => activity.userId || members.find((m) => m.name === activity.user)?.id).filter(Boolean));
+    const base = userSel.length > 0
+      ? members.filter((member) => userSel.includes(member.id))
+      : scopeMembers.filter((member) => teamF === 'all' || member.team === teamF);
+    return base.filter((member) => ids.has(member.id) || userSel.includes(member.id));
+  }, [members, quarterlyRows, scopeMembers, teamF, userSel]);
+
+  const loadQuarterlyScorecards = async () => {
+    const targets = exportMembers.filter((member) => ['delivery', 'SE', 'PM', 'pm'].includes(member.role));
+    const results = await Promise.allSettled(
+      targets.map((member) => api.get(`/kpi/scorecards/${member.id}`, { params: { year: exportYear, quarter: exportQuarter } }).then((res) => res.data))
+    );
+    return results
+      .filter((result) => result.status === 'fulfilled')
+      .map((result) => result.value)
+      .filter((item) => !item.unsupported);
+  };
+
+  const handleExport = async (format) => {
+    if (exportMode === 'activity') {
+      if (format === 'csv') exportCSV(visible, members, ACTS);
+      else exportPDF(visible, members, ACTS);
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const scorecards = await loadQuarterlyScorecards();
+      const payload = { rows: quarterlyRows, members, ACTS, scorecards, year: exportYear, quarter: exportQuarter };
+      if (format === 'csv') exportQuarterlyKpiCSV(payload);
+      else exportQuarterlyKpiPDF(payload);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Gagal membuat quarterly KPI report');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const reset = () => {
     setTF('all');
     setUS([]);
@@ -447,10 +506,31 @@ export function ReportsView({ activities, members, currentUser }) {
               </Btn>
             )}
             <Divider my={4} />
-            <Btn v="teal" sz="sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => exportCSV(visible, members, ACTS)}>
+            <div>
+              <Lbl>Tipe Export</Lbl>
+              <div style={{ display:'flex',flexDirection:'column',gap:5 }}>
+                <Pill small active={exportMode === 'activity'} color={T.teal} lo={T.tealLo} onClick={() => setExportMode('activity')}>Activity saja</Pill>
+                <Pill small active={exportMode === 'quarterly'} color={T.indigoHi} lo={T.indigoLo} onClick={() => setExportMode('quarterly')}>Quarterly + KPI</Pill>
+              </div>
+            </div>
+            {exportMode === 'quarterly' && (
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
+                <div>
+                  <Lbl>Tahun</Lbl>
+                  <input type="number" value={exportYear} onChange={(event) => setExportYear(Number(event.target.value) || new Date().getFullYear())} style={{ width:'100%',boxSizing:'border-box',padding:'7px 9px',borderRadius:7,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }} />
+                </div>
+                <div>
+                  <Lbl>Quarter</Lbl>
+                  <select value={exportQuarter} onChange={(event) => setExportQuarter(event.target.value)} style={{ width:'100%',padding:'7px 9px',borderRadius:7,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }}>
+                    {['Q1','Q2','Q3','Q4'].map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+            <Btn v="teal" sz="sm" disabled={exporting} style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleExport('csv')}>
               ↓ Export CSV
             </Btn>
-            <Btn v="ghost" sz="sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => exportPDF(visible, members, ACTS)}>
+            <Btn v="ghost" sz="sm" disabled={exporting} style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleExport('pdf')}>
               ↓ Export PDF
             </Btn>
           </div>

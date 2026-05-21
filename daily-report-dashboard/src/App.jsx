@@ -7,6 +7,7 @@ import { DashboardView } from './components/DashboardView';
 import { ActivitiesView } from './components/ActivitiesView';
 import { MembersView } from './components/MembersView';
 import { ReportsView } from './components/ReportsView';
+import { ExecutiveReportView } from './components/ExecutiveReportView';
 import { ProfileView } from './components/ProfileView';
 import { TaxonomyView } from './components/TaxonomyView';
 import { KpiManagementView } from './components/KpiManagementView';
@@ -145,6 +146,8 @@ export default function App() {
     "/activities": "Activity Log",
     "/members": "Team Members",
     "/reports": "Reports",
+    "/reports/activity": "Activity Report",
+    "/reports/executive": "Executive Report",
     "/profile": "Profil Saya",
     "/kpi-admin": "KPI",
     "/kpi-nps": "KPI NPS",
@@ -213,7 +216,9 @@ export default function App() {
                   <Route path="/" element={<DashboardView currentUser={user} activities={acts} members={members} onAdminEditNps={handleAdminEditNps} />} />
                   <Route path="/activities" element={<ActivitiesView currentUser={user} members={members} onAdd={handleAddAct} />} />
                   <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} onResetPassword={handleResetMemberPassword} activities={acts} />} />
-                  <Route path="/reports" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
+                  <Route path="/reports" element={<Navigate to="/reports/activity" replace />} />
+                  <Route path="/reports/activity" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
+                  <Route path="/reports/executive" element={<ExecutiveReportView />} />
                   <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={syncUser} />} />
                   <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
                   <Route path="/kpi-nps" element={<KpiNpsView currentUser={user} />} />

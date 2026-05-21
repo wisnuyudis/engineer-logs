@@ -344,6 +344,12 @@ const searchJiraIssues = async ({ jql, fields }) => {
         fieldMap['actual start date'],
         fieldMap['actual end'],
         fieldMap['actual end date'],
+        fieldMap['customer'],
+        fieldMap['customer name'],
+        fieldMap['organization'],
+        fieldMap['organizations'],
+        fieldMap['client'],
+        fieldMap['account'],
     ].filter(Boolean);
     const queryFields = Array.from(new Set([...fields, ...additionalFields]));
     while (true) {
@@ -413,6 +419,14 @@ const searchJiraIssues = async ({ jql, fields }) => {
                 statusCategoryKey: issue.fields?.status?.statusCategory?.key || null,
                 statusCategoryName: issue.fields?.status?.statusCategory?.name || null,
                 priorityName: issue.fields?.priority?.name || null,
+                customerName: extractNamedFieldValueByMap(issue.fields, fieldMap, [
+                    'Customer',
+                    'Customer Name',
+                    'Organization',
+                    'Organizations',
+                    'Client',
+                    'Account',
+                ]),
                 timeSpentSeconds: Number(issue.fields?.timespent || 0),
                 comments: Array.isArray(issue.fields?.comment?.comments)
                     ? issue.fields.comment.comments.map((comment) => ({

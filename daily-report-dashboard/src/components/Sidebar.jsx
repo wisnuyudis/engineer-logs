@@ -14,7 +14,17 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
     { id: "/", icon: "▦", label: "Dashboard" },
     { id: "/activities", icon: "◈", label: "Activity Log" },
     { id: "/members", icon: "◉", label: "Team Members" },
-    { id: "/reports", icon: "⊞", label: "Reports" },
+  ];
+  const workspaceGroups = [
+    {
+      id: 'reports',
+      icon: '⊞',
+      label: 'Reports',
+      children: [
+        { id: "/reports/activity", icon: "▤", label: "Activity Report" },
+        { id: "/reports/executive", icon: "▧", label: "Executive Report" },
+      ],
+    },
   ];
   const adminGroups = [];
   const kpiChildren = [];
@@ -105,6 +115,16 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
             <span style={{ fontSize:13,opacity:active?1:.8 }}>{n.icon}</span>
             <span style={{ letterSpacing:".01em" }}>{n.label}</span>
           </button>;})}
+        {workspaceGroups.map((group) => (
+          <NavGroup
+            key={group.id}
+            group={group}
+            activePath={activePath}
+            open={openGroups[group.id]}
+            onToggle={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
+            onClick={(id)=>{navigate(id); onClose?.();}}
+          />
+        ))}
         {adminGroups.length > 0 && (
           <>
             <Divider my={12} />
