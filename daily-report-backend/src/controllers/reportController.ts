@@ -19,7 +19,7 @@ const classifyTicket = (issue: JiraSearchIssue) => {
 };
 
 const CUSTOMER_ALIASES: Array<[string, string[]]> = [
-  ['PT Bank Mega', ['Mega Crowdstrike', 'Mega Appsealing']],
+  ['Bank Mega', ['Mega Crowdstrike', 'Mega Appsealing']],
   ['Serasi Autoraya', ['Serasi Autoraya']],
   ['United Tractors', ['United Tractors']],
   ['Mandiri Sekuritas', ['Mandiri Sekuritas']],
@@ -77,6 +77,18 @@ const classifyWorkTopic = (issue: JiraSearchIssue) => {
   return checks.find(([, regex]) => regex.test(text))?.[0] || 'Troubleshooting';
 };
 
+const classifyMappedWorkTopic = (issue: JiraSearchIssue) => {
+  const text = normalizeText(issueText(issue));
+  const checks: Array<[string, RegExp]> = [
+    ['Training', /\b(training|handover|workshop|knowledge transfer|sosialisasi|enablement)\b/],
+    ['Discussion', /\b(discussion|meeting|coordination|koordinasi|review|clarification|consult|sync)\b/],
+    ['Creation', /\b(create|creation|setup|configure|configuration|implement|deployment|onboard|provision)\b/],
+    ['Investigation', /\b(investigation|investigate|analysis|analisa|malicious|suspicious|threat|ioc|rca|forensic)\b/],
+    ['Troubleshooting', /\b(troubleshoot|troubleshooting|error|failed|failure|issue|problem|down|cannot|unable|tidak bisa|gagal)\b/],
+  ];
+  return checks.find(([, regex]) => regex.test(text))?.[0] || 'Other';
+};
+
 const classifySpecificTicketTopic = (issue: JiraSearchIssue) => {
   const text = normalizeText(issueText(issue));
   const checks: Array<[string, RegExp]> = [
@@ -95,7 +107,7 @@ const classifySpecificTicketTopic = (issue: JiraSearchIssue) => {
 };
 
 const inferSolutionCategory = (issue: JiraSearchIssue) => {
-  return classifyWorkTopic(issue);
+  return classifyMappedWorkTopic(issue);
 };
 
 const topTopics = (issues: JiraSearchIssue[]) => {
@@ -179,7 +191,9 @@ export const getExecutiveReport = async (req: AuthRequest, res: Response) => {
       totalTickets: row.totalTickets,
       problem: row.problem,
       change: row.change,
-      avgResolutionHours: row._resolutionCount ? Number((row._resolutionSum / row._resolutionCount).toFixed(2)) : null,
+      avgResolutionHours: row.totalTickets ? Number((row._resolutionSum / row.totalTickets).toFixed(2)) : 0,
+      resolvedTicketCount: row._resolutionCount,
+      totalResolutionHours: Number(row._resolutionSum.toFixed(2)),
       ticketsPerMonth: Number((row.totalTickets / monthCount).toFixed(2)),
       problemPct: row.totalTickets ? Number(((row.problem / row.totalTickets) * 100).toFixed(1)) : 0,
     })).sort((a, b) => b.totalTickets - a.totalTickets);
