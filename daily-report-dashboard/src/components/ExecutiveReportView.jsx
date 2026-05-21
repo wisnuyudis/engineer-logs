@@ -258,23 +258,25 @@ export function ExecutiveReportView() {
     });
     y = (doc.lastAutoTable?.finalY || y) + 10;
 
-    y = drawPdfSection(doc, 'Top Jenis Tiket Berdasarkan Topik', y);
-    autoTable(doc, {
-      startY: y,
-      head: [['#', 'Topik', 'Count']],
-      body: topTopicRows.map((item, index) => [index + 1, item.topic, item.count]),
-      theme: 'grid',
-      headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
-      styles: { fontSize: 7, cellPadding: 1.6 },
-      margin: { left: margin, right: margin },
-      columnStyles: { 1: { cellWidth: 140 } },
-    });
-    y = (doc.lastAutoTable?.finalY || y) + 10;
+    if (!selectedCustomer) {
+      y = drawPdfSection(doc, 'Top Jenis Tiket Berdasarkan Topik', y);
+      autoTable(doc, {
+        startY: y,
+        head: [['#', 'Topik', 'Count']],
+        body: topTopicRows.map((item, index) => [index + 1, item.topic, item.count]),
+        theme: 'grid',
+        headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+        styles: { fontSize: 7, cellPadding: 1.6 },
+        margin: { left: margin, right: margin },
+        columnStyles: { 1: { cellWidth: 140 } },
+      });
+      y = (doc.lastAutoTable?.finalY || y) + 10;
+    }
 
     y = drawPdfSection(doc, 'Detail SUP', y);
     autoTable(doc, {
       startY: y,
-      head: [['Issue', 'Customer', 'Type', 'Topic', 'Status', 'Created', 'Resolution']],
+      head: [['Issue', 'Customer', 'Type', 'Topic', 'Status', 'Created', 'Actual At', 'Actual End', 'Resolution']],
       body: issues.map((issue) => [
         issue.key,
         issue.customer,
@@ -282,13 +284,15 @@ export function ExecutiveReportView() {
         selectedCustomer ? (issue.summary || '-') : (issue.ticketTopic || '-'),
         issue.status || '-',
         issue.createdAt ? issue.createdAt.slice(0, 10) : '-',
+        issue.actualStartDate ? issue.actualStartDate.slice(0, 10) : '-',
+        issue.actualEndDate ? issue.actualEndDate.slice(0, 10) : '-',
         fmtHour(issue.resolutionHours),
       ]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
       styles: { fontSize: 6.4, cellPadding: 1.4, overflow: 'linebreak' },
       margin: { left: margin, right: margin },
-      columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 25 }, 2: { cellWidth: 15 }, 3: { cellWidth: 62 }, 4: { cellWidth: 22 }, 5: { cellWidth: 20 }, 6: { cellWidth: 18 } },
+      columnStyles: { 0: { cellWidth: 16 }, 1: { cellWidth: 22 }, 2: { cellWidth: 13 }, 3: { cellWidth: 48 }, 4: { cellWidth: 18 }, 5: { cellWidth: 17 }, 6: { cellWidth: 17 }, 7: { cellWidth: 17 }, 8: { cellWidth: 15 } },
     });
 
     addPdfFooter(doc);
