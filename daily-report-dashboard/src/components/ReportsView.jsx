@@ -210,7 +210,7 @@ export function ReportsView({ activities, members, currentUser }) {
   };
 
   const renderTeamFilter = () => !isSelfOnly && (
-    <div>
+    <div className="report-filter-field is-team">
       <Lbl>Tim</Lbl>
       <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
         {[
@@ -235,7 +235,7 @@ export function ReportsView({ activities, members, currentUser }) {
   );
 
   const renderSourceFilter = () => (
-    <div>
+    <div className="report-filter-field is-source">
       <Lbl>Source</Lbl>
       <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
         {[
@@ -260,7 +260,7 @@ export function ReportsView({ activities, members, currentUser }) {
       ? scopeMembers.map((m) => ({ id: m.id, name: m.name, role: m.role, avatar: m.avatar, team: m.team }))
       : memberOptions;
     return !isSelfOnly && (
-    <div style={{ position:'relative',minWidth:220 }}>
+    <div className="report-filter-field report-member-field">
       <Lbl>{single ? 'User' : 'Member'}</Lbl>
       <button
         onClick={() => setMDD((v) => !v)}
@@ -333,22 +333,61 @@ export function ReportsView({ activities, members, currentUser }) {
         .report-export-top {
           margin-bottom:14px;
         }
-        .report-filter-grid {
+        .report-filter-stack {
+          display:flex;
+          flex-direction:column;
+          gap:14px;
+        }
+        .report-filter-row {
           display:grid;
-          grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+          grid-template-columns:repeat(12,minmax(0,1fr));
           gap:12px;
-          align-items:end;
+          align-items:start;
+        }
+        .report-filter-field {
+          min-width:0;
+        }
+        .report-filter-field.is-team,
+        .report-filter-field.is-source {
+          grid-column:span 4;
+        }
+        .report-filter-field.is-member,
+        .report-member-field {
+          grid-column:span 4;
+          position:relative;
+          z-index:20;
+        }
+        .report-filter-field.is-customer {
+          grid-column:span 5;
+        }
+        .report-filter-field.is-date {
+          grid-column:span 3;
         }
         .report-filter-actions {
           display:flex;
           gap:8px;
           flex-wrap:wrap;
-          align-items:end;
-          justify-content:flex-end;
+          align-items:center;
+          justify-content:space-between;
+          padding-top:12px;
+          border-top:1px solid ${T.border};
         }
         @media (max-width: 980px) {
+          .report-filter-row {
+            grid-template-columns:1fr;
+          }
+          .report-filter-field,
+          .report-filter-field.is-team,
+          .report-filter-field.is-source,
+          .report-filter-field.is-member,
+          .report-filter-field.is-customer,
+          .report-filter-field.is-date,
+          .report-member-field {
+            grid-column:1 / -1;
+          }
           .report-filter-actions {
-            justify-content:flex-start;
+            align-items:flex-start;
+            flex-direction:column;
           }
         }
       `}</style>
@@ -394,51 +433,71 @@ export function ReportsView({ activities, members, currentUser }) {
         </div>
 
         {exportMode === 'activity' ? (
-          <div className="report-filter-grid">
-            {renderTeamFilter()}
-            {renderSourceFilter()}
-            {renderMemberFilter(false)}
-            <div>
-              <Lbl>Customer</Lbl>
-              <div style={{ position:'relative' }}>
-                <input
-                  value={custF}
-                  onChange={(e) => setCustF(e.target.value)}
-                  placeholder="Cari nama customer..."
-                  style={{ width:'100%',padding:'8px 28px 8px 10px',borderRadius:8,border:`1.5px solid ${custF ? T.indigo : T.border}`,background:T.surfaceHi,color:T.textPri,fontFamily:FONT,fontSize:12,outline:'none',boxSizing:'border-box' }}
-                />
-                {custF && (
-                  <button onClick={() => setCustF('')} style={{ position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:T.textMute,cursor:'pointer',fontSize:13,padding:0,lineHeight:1 }}>
-                    ×
-                  </button>
-                )}
+          <div className="report-filter-stack">
+            <div className="report-filter-row">
+              {renderTeamFilter()}
+              {renderSourceFilter()}
+              {renderMemberFilter(false)}
+            </div>
+            <div className="report-filter-row">
+              <div className="report-filter-field is-customer">
+                <Lbl>Customer</Lbl>
+                <div style={{ position:'relative' }}>
+                  <input
+                    value={custF}
+                    onChange={(e) => setCustF(e.target.value)}
+                    placeholder="Cari nama customer..."
+                    style={{ width:'100%',padding:'8px 28px 8px 10px',borderRadius:8,border:`1.5px solid ${custF ? T.indigo : T.border}`,background:T.surfaceHi,color:T.textPri,fontFamily:FONT,fontSize:12,outline:'none',boxSizing:'border-box' }}
+                  />
+                  {custF && (
+                    <button onClick={() => setCustF('')} style={{ position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:T.textMute,cursor:'pointer',fontSize:13,padding:0,lineHeight:1 }}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="report-filter-field is-date">
+                <Inp label="Dari" type="date" value={dateFrom} onChange={(e) => setDF(e.target.value)} />
+              </div>
+              <div className="report-filter-field is-date">
+                <Inp label="Sampai" type="date" value={dateTo} onChange={(e) => setDT(e.target.value)} />
               </div>
             </div>
-            <Inp label="Dari" type="date" value={dateFrom} onChange={(e) => setDF(e.target.value)} />
-            <Inp label="Sampai" type="date" value={dateTo} onChange={(e) => setDT(e.target.value)} />
             <div className="report-filter-actions">
-              {hasFilter && <Btn v="danger" sz="sm" onClick={reset}>Reset</Btn>}
-              <Btn v="teal" sz="sm" disabled={exporting} onClick={() => handleExport('csv')}>CSV</Btn>
-              <Btn v="ghost" sz="sm" disabled={exporting} onClick={() => handleExport('pdf')}>PDF</Btn>
+              <div style={{ fontSize:11,color:T.textMute }}>
+                {visible.length} aktivitas cocok dengan filter saat ini.
+              </div>
+              <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+                {hasFilter && <Btn v="danger" sz="sm" onClick={reset}>Reset</Btn>}
+                <Btn v="teal" sz="sm" disabled={exporting} onClick={() => handleExport('csv')}>CSV</Btn>
+                <Btn v="ghost" sz="sm" disabled={exporting} onClick={() => handleExport('pdf')}>PDF</Btn>
+              </div>
             </div>
           </div>
         ) : (
           <>
-            <div className="report-filter-grid">
+            <div className="report-filter-stack">
+              <div className="report-filter-row">
               {renderMemberFilter(true)}
-              <div>
+              <div className="report-filter-field is-date">
                 <Lbl>Tahun</Lbl>
                 <input type="number" value={exportYear} onChange={(event) => setExportYear(Number(event.target.value) || new Date().getFullYear())} style={{ width:'100%',boxSizing:'border-box',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }} />
               </div>
-              <div>
+              <div className="report-filter-field is-date">
                 <Lbl>Quarter</Lbl>
                 <select value={exportQuarter} onChange={(event) => setExportQuarter(event.target.value)} style={{ width:'100%',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }}>
                   {['Q1','Q2','Q3','Q4'].map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
                 </select>
               </div>
+              </div>
               <div className="report-filter-actions">
-                <Btn v="teal" sz="sm" disabled={exporting} onClick={() => handleExport('csv')}>CSV</Btn>
-                <Btn v="ghost" sz="sm" disabled={exporting} onClick={() => handleExport('pdf')}>PDF</Btn>
+                <div style={{ fontSize:11,color:T.textMute }}>
+                  {selectedKpiRows.length} aktivitas pada periode {exportYear} {exportQuarter}.
+                </div>
+                <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+                  <Btn v="teal" sz="sm" disabled={exporting} onClick={() => handleExport('csv')}>CSV</Btn>
+                  <Btn v="ghost" sz="sm" disabled={exporting} onClick={() => handleExport('pdf')}>PDF</Btn>
+                </div>
               </div>
             </div>
             {!isSelfOnly && (
