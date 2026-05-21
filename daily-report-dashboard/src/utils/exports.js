@@ -139,49 +139,36 @@ const scoreLabel = (value) => (
   value === null || value === undefined ? 'N/A' : Number(value).toFixed(2)
 );
 
-export function exportQuarterlyKpiCSV({ rows, members, ACTS, scorecards, year, quarter }) {
+export function exportQuarterlyKpiCSV({ rows, ACTS, scorecard, user, year, quarter }) {
   const [start, end] = quarterRange(year, quarter);
+  const totalMins = rows.reduce((sum, row) => sum + (row.dur || 0), 0);
   const esc = v => {
     const s = String(v == null ? "" : v);
     return (s.includes(",") || s.includes('"') || s.includes("\n")) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   const lines = [
-    [`KPI Quarterly Activity Report`, `${quarter} ${year}`, `${start} - ${end}`].map(esc).join(","),
+    [`Individual Performance Dossier`, `${quarter} ${year}`, `${start} - ${end}`].map(esc).join(","),
+    ["Nama", user?.name || scorecard?.user?.name || ""].map(esc).join(","),
+    ["Role", ROLES[user?.role || scorecard?.user?.role]?.label || user?.role || scorecard?.user?.role || ""].map(esc).join(","),
+    ["Total Activity", rows.length].map(esc).join(","),
+    ["Manhour", totalMins].map(esc).join(","),
     "",
-    ["Member", "Role", "Profile", "Final Score", "QB Multiplier", "Jira Done", "Eligible Bonus", "Domain", "Domain Score", "Domain Note"].map(esc).join(","),
+    ["KPI Scorecard"].map(esc).join(","),
+    ["Profile", "Final Score", "QB Multiplier", "Jira Done", "Eligible Bonus", "Domain", "Domain Score", "Domain Note"].map(esc).join(","),
   ];
 
-  scorecards.forEach((item) => {
-    const domains = item.profile?.domains || [];
-    if (!domains.length) {
-      lines.push([
-        item.user?.name,
-        ROLES[item.user?.role]?.label || item.user?.role || "",
-        item.profile?.label || "Unsupported",
-        scoreLabel(item.scorecard?.finalScore),
-        item.scorecard?.qbMultiplier || 0,
-        item.scorecard?.completedJiraTaskCount || 0,
-        item.scorecard?.eligibleBonus ? "Ya" : "Tidak",
-        "",
-        "",
-        "",
-      ].map(esc).join(","));
-      return;
-    }
-    domains.forEach((domain) => {
-      lines.push([
-        item.user?.name,
-        ROLES[item.user?.role]?.label || item.user?.role || "",
-        item.profile?.label || "",
-        scoreLabel(item.scorecard?.finalScore),
-        item.scorecard?.qbMultiplier || 0,
-        item.scorecard?.completedJiraTaskCount || 0,
-        item.scorecard?.eligibleBonus ? "Ya" : "Tidak",
-        domain.label,
-        scoreLabel(item.scorecard?.scores?.[domain.key]),
-        item.scorecard?.notes?.[domain.key] || "",
-      ].map(esc).join(","));
-    });
+  const domains = scorecard?.profile?.domains || [];
+  domains.forEach((domain) => {
+    lines.push([
+      scorecard?.profile?.label || "",
+      scoreLabel(scorecard?.scorecard?.finalScore),
+      scorecard?.scorecard?.qbMultiplier || 0,
+      scorecard?.scorecard?.completedJiraTaskCount || 0,
+      scorecard?.scorecard?.eligibleBonus ? "Ya" : "Tidak",
+      domain.label,
+      scoreLabel(scorecard?.scorecard?.scores?.[domain.key]),
+      scorecard?.scorecard?.notes?.[domain.key] || "",
+    ].map(esc).join(","));
   });
 
   lines.push("");
@@ -207,32 +194,28 @@ export function exportQuarterlyKpiCSV({ rows, members, ACTS, scorecards, year, q
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `engineer-quarterly-kpi-${quarter}-${year}.csv`;
+  link.download = `individual-performance-${user?.name || scorecard?.user?.name || 'member'}-${quarter}-${year}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
 
-export function exportQuarterlyKpiPDF({ rows, ACTS, scorecards, year, quarter }) {
+export function exportQuarterlyKpiPDF({ rows, ACTS, scorecard, user, year, quarter }) {
   const [start, end] = quarterRange(year, quarter);
   const fmtDur = m => { const h = Math.floor((m || 0) / 60), mn = (m || 0) % 60; return h ? h+"j "+mn+"m" : mn+"m"; };
   const totalMins = rows.reduce((sum, row) => sum + (row.dur || 0), 0);
 
-  const scorecardsHtml = scorecards.map((item) => {
-    const domains = item.profile?.domains || [];
-    const domainRows = domains.map((domain) => (
-      `<tr><td>${domain.label}</td><td>${scoreLabel(item.scorecard?.scores?.[domain.key])}</td><td>${item.scorecard?.notes?.[domain.key] || '-'}</td></tr>`
-    )).join("") || `<tr><td colspan="3">Tidak ada profile KPI untuk user ini.</td></tr>`;
-    return `<section class="scorecard">
-      <div class="score-head">
-        <div><strong>${item.user?.name || '-'}</strong><span>${ROLES[item.user?.role]?.label || item.user?.role || '-'}</span></div>
-        <div class="final">${scoreLabel(item.scorecard?.finalScore)}</div>
-      </div>
-      <div class="meta">Profile: ${item.profile?.label || 'Unsupported'} · Jira Done: ${item.scorecard?.completedJiraTaskCount || 0} · QB: ${item.scorecard?.qbMultiplier || 0} · Bonus: ${item.scorecard?.eligibleBonus ? 'Eligible' : 'Tidak'}</div>
-      <table><thead><tr><th>Domain</th><th>Score</th><th>Catatan</th></tr></thead><tbody>${domainRows}</tbody></table>
-    </section>`;
-  }).join("");
+  const domainRows = (scorecard?.profile?.domains || []).map((domain) => (
+    `<tr><td>${domain.label}</td><td>${scoreLabel(scorecard?.scorecard?.scores?.[domain.key])}</td><td>${scorecard?.scorecard?.notes?.[domain.key] || '-'}</td></tr>`
+  )).join("") || `<tr><td colspan="3">Tidak ada profile KPI untuk user ini.</td></tr>`;
+  const scorecardHtml = `<section class="scorecard">
+    <div class="score-head">
+      <div><strong>${scorecard?.profile?.label || 'KPI Scorecard'}</strong><span>Jira Done: ${scorecard?.scorecard?.completedJiraTaskCount || 0} · QB: ${scorecard?.scorecard?.qbMultiplier || 0} · Bonus: ${scorecard?.scorecard?.eligibleBonus ? 'Eligible' : 'Tidak'}</span></div>
+      <div class="final">${scoreLabel(scorecard?.scorecard?.finalScore)}</div>
+    </div>
+    <table><thead><tr><th>Domain</th><th>Score</th><th>Catatan</th></tr></thead><tbody>${domainRows}</tbody></table>
+  </section>`;
 
   const activityRows = rows.map((a, index) => {
     const def = ACTS[a.actKey] || {};
@@ -248,17 +231,20 @@ export function exportQuarterlyKpiPDF({ rows, ACTS, scorecards, year, quarter })
     "h1{font-size:22px;color:#818CF8;margin:0 0 4px}",
     ".sub{color:#94a3b8;margin-bottom:18px}",
     ".stats{display:flex;gap:12px;margin:18px 0}.stat{background:#171923;border:1px solid #252B3B;border-radius:8px;padding:12px;flex:1}.sv{font-size:20px;font-weight:800;color:#34D399}.sl{font-size:10px;color:#94a3b8;text-transform:uppercase}",
+    ".identity{background:#171923;border:1px solid #252B3B;border-radius:10px;padding:16px;margin:18px 0}.identity strong{font-size:18px;color:#fff}.identity span{display:block;color:#94a3b8;margin-top:3px}",
     ".scorecard{background:#171923;border:1px solid #252B3B;border-radius:10px;padding:14px;margin-bottom:14px;break-inside:avoid}.score-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.score-head span{display:block;color:#94a3b8;font-size:11px;margin-top:3px}.final{font-size:24px;font-weight:900;color:#34D399}.meta{color:#94a3b8;font-size:11px;margin:8px 0 10px}",
     "table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#1E2333;color:#94a3b8;font-size:10px;text-transform:uppercase;padding:7px;text-align:left}td{padding:7px;border-bottom:1px solid #252B3B;color:#dbeafe}.odd{background:#14181f}",
     "h2{margin:24px 0 8px;color:#c7d2fe}",
-    "@media print{body{background:#fff;color:#111}.scorecard,.stat{background:#fff;border-color:#ddd}th{background:#eee;color:#333}td{color:#111;border-color:#ddd}.odd{background:#f8fafc}.sub,.meta,.sl{color:#555}}",
+    "@media print{body{background:#fff;color:#111}.identity,.scorecard,.stat{background:#fff;border-color:#ddd}.identity strong{color:#111}th{background:#eee;color:#333}td{color:#111;border-color:#ddd}.odd{background:#f8fafc}.sub,.meta,.sl,.identity span{color:#555}}",
   ].join("");
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>KPI Quarterly Activity Report</title><style>${css}</style></head><body>
-    <h1>KPI Quarterly Activity Report</h1>
+  const reportUser = user || scorecard?.user || {};
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Individual Performance Dossier</title><style>${css}</style></head><body>
+    <h1>Individual Performance Dossier</h1>
     <div class="sub">Periode ${quarter} ${year} · ${start} sampai ${end}</div>
-    <div class="stats"><div class="stat"><div class="sv">${scorecards.length}</div><div class="sl">Member KPI</div></div><div class="stat"><div class="sv">${rows.length}</div><div class="sl">Activity</div></div><div class="stat"><div class="sv">${fmtDur(totalMins)}</div><div class="sl">Jam Activity</div></div></div>
-    <h2>KPI Scorecard</h2>${scorecardsHtml || '<p>Tidak ada scorecard.</p>'}
+    <div class="identity"><strong>${reportUser.name || '-'}</strong><span>${ROLES[reportUser.role]?.label || reportUser.role || '-'} · ${reportUser.email || scorecard?.user?.email || ''}</span></div>
+    <div class="stats"><div class="stat"><div class="sv">${rows.length}</div><div class="sl">Total Activity</div></div><div class="stat"><div class="sv">${fmtDur(totalMins)}</div><div class="sl">Manhour</div></div><div class="stat"><div class="sv">${scoreLabel(scorecard?.scorecard?.finalScore)}</div><div class="sl">Final KPI</div></div></div>
+    <h2>KPI Scorecard</h2>${scorecardHtml}
     <h2>Activity Detail</h2><table><thead><tr><th>Tanggal</th><th>Member</th><th>Source</th><th>Kategori</th><th>Aktivitas / Ticket</th><th>Durasi</th><th>Status</th></tr></thead><tbody>${activityRows}</tbody></table>
   </body></html>`;
 

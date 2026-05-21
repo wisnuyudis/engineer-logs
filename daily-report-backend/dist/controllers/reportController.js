@@ -19,47 +19,89 @@ const classifyTicket = (issue) => {
         return 'problem';
     return issue.key.toUpperCase().startsWith('SUP-') ? 'problem' : 'other';
 };
+const CUSTOMER_ALIASES = [
+    ['PT Bank Mega', ['Mega Crowdstrike', 'Mega Appsealing']],
+    ['Serasi Autoraya', ['Serasi Autoraya']],
+    ['United Tractors', ['United Tractors']],
+    ['Mandiri Sekuritas', ['Mandiri Sekuritas']],
+    ['Pupuk Kaltim', ['Pupuk Kaltim']],
+    ['Mandiri Taspen', ['Bank Mandiri Taspen - KB4']],
+    ['ACC', ['ACC - Crowdstrike', 'ACC - KB4']],
+    ['Bank Saqu', ['Bank Saqu - Forcepoint']],
+    ['Allo Bank', ['Allo Bank - PRMG', 'Allo Bank - AML']],
+    ['Mandiri', ['Mandiri']],
+    ['Tempo', ['Tempo']],
+    ['Orang Tua Group', ['Orang Tua']],
+    ['OJK', ['OJK', 'OJK - Thales']],
+    ['MTP', ['MTP - TDX']],
+    ['WOM Finance', ['WOM Finance']],
+    ['Bank Mas', ['Bank Mas - Forcepoint', 'Bank Mas - KB4']],
+    ['Panah Merah', ['Panah Merah']],
+    ['GS Battery', ['GS Battery - Forcepoint']],
+];
+const normalizeText = (value) => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+const normalizeCustomer = (rawCustomer) => {
+    const normalized = normalizeText(rawCustomer);
+    for (const [canonical, aliases] of CUSTOMER_ALIASES) {
+        if (aliases.some((alias) => normalized.includes(normalizeText(alias))))
+            return canonical;
+    }
+    return rawCustomer;
+};
 const inferCustomer = (issue) => {
     if (issue.customerName)
-        return issue.customerName;
+        return normalizeCustomer(issue.customerName);
     const summary = String(issue.summary || '');
     const bracket = summary.match(/\[(.*?)\]/);
     if (bracket?.[1] && !/system|problem|change/i.test(bracket[1]))
-        return bracket[1].trim();
+        return normalizeCustomer(bracket[1].trim());
     const dashParts = summary.split(/\s[-–—]\s/).map((part) => part.trim()).filter(Boolean);
     if (dashParts.length >= 2 && dashParts[0].length <= 60)
-        return dashParts[0];
+        return normalizeCustomer(dashParts[0]);
+    const mapped = normalizeCustomer(summary);
+    if (mapped !== summary)
+        return mapped;
     return 'Unknown Customer';
 };
-const inferSolutionCategory = (issue) => {
-    const text = `${issue.summary || ''} ${issue.comments.map((comment) => comment.bodyText).join(' ')}`.toLowerCase();
+const issueText = (issue) => (`${issue.summary || ''} ${issue.comments.map((comment) => comment.bodyText).join(' ')}`);
+const classifyWorkTopic = (issue) => {
+    const text = normalizeText(issueText(issue));
     const checks = [
-        ['Network / Connectivity', /\b(network|connect|vpn|link|latency|packet|routing|dns)\b/],
-        ['Security Policy / Firewall', /\b(firewall|policy|rule|waf|ips|ids|block|allow)\b/],
-        ['Endpoint / Agent', /\b(endpoint|agent|sensor|edr|client)\b/],
-        ['SIEM / Log', /\b(siem|log|parser|correlation|event|collector)\b/],
-        ['Access / Account', /\b(access|login|user|account|permission|role|password)\b/],
-        ['Certificate / SSL', /\b(cert|certificate|ssl|tls|expired)\b/],
-        ['Server / Platform', /\b(server|service|cpu|memory|disk|database|db|pod|container)\b/],
+        ['Training', /\b(training|handover|workshop|knowledge transfer|sosialisasi|enablement)\b/],
+        ['Discussion', /\b(discussion|meeting|coordination|koordinasi|review|clarification|consult|sync)\b/],
+        ['Creation', /\b(create|creation|setup|configure|configuration|implement|deployment|onboard|provision)\b/],
+        ['Investigation', /\b(investigation|investigate|analysis|analisa|malicious|suspicious|threat|ioc|rca|forensic)\b/],
+        ['Troubleshooting', /\b(troubleshoot|troubleshooting|error|failed|failure|issue|problem|down|cannot|unable|tidak bisa|gagal)\b/],
     ];
-    return checks.find(([, regex]) => regex.test(text))?.[0] || 'General / Others';
+    return checks.find(([, regex]) => regex.test(text))?.[0] || 'Troubleshooting';
+};
+const classifySpecificTicketTopic = (issue) => {
+    const text = normalizeText(issueText(issue));
+    const checks = [
+        ['On Demand Scan', /\b(on demand scan|ondemand scan|scan now|full scan|ioc scan)\b/],
+        ['Investigation Malicious', /\b(malicious|malware|suspicious|threat|ioc|investigation|forensic|false positive)\b/],
+        ['Query Creation', /\b(query|kql|lucene|sql|search query|detection query|report query)\b/],
+        ['API Crowdstrike', /\b(crowdstrike api|falcon api|api crowdstrike|oauth falcon|falcon integration)\b/],
+        ['Whitelist', /\b(whitelist|allowlist|exception|exclusion|exclude|bypass)\b/],
+        ['Dashboard / Workflow', /\b(dashboard|workflow|automation|playbook|widget|visualization)\b/],
+        ['Policy / IoA Setting', /\b(policy|ioa|indicator of attack|prevention rule|detection rule|sensor policy)\b/],
+        ['Uninstall Sensor', /\b(uninstall|remove sensor|sensor removal|hapus sensor|agent removal)\b/],
+        ['SIEM Connector', /\b(siem|connector|log source|log collector|parser|syslog|splunk|qradar)\b/],
+        ['Kubernetes', /\b(kubernetes|k8s|cluster|pod|container|helm|namespace)\b/],
+    ];
+    return checks.find(([, regex]) => regex.test(text))?.[0] || classifyWorkTopic(issue);
+};
+const inferSolutionCategory = (issue) => {
+    return classifyWorkTopic(issue);
 };
 const topTopics = (issues) => {
-    const stopWords = new Set(['the', 'and', 'atau', 'yang', 'untuk', 'dari', 'pada', 'dengan', 'issue', 'problem', 'change', 'request', 'error']);
     const counts = new Map();
     for (const issue of issues) {
-        const words = String(issue.summary || '')
-            .toLowerCase()
-            .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
-            .split(/\s+/)
-            .map((word) => word.trim())
-            .filter((word) => word.length >= 4 && !stopWords.has(word));
-        for (const word of words)
-            counts.set(word, (counts.get(word) || 0) + 1);
+        const topic = classifySpecificTicketTopic(issue);
+        counts.set(topic, (counts.get(topic) || 0) + 1);
     }
     return Array.from(counts.entries())
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 12)
         .map(([topic, count]) => ({ topic, count }));
 };
 const getExecutiveReport = async (req, res) => {
@@ -152,6 +194,8 @@ const getExecutiveReport = async (req, res) => {
                 summary: issue.summary,
                 customer: inferCustomer(issue),
                 type: classifyTicket(issue),
+                workTopic: classifyWorkTopic(issue),
+                ticketTopic: classifySpecificTicketTopic(issue),
                 status: issue.statusName,
                 createdAt: issue.createdAt,
                 resolutionDate: issue.resolutionDate,

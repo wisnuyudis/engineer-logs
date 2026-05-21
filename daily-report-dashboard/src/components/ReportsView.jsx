@@ -3,7 +3,7 @@ import { T, FONT, MONO } from '../theme/tokens';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { ROLES, isAdmin, isMgr } from '../constants/taxonomy';
 import { exportCSV, exportPDF, exportQuarterlyKpiCSV, exportQuarterlyKpiPDF } from '../utils/exports';
-import { Card, Pill, Lbl, Inp, Btn, Divider, Tag, Avi } from './ui/Primitives';
+import { Card, Lbl, Inp, Btn, Tag, Avi } from './ui/Primitives';
 import { fmtH } from '../utils/formatters';
 import api from '../lib/api';
 import { toast } from 'sonner';
@@ -152,23 +152,31 @@ export function ReportsView({ activities, members, currentUser }) {
     visible.filter((activity) => activity.date >= selectedQuarterRange[0] && activity.date <= selectedQuarterRange[1])
   ), [selectedQuarterRange, visible]);
 
-  const exportMembers = useMemo(() => {
-    const ids = new Set(quarterlyRows.map((activity) => activity.userId || members.find((m) => m.name === activity.user)?.id).filter(Boolean));
-    const base = userSel.length > 0
-      ? members.filter((member) => userSel.includes(member.id))
-      : scopeMembers.filter((member) => teamF === 'all' || member.team === teamF);
-    return base.filter((member) => ids.has(member.id) || userSel.includes(member.id));
-  }, [members, quarterlyRows, scopeMembers, teamF, userSel]);
+  const selectedKpiMember = useMemo(() => {
+    if (isSelfOnly) return currentUser;
+    if (userSel.length !== 1) return null;
+    return members.find((member) => member.id === userSel[0]) || null;
+  }, [currentUser, isSelfOnly, members, userSel]);
+
+  const selectedKpiRows = useMemo(() => {
+    if (!selectedKpiMember) return [];
+    return quarterlyRows.filter((activity) => {
+      const ownerId = activity.userId || members.find((member) => member.name === activity.user)?.id;
+      return ownerId === selectedKpiMember.id;
+    });
+  }, [members, quarterlyRows, selectedKpiMember]);
 
   const loadQuarterlyScorecards = async () => {
-    const targets = exportMembers.filter((member) => ['delivery', 'SE', 'PM', 'pm'].includes(member.role));
-    const results = await Promise.allSettled(
-      targets.map((member) => api.get(`/kpi/scorecards/${member.id}`, { params: { year: exportYear, quarter: exportQuarter } }).then((res) => res.data))
-    );
-    return results
-      .filter((result) => result.status === 'fulfilled')
-      .map((result) => result.value)
-      .filter((item) => !item.unsupported);
+    if (!selectedKpiMember) {
+      toast.error('Pilih tepat 1 member untuk laporan kinerja kuartalan.');
+      return null;
+    }
+    const res = await api.get(`/kpi/scorecards/${selectedKpiMember.id}`, { params: { year: exportYear, quarter: exportQuarter } });
+    if (res.data?.unsupported) {
+      toast.error('Member yang dipilih belum memiliki profil KPI.');
+      return null;
+    }
+    return res.data;
   };
 
   const handleExport = async (format) => {
@@ -180,8 +188,9 @@ export function ReportsView({ activities, members, currentUser }) {
 
     setExporting(true);
     try {
-      const scorecards = await loadQuarterlyScorecards();
-      const payload = { rows: quarterlyRows, members, ACTS, scorecards, year: exportYear, quarter: exportQuarter };
+      const scorecard = await loadQuarterlyScorecards();
+      if (!scorecard) return;
+      const payload = { rows: selectedKpiRows, members, ACTS, scorecard, user: selectedKpiMember, year: exportYear, quarter: exportQuarter };
       if (format === 'csv') exportQuarterlyKpiCSV(payload);
       else exportQuarterlyKpiPDF(payload);
     } catch (error) {
@@ -208,12 +217,67 @@ export function ReportsView({ activities, members, currentUser }) {
           grid-template-columns:240px minmax(0,1fr);
           gap:14px;
         }
+        .report-export-top {
+          display:grid;
+          grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);
+          gap:14px;
+          margin-bottom:14px;
+        }
         @media (max-width: 980px) {
           .reports-layout {
             grid-template-columns:1fr;
           }
+          .report-export-top {
+            grid-template-columns:1fr;
+          }
         }
       `}</style>
+      <div className="report-export-top">
+        <Card p={16}>
+          <div style={{ fontSize:10,fontWeight:800,color:T.textSec,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:10 }}>Cakupan Laporan</div>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10 }}>
+            {[
+              ['activity', 'Rekap Aktivitas', 'Gabungan log aktivitas sesuai filter dan range tanggal.'],
+              ['quarterly', 'Kinerja Kuartalan', '1 member, 1 quarter, lengkap dengan KPI scorecard.'],
+            ].map(([value, title, desc]) => (
+              <button
+                key={value}
+                onClick={() => setExportMode(value)}
+                style={{ textAlign:'left',padding:'12px 13px',borderRadius:11,border:`1.5px solid ${exportMode === value ? T.indigo : T.border}`,background:exportMode === value ? T.indigoLo : T.surfaceHi,color:T.textPri,cursor:'pointer',fontFamily:FONT }}
+              >
+                <div style={{ fontSize:13,fontWeight:800,color:exportMode === value ? T.indigoHi : T.textPri }}>{title}</div>
+                <div style={{ fontSize:11,color:T.textMute,lineHeight:1.45,marginTop:4 }}>{desc}</div>
+              </button>
+            ))}
+          </div>
+        </Card>
+        <Card p={16}>
+          <div style={{ fontSize:10,fontWeight:800,color:T.textSec,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:10 }}>Export Report</div>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,alignItems:'end' }}>
+            {exportMode === 'quarterly' && (
+              <>
+                <div>
+                  <Lbl>Tahun</Lbl>
+                  <input type="number" value={exportYear} onChange={(event) => setExportYear(Number(event.target.value) || new Date().getFullYear())} style={{ width:'100%',boxSizing:'border-box',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }} />
+                </div>
+                <div>
+                  <Lbl>Quarter</Lbl>
+                  <select value={exportQuarter} onChange={(event) => setExportQuarter(event.target.value)} style={{ width:'100%',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }}>
+                    {['Q1','Q2','Q3','Q4'].map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+            <Btn v="teal" disabled={exporting} style={{ justifyContent:'center' }} onClick={() => handleExport('csv')}>↓ CSV</Btn>
+            <Btn v="ghost" disabled={exporting} style={{ justifyContent:'center' }} onClick={() => handleExport('pdf')}>↓ PDF</Btn>
+          </div>
+          {exportMode === 'quarterly' && !isSelfOnly && (
+            <div style={{ fontSize:11,color:selectedKpiMember ? T.textMute : T.amber,marginTop:10 }}>
+              Laporan kinerja kuartalan wajib memilih tepat 1 member dari filter.
+            </div>
+          )}
+        </Card>
+      </div>
       <div className="reports-layout">
         <Card p={16}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 14 }}>Filter</div>
@@ -505,34 +569,6 @@ export function ReportsView({ activities, members, currentUser }) {
                 × Reset Filter
               </Btn>
             )}
-            <Divider my={4} />
-            <div>
-              <Lbl>Tipe Export</Lbl>
-              <div style={{ display:'flex',flexDirection:'column',gap:5 }}>
-                <Pill small active={exportMode === 'activity'} color={T.teal} lo={T.tealLo} onClick={() => setExportMode('activity')}>Activity saja</Pill>
-                <Pill small active={exportMode === 'quarterly'} color={T.indigoHi} lo={T.indigoLo} onClick={() => setExportMode('quarterly')}>Quarterly + KPI</Pill>
-              </div>
-            </div>
-            {exportMode === 'quarterly' && (
-              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
-                <div>
-                  <Lbl>Tahun</Lbl>
-                  <input type="number" value={exportYear} onChange={(event) => setExportYear(Number(event.target.value) || new Date().getFullYear())} style={{ width:'100%',boxSizing:'border-box',padding:'7px 9px',borderRadius:7,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }} />
-                </div>
-                <div>
-                  <Lbl>Quarter</Lbl>
-                  <select value={exportQuarter} onChange={(event) => setExportQuarter(event.target.value)} style={{ width:'100%',padding:'7px 9px',borderRadius:7,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }}>
-                    {['Q1','Q2','Q3','Q4'].map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
-            <Btn v="teal" sz="sm" disabled={exporting} style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleExport('csv')}>
-              ↓ Export CSV
-            </Btn>
-            <Btn v="ghost" sz="sm" disabled={exporting} style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleExport('pdf')}>
-              ↓ Export PDF
-            </Btn>
           </div>
         </Card>
 
