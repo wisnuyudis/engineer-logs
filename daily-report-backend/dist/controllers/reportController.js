@@ -20,7 +20,7 @@ const classifyTicket = (issue) => {
     return issue.key.toUpperCase().startsWith('SUP-') ? 'problem' : 'other';
 };
 const CUSTOMER_ALIASES = [
-    ['PT Bank Mega', ['Mega Crowdstrike', 'Mega Appsealing']],
+    ['Bank Mega', ['Mega Crowdstrike', 'Mega Appsealing']],
     ['Serasi Autoraya', ['Serasi Autoraya']],
     ['United Tractors', ['United Tractors']],
     ['Mandiri Sekuritas', ['Mandiri Sekuritas']],
