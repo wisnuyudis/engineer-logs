@@ -498,7 +498,7 @@ export function KpiManagementView({ currentUser }) {
                         <HybridMetric
                           label="Task Accuracy"
                           score={scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.score ?? null}
-                          detail={`${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimeSubtaskCount || 0}/${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.eligibleSubtaskCount || 0} subtask tepat waktu · ${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimePct ?? 'N/A'}% · ${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.excusedBlockedSubtaskCount || 0} excused blocker`}
+                          detail={`${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimeSubtaskCount || 0}/${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.eligibleSubtaskCount || 0} subtask tepat waktu · ${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimePct ?? 'N/A'}% · ${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.excusedBlockedSubtaskCount || 0} blocker dihitung skor 4`}
                         />
                         <HybridMetric
                           label="Dokumentasi"

@@ -148,10 +148,6 @@ export function ReportsView({ activities, members, currentUser }) {
     return ranges[exportQuarter] || ranges.Q1;
   }, [exportQuarter, exportYear]);
 
-  const quarterlyRows = useMemo(() => (
-    visible.filter((activity) => activity.date >= selectedQuarterRange[0] && activity.date <= selectedQuarterRange[1])
-  ), [selectedQuarterRange, visible]);
-
   const selectedKpiMember = useMemo(() => {
     if (isSelfOnly) return currentUser;
     if (userSel.length !== 1) return null;
@@ -160,11 +156,15 @@ export function ReportsView({ activities, members, currentUser }) {
 
   const selectedKpiRows = useMemo(() => {
     if (!selectedKpiMember) return [];
-    return quarterlyRows.filter((activity) => {
+    return activities.filter((activity) => {
       const ownerId = activity.userId || members.find((member) => member.name === activity.user)?.id;
-      return ownerId === selectedKpiMember.id;
+      return ownerId === selectedKpiMember.id
+        && activity.date >= selectedQuarterRange[0]
+        && activity.date <= selectedQuarterRange[1];
     });
-  }, [members, quarterlyRows, selectedKpiMember]);
+  }, [activities, members, selectedKpiMember, selectedQuarterRange]);
+
+  const displayRows = exportMode === 'quarterly' ? selectedKpiRows : visible;
 
   const loadQuarterlyScorecards = async () => {
     if (!selectedKpiMember) {
@@ -209,26 +209,146 @@ export function ReportsView({ activities, members, currentUser }) {
     setDT('');
   };
 
+  const renderTeamFilter = () => !isSelfOnly && (
+    <div>
+      <Lbl>Tim</Lbl>
+      <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
+        {[
+          ['all', 'Semua'],
+          ['delivery', 'Delivery'],
+          ['presales', 'Pre-Sales'],
+        ].map(([v, l]) => (
+          <button
+            key={v}
+            onClick={() => {
+              setTF(v);
+              setUS([]);
+              setMDD(false);
+            }}
+            style={{ padding:'7px 10px',borderRadius:8,border:`1px solid ${teamF === v ? T.indigo : T.border}`,cursor:'pointer',fontFamily:FONT,fontSize:12,background:teamF === v ? T.indigoLo : T.surfaceHi,color:teamF === v ? T.indigoHi : T.textSec,fontWeight:teamF === v ? 700 : 500 }}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderSourceFilter = () => (
+    <div>
+      <Lbl>Source</Lbl>
+      <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
+        {[
+          ['all', 'Semua'],
+          ['jira', 'Jira saja'],
+          ['nonjira', 'Non-Jira saja'],
+        ].map(([v, l]) => (
+          <button
+            key={v}
+            onClick={() => setSrc(v)}
+            style={{ padding:'7px 10px',borderRadius:8,border:`1px solid ${srcF === v ? T.jira : T.border}`,cursor:'pointer',fontFamily:FONT,fontSize:12,background:srcF === v ? T.jiraLo : T.surfaceHi,color:srcF === v ? T.jira : T.textSec,fontWeight:srcF === v ? 700 : 500 }}
+          >
+            {v === 'jira' ? '◈ ' : ''}{l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderMemberFilter = (single = false) => {
+    const options = single
+      ? scopeMembers.map((m) => ({ id: m.id, name: m.name, role: m.role, avatar: m.avatar, team: m.team }))
+      : memberOptions;
+    return !isSelfOnly && (
+    <div style={{ position:'relative',minWidth:220 }}>
+      <Lbl>{single ? 'User' : 'Member'}</Lbl>
+      <button
+        onClick={() => setMDD((v) => !v)}
+        style={{ width:'100%',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${memberDDOpen ? T.indigo : T.border}`,cursor:'pointer',fontFamily:FONT,fontSize:12,textAlign:'left',background:T.surfaceHi,color:userSel.length > 0 ? T.indigoHi : T.textSec,display:'flex',alignItems:'center',justifyContent:'space-between' }}
+      >
+        <span>{userSel.length === 0 ? scopeLabel : single ? (userSel.length === 1 ? (members.find((m) => m.id === userSel[0])?.name || '1 dipilih') : 'Pilih 1 user') : `${userSel.length} dipilih`}</span>
+        <span style={{ fontSize:10,opacity:.6 }}>{memberDDOpen ? '▲' : '▼'}</span>
+      </button>
+      {memberDDOpen && (
+        <div style={{ position:'absolute',top:'100%',left:0,right:0,zIndex:50,marginTop:3,background:T.surface,border:`1.5px solid ${T.indigo}50`,borderRadius:9,boxShadow:'0 8px 24px rgba(0,0,0,.5)',overflow:'hidden' }}>
+          <div style={{ padding:'7px 10px',borderBottom:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+            <span style={{ fontSize:10,color:T.textMute,fontWeight:700 }}>{single ? 'PILIH 1 USER' : 'PILIH MEMBER'}</span>
+            {userSel.length > 0 && (
+              <button onClick={() => setUS([])} style={{ fontSize:10,color:T.red,background:'none',border:'none',cursor:'pointer',fontFamily:FONT }}>
+                Reset
+              </button>
+            )}
+          </div>
+          <div style={{ maxHeight:220,overflowY:'auto' }}>
+            {options.map((m) => {
+              const sel = userSel.includes(m.id);
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setUS((p) => single ? (sel ? [] : [m.id]) : (sel ? p.filter((n) => n !== m.id) : [...p, m.id]))}
+                  style={{ width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 10px',border:'none',cursor:'pointer',fontFamily:FONT,fontSize:12,textAlign:'left',background:sel ? T.indigoLo : T.surface,color:sel ? T.indigoHi : T.textSec,borderLeft:`3px solid ${sel ? T.indigo : 'transparent'}` }}
+                >
+                  <Avi av={m.avatar} team={m.team} sz={20} />
+                  <div style={{ flex:1,overflow:'hidden' }}>
+                    <div style={{ fontSize:12,fontWeight:sel ? 700 : 400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{m.name}</div>
+                    <div style={{ fontSize:9,color:T.textMute }}>{ROLES[m.role]?.label}</div>
+                  </div>
+                  {sel && <span style={{ fontSize:11,color:T.indigo,flexShrink:0 }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ padding:'6px 10px',borderTop:`1px solid ${T.border}`,display:'flex',justifyContent:'flex-end' }}>
+            <button onClick={() => setMDD(false)} style={{ fontSize:11,color:T.indigoHi,background:T.indigoLo,border:`1px solid ${T.indigo}30`,borderRadius:5,padding:'4px 12px',cursor:'pointer',fontFamily:FONT,fontWeight:600 }}>
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
+      {!single && userSel.length > 0 && (
+        <div style={{ display:'flex',flexWrap:'wrap',gap:4,marginTop:6 }}>
+          {userSel.map((id) => {
+            const member = members.find((m) => m.id === id);
+            return (
+              <span key={id} style={{ fontSize:10,background:T.indigoLo,color:T.indigoHi,border:`1px solid ${T.indigo}30`,borderRadius:12,padding:'2px 8px',display:'inline-flex',alignItems:'center',gap:4 }}>
+                {(member?.name || 'Member').split(' ')[0]}
+                <button onClick={() => setUS((p) => p.filter((x) => x !== id))} style={{ background:'none',border:'none',color:T.red,cursor:'pointer',fontSize:11,padding:0,lineHeight:1 }}>
+                  ×
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+    );
+  };
+
   return (
     <div>
       <style>{`
         .reports-layout {
-          display:grid;
-          grid-template-columns:240px minmax(0,1fr);
-          gap:14px;
+          display:block;
         }
         .report-export-top {
-          display:grid;
-          grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);
-          gap:14px;
           margin-bottom:14px;
         }
+        .report-filter-grid {
+          display:grid;
+          grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+          gap:12px;
+          align-items:end;
+        }
+        .report-filter-actions {
+          display:flex;
+          gap:8px;
+          flex-wrap:wrap;
+          align-items:end;
+          justify-content:flex-end;
+        }
         @media (max-width: 980px) {
-          .reports-layout {
-            grid-template-columns:1fr;
-          }
-          .report-export-top {
-            grid-template-columns:1fr;
+          .report-filter-actions {
+            justify-content:flex-start;
           }
         }
       `}</style>
@@ -242,7 +362,11 @@ export function ReportsView({ activities, members, currentUser }) {
             ].map(([value, title, desc]) => (
               <button
                 key={value}
-                onClick={() => setExportMode(value)}
+                onClick={() => {
+                  setExportMode(value);
+                  setMDD(false);
+                  if (value === 'quarterly' && userSel.length > 1) setUS([]);
+                }}
                 style={{ textAlign:'left',padding:'12px 13px',borderRadius:11,border:`1.5px solid ${exportMode === value ? T.indigo : T.border}`,background:exportMode === value ? T.indigoLo : T.surfaceHi,color:T.textPri,cursor:'pointer',fontFamily:FONT }}
               >
                 <div style={{ fontSize:13,fontWeight:800,color:exportMode === value ? T.indigoHi : T.textPri }}>{title}</div>
@@ -251,35 +375,82 @@ export function ReportsView({ activities, members, currentUser }) {
             ))}
           </div>
         </Card>
-        <Card p={16}>
-          <div style={{ fontSize:10,fontWeight:800,color:T.textSec,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:10 }}>Export Report</div>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,alignItems:'end' }}>
-            {exportMode === 'quarterly' && (
-              <>
-                <div>
-                  <Lbl>Tahun</Lbl>
-                  <input type="number" value={exportYear} onChange={(event) => setExportYear(Number(event.target.value) || new Date().getFullYear())} style={{ width:'100%',boxSizing:'border-box',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }} />
-                </div>
-                <div>
-                  <Lbl>Quarter</Lbl>
-                  <select value={exportQuarter} onChange={(event) => setExportQuarter(event.target.value)} style={{ width:'100%',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }}>
-                    {['Q1','Q2','Q3','Q4'].map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
-                  </select>
-                </div>
-              </>
-            )}
-            <Btn v="teal" disabled={exporting} style={{ justifyContent:'center' }} onClick={() => handleExport('csv')}>↓ CSV</Btn>
-            <Btn v="ghost" disabled={exporting} style={{ justifyContent:'center' }} onClick={() => handleExport('pdf')}>↓ PDF</Btn>
-          </div>
-          {exportMode === 'quarterly' && !isSelfOnly && (
-            <div style={{ fontSize:11,color:selectedKpiMember ? T.textMute : T.amber,marginTop:10 }}>
-              Laporan kinerja kuartalan wajib memilih tepat 1 member dari filter.
-            </div>
-          )}
-        </Card>
       </div>
+      <Card p={16} style={{ marginBottom:14 }}>
+        <div style={{ display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:12,flexWrap:'wrap' }}>
+          <div>
+            <div style={{ fontSize:10,fontWeight:800,color:T.textSec,textTransform:'uppercase',letterSpacing:'.07em' }}>
+              {exportMode === 'activity' ? 'Filter Rekap Aktivitas' : 'Parameter Kinerja Kuartalan'}
+            </div>
+            <div style={{ fontSize:11,color:T.textMute,marginTop:3 }}>
+              {exportMode === 'activity'
+                ? 'Atur filter aktivitas lalu export CSV/PDF dari hasil yang terlihat.'
+                : 'Pilih 1 user dan periode quarter untuk export scorecard KPI.'}
+            </div>
+          </div>
+          <div style={{ fontSize:11,color:T.textMute }}>
+            Scope: {scopeLabel}
+          </div>
+        </div>
+
+        {exportMode === 'activity' ? (
+          <div className="report-filter-grid">
+            {renderTeamFilter()}
+            {renderSourceFilter()}
+            {renderMemberFilter(false)}
+            <div>
+              <Lbl>Customer</Lbl>
+              <div style={{ position:'relative' }}>
+                <input
+                  value={custF}
+                  onChange={(e) => setCustF(e.target.value)}
+                  placeholder="Cari nama customer..."
+                  style={{ width:'100%',padding:'8px 28px 8px 10px',borderRadius:8,border:`1.5px solid ${custF ? T.indigo : T.border}`,background:T.surfaceHi,color:T.textPri,fontFamily:FONT,fontSize:12,outline:'none',boxSizing:'border-box' }}
+                />
+                {custF && (
+                  <button onClick={() => setCustF('')} style={{ position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:T.textMute,cursor:'pointer',fontSize:13,padding:0,lineHeight:1 }}>
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            <Inp label="Dari" type="date" value={dateFrom} onChange={(e) => setDF(e.target.value)} />
+            <Inp label="Sampai" type="date" value={dateTo} onChange={(e) => setDT(e.target.value)} />
+            <div className="report-filter-actions">
+              {hasFilter && <Btn v="danger" sz="sm" onClick={reset}>Reset</Btn>}
+              <Btn v="teal" sz="sm" disabled={exporting} onClick={() => handleExport('csv')}>CSV</Btn>
+              <Btn v="ghost" sz="sm" disabled={exporting} onClick={() => handleExport('pdf')}>PDF</Btn>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="report-filter-grid">
+              {renderMemberFilter(true)}
+              <div>
+                <Lbl>Tahun</Lbl>
+                <input type="number" value={exportYear} onChange={(event) => setExportYear(Number(event.target.value) || new Date().getFullYear())} style={{ width:'100%',boxSizing:'border-box',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }} />
+              </div>
+              <div>
+                <Lbl>Quarter</Lbl>
+                <select value={exportQuarter} onChange={(event) => setExportQuarter(event.target.value)} style={{ width:'100%',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }}>
+                  {['Q1','Q2','Q3','Q4'].map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
+                </select>
+              </div>
+              <div className="report-filter-actions">
+                <Btn v="teal" sz="sm" disabled={exporting} onClick={() => handleExport('csv')}>CSV</Btn>
+                <Btn v="ghost" sz="sm" disabled={exporting} onClick={() => handleExport('pdf')}>PDF</Btn>
+              </div>
+            </div>
+            {!isSelfOnly && (
+              <div style={{ fontSize:11,color:selectedKpiMember ? T.textMute : T.amber,marginTop:10 }}>
+                Laporan kinerja kuartalan wajib memilih tepat 1 user.
+              </div>
+            )}
+          </>
+        )}
+      </Card>
       <div className="reports-layout">
-        <Card p={16}>
+        <Card p={16} style={{ display:'none' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.textSec, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 14 }}>Filter</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
@@ -574,8 +745,15 @@ export function ReportsView({ activities, members, currentUser }) {
 
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: T.textPri }}>{visible.length} baris</span>
-            {[teamF !== 'all' && teamF, ...userSel.map((id) => members.find((m) => m.id === id)?.name?.split(' ')[0] || id), srcF !== 'all' && srcF, dateFrom && `≥${dateFrom}`, dateTo && `≤${dateTo}`]
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.textPri }}>{displayRows.length} baris</span>
+            {[
+              teamF !== 'all' && teamF,
+              ...userSel.map((id) => members.find((m) => m.id === id)?.name?.split(' ')[0] || id),
+              exportMode === 'activity' && srcF !== 'all' && srcF,
+              exportMode === 'activity' && dateFrom && `≥${dateFrom}`,
+              exportMode === 'activity' && dateTo && `≤${dateTo}`,
+              exportMode === 'quarterly' && `${exportYear} ${exportQuarter}`,
+            ]
               .filter(Boolean)
               .map((f, i) => (
                 <Tag key={i} color={T.indigoHi} lo={T.indigoLo}>
@@ -630,14 +808,14 @@ export function ReportsView({ activities, members, currentUser }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.length === 0 && (
+                  {displayRows.length === 0 && (
                     <tr>
                       <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: T.textMute }}>
                         Tidak ada data.
                       </td>
                     </tr>
                   )}
-                  {visible.map((a, i) => {
+                  {displayRows.map((a, i) => {
                     const def = ACTS[a.actKey] || {};
                     const done = a.status === 'completed';
                     const m = members.find((x) => x.id === a.userId) || members.find((x) => x.name === a.user);

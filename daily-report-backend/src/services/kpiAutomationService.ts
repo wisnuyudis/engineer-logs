@@ -316,7 +316,7 @@ const computeImplementationDomain = (
     const due = endOfDueDate(issue.dueDate);
     const blockingBugLinks = getBlockingBugLinks(issue);
     const excusedByBlocker = isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt);
-    const onTime = Boolean(actualEndAt && due && new Date(actualEndAt) <= due);
+    const onTime = excusedByBlocker || Boolean(actualEndAt && due && new Date(actualEndAt) <= due);
     return {
       issueKey: issue.key,
       summary: issue.summary,
@@ -327,23 +327,25 @@ const computeImplementationDomain = (
       blockingBugs: blockingBugLinks.map((link) => ({ issueKey: link.key, statusName: link.statusName })),
     };
   });
-  const scoredTasks = eligibleTasks.filter((issue) => {
-    const actualEndAt = toIsoDate(issue.actualEndDate);
-    return !isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt);
-  });
-  const onTimeSubtaskCount = scoredTasks.filter((issue) => {
+  const onTimeSubtaskCount = eligibleTasks.filter((issue) => {
     const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
-    return actualEndAt && due && new Date(actualEndAt) <= due;
+    return isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt) || (actualEndAt && due && new Date(actualEndAt) <= due);
   }).length;
-  const lateSubtaskCount = scoredTasks.filter((issue) => {
+  const lateSubtaskCount = eligibleTasks.filter((issue) => {
     const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
-    return actualEndAt && due && new Date(actualEndAt) > due;
+    return !isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt) && actualEndAt && due && new Date(actualEndAt) > due;
   }).length;
-  const openSubtaskCount = scoredTasks.filter((issue) => !toIsoDate(issue.actualEndDate)).length;
-  const excusedBlockedSubtaskCount = eligibleTasks.length - scoredTasks.length;
-  const onTimePct = scoredTasks.length ? (onTimeSubtaskCount / scoredTasks.length) * 100 : null;
+  const openSubtaskCount = eligibleTasks.filter((issue) => {
+    const actualEndAt = toIsoDate(issue.actualEndDate);
+    return !actualEndAt && !isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt);
+  }).length;
+  const excusedBlockedSubtaskCount = eligibleTasks.filter((issue) => {
+    const actualEndAt = toIsoDate(issue.actualEndDate);
+    return isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt);
+  }).length;
+  const onTimePct = eligibleTasks.length ? (onTimeSubtaskCount / eligibleTasks.length) * 100 : null;
   const taskScore = onTimePct === null ? null : implementationTaskScore(onTimePct);
 
   const docStatus = REQUIRED_IMPL_DOCS.map((docName) => {
@@ -397,7 +399,7 @@ const computeImplementationDomain = (
       components: {
         taskAccuracy: {
           score: taskScore,
-          eligibleSubtaskCount: scoredTasks.length,
+          eligibleSubtaskCount: eligibleTasks.length,
           rawEligibleSubtaskCount: eligibleTasks.length,
           onTimeSubtaskCount,
           lateSubtaskCount,
@@ -480,7 +482,7 @@ const computePreventiveMaintenanceDomain = (
       const blockingBugLinks = getBlockingBugLinks(job);
       const excusedByBlocker = isExcusedByBlockingBug(job, job.dueDate, jobActualEndAt);
       const score = excusedByBlocker
-        ? null
+        ? 4
         : jobActualEndAt
           ? pmExecutionScore(lateMinutes)
           : (isDueDatePassed(job.dueDate) ? -1 : null);
@@ -510,7 +512,7 @@ const computePreventiveMaintenanceDomain = (
     const reportScore = !report
       ? 4
       : reportExcusedByBlocker
-        ? null
+        ? 4
         : reportActualEndAt
           ? pmReportScore(reportDays)
           : (isDueDatePassed(reportDueDate) ? -1 : null);
