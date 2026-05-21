@@ -1,4 +1,72 @@
 import { ROLES } from '../constants/taxonomy';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+const fmtDur = m => {
+  const total = Number(m || 0);
+  const h = Math.floor(total / 60);
+  const mn = total % 60;
+  return h ? `${h}j ${mn}m` : `${mn}m`;
+};
+
+const safeName = (value) => String(value || 'report').replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+
+const addFooter = (doc) => {
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Page ${page} / ${pageCount}`, doc.internal.pageSize.getWidth() - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+  }
+};
+
+const drawTitle = (doc, title, subtitle) => {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  doc.text(title, 14, 16);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(subtitle, 14, 23);
+  return 32;
+};
+
+const drawCards = (doc, cards, y) => {
+  const width = doc.internal.pageSize.getWidth();
+  const gap = 4;
+  const cardWidth = (width - 28 - gap * (cards.length - 1)) / cards.length;
+  cards.forEach((card, index) => {
+    const x = 14 + index * (cardWidth + gap);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(219, 226, 239);
+    doc.roundedRect(x, y, cardWidth, 20, 3, 3, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(String(card.label).toUpperCase(), x + 4, y + 7);
+    doc.setFontSize(14);
+    doc.setTextColor(card.color || '#111827');
+    doc.text(String(card.value), x + 4, y + 16);
+  });
+  return y + 28;
+};
+
+const drawSection = (doc, title, y) => {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (y > pageHeight - 24) {
+    doc.addPage();
+    y = 16;
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59);
+  doc.text(title.toUpperCase(), 14, y);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(14, y + 3, doc.internal.pageSize.getWidth() - 14, y + 3);
+  return y + 9;
+};
 
 export function exportCSV(rows, members, ACTS) {
   const headers = [
@@ -47,82 +115,46 @@ export function exportCSV(rows, members, ACTS) {
 
 export function exportPDF(rows, members, ACTS) {
   const dateStr   = new Date().toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
-  const fmtDur    = m => { const h = Math.floor(m/60), mn = m%60; return h ? h+"j "+mn+"m" : mn+"m"; };
   const totalMins = rows.reduce((s,a) => s + (a.dur||0), 0);
   const doneCount = rows.filter(a => a.status === "completed").length;
 
-  const rowsHtml = rows.map((a, i) => {
-    const def    = ACTS[a.actKey] || {};
-    const title  = a.ticketTitle || a.topic || a.prName || def.label || "—";
-    const time   = (a.startTime && a.endTime) ? a.startTime+"–"+a.endTime : fmtDur(a.dur||0);
-    const badge  = a.ticketId
-      ? "<code style=\"background:#0D1F3C;color:#2684FF;padding:1px 5px;border-radius:3px;font-size:10px\">"
-        + a.ticketId + "</code> "
-      : "";
-    const srcDot = def.source === "jira"
-      ? "<span style=\"color:#2684FF;margin-right:3px\">◈</span>"
-      : "";
-    const statusColor = a.status === "completed" ? "#34D399" : "#F59E0B";
-    const statusLabel = a.status === "completed" ? "✓ Selesai" : "⏳ Progress";
-    const bg = i % 2 === 0 ? "#1a1f2e" : "#14181f";
-    return "<tr style=\"background:"+bg+"\">"
-      + "<td>"+a.date+"</td>"
-      + "<td>"+a.user+"</td>"
-      + "<td>"+srcDot+(def.label||a.actKey)+"</td>"
-      + "<td>"+badge+title+"</td>"
-      + "<td>"+(a.customerName||a.prName||"—")+"</td>"
-      + "<td style=\"font-family:monospace;white-space:nowrap\">"+time+"</td>"
-      + "<td style=\"color:"+statusColor+"\">"+statusLabel+"</td>"
-      + "</tr>";
-  }).join("");
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  let y = drawTitle(doc, 'Engineer Daily Report', `Seraphim Digital Technology | Dicetak: ${dateStr}`);
+  y = drawCards(doc, [
+    { label: 'Total Aktivitas', value: rows.length, color: '#4f46e5' },
+    { label: 'Total Jam Kerja', value: fmtDur(totalMins), color: '#14b8a6' },
+    { label: 'Selesai', value: doneCount, color: '#22c55e' },
+    { label: 'In Progress', value: rows.length - doneCount, color: '#f59e0b' },
+  ], y);
+  y = drawSection(doc, 'Activity Detail', y);
 
-  const css = [
-    "*{margin:0;padding:0;box-sizing:border-box}",
-    "body{font-family:'Segoe UI',Arial,sans-serif;background:#0f1117;color:#f0f4ff;padding:32px;font-size:12px}",
-    "h1{font-size:22px;font-weight:800;color:#818CF8;margin-bottom:4px}",
-    ".sub{color:#4A5568;font-size:11px;margin-bottom:24px}",
-    ".stats{display:flex;gap:16px;margin-bottom:24px}",
-    ".stat{background:#171923;border:1px solid #252B3B;border-radius:8px;padding:12px 18px;flex:1}",
-    ".sv{font-size:20px;font-weight:800;color:#6366F1;font-family:monospace}",
-    ".sl{font-size:10px;color:#4A5568;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}",
-    "table{width:100%;border-collapse:collapse}",
-    "th{background:#1E2333;color:#8892AA;font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;text-align:left;border-bottom:1px solid #252B3B}",
-    "td{padding:7px 10px;color:#c8d0e0;border-bottom:1px solid #1a1f2e;font-size:11px}",
-    "@media print{",
-      "body{background:#fff;color:#111}",
-      "h1{color:#4338CA}",
-      "th{background:#eee;color:#333}",
-      "td{color:#222;border-color:#ddd}",
-      "tr{background:#fff!important}",
-      ".stat{background:#f4f4f8;border-color:#ddd}",
-      ".sv{color:#4338CA}",
-      ".sl{color:#888}",
-    "}",
-  ].join("");
+  autoTable(doc, {
+    startY: y,
+    head: [['Tanggal', 'Member', 'Source', 'Kategori', 'Aktivitas / Ticket', 'Customer', 'Waktu', 'Status']],
+    body: rows.map((a) => {
+      const def = ACTS[a.actKey] || {};
+      const title = `${a.ticketId ? `${a.ticketId} ` : ''}${a.ticketTitle || a.topic || a.prName || def.label || '-'}`;
+      const time = (a.startTime && a.endTime) ? `${a.startTime}-${a.endTime}` : fmtDur(a.dur || 0);
+      return [
+        a.date || '-',
+        a.user || '-',
+        def.source === 'jira' ? 'Jira' : 'App',
+        def.label || a.actKey || '-',
+        title,
+        a.customerName || a.prName || '-',
+        time,
+        a.status === 'completed' ? 'Selesai' : 'Progress',
+      ];
+    }),
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+    margin: { left: 14, right: 14 },
+    columnStyles: { 4: { cellWidth: 68 }, 5: { cellWidth: 38 } },
+  });
 
-  const html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Engineer Daily Report</title>"
-    + "<style>"+css+"</style></head><body>"
-    + "<h1>&#128203; Engineer Daily Report</h1>"
-    + "<div class=\"sub\">Seraphim Digital Technology &nbsp;&middot;&nbsp; Dicetak: "+dateStr+"</div>"
-    + "<div class=\"stats\">"
-    +   "<div class=\"stat\"><div class=\"sv\">"+rows.length+"</div><div class=\"sl\">Total Aktivitas</div></div>"
-    +   "<div class=\"stat\"><div class=\"sv\">"+fmtDur(totalMins)+"</div><div class=\"sl\">Total Jam Kerja</div></div>"
-    +   "<div class=\"stat\"><div class=\"sv\">"+doneCount+"</div><div class=\"sl\">Selesai</div></div>"
-    +   "<div class=\"stat\"><div class=\"sv\">"+(rows.length-doneCount)+"</div><div class=\"sl\">In Progress</div></div>"
-    + "</div>"
-    + "<table><thead><tr>"
-    +   "<th>Tanggal</th><th>Member</th><th>Kategori</th>"
-    +   "<th>Aktivitas / Ticket</th><th>Customer</th><th>Waktu</th><th>Status</th>"
-    + "</tr></thead><tbody>"+rowsHtml+"</tbody></table>"
-    + "<div style=\"margin-top:20px;font-size:10px;color:#4A5568;text-align:center\">"
-    +   "Generated by EngineerLog &copy; Seraphim Digital Technology"
-    + "</div></body></html>";
-
-  const win = window.open("", "_blank", "width=1060,height=750");
-  if (!win) { alert("Pop-up diblokir browser. Izinkan pop-up untuk export PDF."); return; }
-  win.document.write(html);
-  win.document.close();
-  win.onload = function() { win.focus(); win.print(); };
+  addFooter(doc);
+  doc.save(`engineer-report-${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 const quarterRange = (year, quarter) => {
@@ -138,6 +170,105 @@ const quarterRange = (year, quarter) => {
 const scoreLabel = (value) => (
   value === null || value === undefined ? 'N/A' : Number(value).toFixed(2)
 );
+
+const gradeKpi = (score) => {
+  if (score === null || score === undefined || Number.isNaN(Number(score))) return 'N/A';
+  const value = Number(score);
+  if (value >= 3.5) return 'Baik';
+  if (value >= 2.5) return 'Cukup';
+  return 'Kurang';
+};
+
+const kpiSummaryRows = (items = []) => items.map((item) => {
+  const scores = item.scorecard?.scorecard?.scores || {};
+  return [
+    item.user?.name || item.scorecard?.user?.name || '-',
+    scoreLabel(scores.impl),
+    scoreLabel(scores.pm),
+    scoreLabel(scores.cm),
+    scoreLabel(scores.enh),
+    scoreLabel(scores.ops),
+    scoreLabel(item.scorecard?.scorecard?.finalScore),
+    gradeKpi(item.scorecard?.scorecard?.finalScore),
+    item.scorecard?.scorecard?.completedJiraTaskCount ?? 0,
+    item.scorecard?.scorecard?.eligibleBonus ? 'Ya' : 'Tidak',
+    item.scorecard?.scorecard?.qbMultiplier ?? 0,
+  ];
+});
+
+export function exportKpiSummaryCSV({ items, year, quarter }) {
+  const esc = v => {
+    const s = String(v == null ? "" : v);
+    return (s.includes(",") || s.includes('"') || s.includes("\n")) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const headers = ['Nama','KPI Implementasi','KPI PM','KPI CM','KPI Enhancement','KPI Operational','Score Akhir','Kategori','Jumlah Act','Eligible QB?','Besar QB'];
+  const engineerRows = kpiSummaryRows(items.filter((item) => item.group === 'engineer'));
+  const pmRows = kpiSummaryRows(items.filter((item) => item.group === 'pm'));
+  const lines = [
+    [`KPI Summary Report`, `${quarter} ${year}`].map(esc).join(','),
+    '',
+    ['Ringkasan KPI Engineer'].map(esc).join(','),
+    headers.map(esc).join(','),
+    ...engineerRows.map((row) => row.map(esc).join(',')),
+    '',
+    ['Ringkasan KPI Project Manager'].map(esc).join(','),
+    headers.map(esc).join(','),
+    ...pmRows.map((row) => row.map(esc).join(',')),
+  ];
+
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `kpi-summary-${quarter}-${year}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export function exportKpiSummaryPDF({ items, year, quarter }) {
+  const engineerItems = items.filter((item) => item.group === 'engineer');
+  const pmItems = items.filter((item) => item.group === 'pm');
+  const totalJiraTasks = items.reduce((sum, item) => sum + Number(item.scorecard?.scorecard?.completedJiraTaskCount || 0), 0);
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  let y = drawTitle(doc, 'KPI Summary Report', `Periode ${quarter} ${year}`);
+
+  y = drawCards(doc, [
+    { label: 'Total Engineer', value: engineerItems.length, color: '#4f46e5' },
+    { label: 'Total Project Manager', value: pmItems.length, color: '#14b8a6' },
+    { label: 'Total Jira Task', value: totalJiraTasks, color: '#f59e0b' },
+  ], y);
+
+  const headers = [['Nama','KPI Impl','KPI PM','KPI CM','KPI Enh','KPI Ops','Score','Kategori','Jml Act','QB?','Besar QB']];
+  y = drawSection(doc, 'Ringkasan KPI Engineer', y);
+  autoTable(doc, {
+    startY: y,
+    head: headers,
+    body: kpiSummaryRows(engineerItems),
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+    margin: { left: 14, right: 14 },
+    columnStyles: { 0: { cellWidth: 42 } },
+  });
+  y = (doc.lastAutoTable?.finalY || y) + 10;
+
+  y = drawSection(doc, 'Ringkasan KPI Project Manager', y);
+  autoTable(doc, {
+    startY: y,
+    head: headers,
+    body: kpiSummaryRows(pmItems),
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+    margin: { left: 14, right: 14 },
+    columnStyles: { 0: { cellWidth: 42 } },
+  });
+
+  addFooter(doc);
+  doc.save(`kpi-summary-${quarter}-${year}.pdf`);
+}
 
 export function exportQuarterlyKpiCSV({ rows, ACTS, scorecard, user, year, quarter }) {
   const [start, end] = quarterRange(year, quarter);
@@ -203,54 +334,87 @@ export function exportQuarterlyKpiCSV({ rows, ACTS, scorecard, user, year, quart
 
 export function exportQuarterlyKpiPDF({ rows, ACTS, scorecard, user, year, quarter }) {
   const [start, end] = quarterRange(year, quarter);
-  const fmtDur = m => { const h = Math.floor((m || 0) / 60), mn = (m || 0) % 60; return h ? h+"j "+mn+"m" : mn+"m"; };
   const totalMins = rows.reduce((sum, row) => sum + (row.dur || 0), 0);
-
-  const domainRows = (scorecard?.profile?.domains || []).map((domain) => (
-    `<tr><td>${domain.label}</td><td>${scoreLabel(scorecard?.scorecard?.scores?.[domain.key])}</td><td>${scorecard?.scorecard?.notes?.[domain.key] || '-'}</td></tr>`
-  )).join("") || `<tr><td colspan="3">Tidak ada profile KPI untuk user ini.</td></tr>`;
-  const scorecardHtml = `<section class="scorecard">
-    <div class="score-head">
-      <div><strong>${scorecard?.profile?.label || 'KPI Scorecard'}</strong><span>Jira Done: ${scorecard?.scorecard?.completedJiraTaskCount || 0} · QB: ${scorecard?.scorecard?.qbMultiplier || 0} · Bonus: ${scorecard?.scorecard?.eligibleBonus ? 'Eligible' : 'Tidak'}</span></div>
-      <div class="final">${scoreLabel(scorecard?.scorecard?.finalScore)}</div>
-    </div>
-    <table><thead><tr><th>Domain</th><th>Score</th><th>Catatan</th></tr></thead><tbody>${domainRows}</tbody></table>
-  </section>`;
-
-  const activityRows = rows.map((a, index) => {
-    const def = ACTS[a.actKey] || {};
-    return `<tr class="${index % 2 ? 'odd' : ''}">
-      <td>${a.date}</td><td>${a.user}</td><td>${def.source === 'jira' ? 'Jira' : 'App'}</td>
-      <td>${def.label || a.actKey}</td><td>${a.ticketId || ''} ${a.ticketTitle || a.topic || a.prName || ''}</td>
-      <td>${fmtDur(a.dur)}</td><td>${a.status || '-'}</td>
-    </tr>`;
-  }).join("");
-
-  const css = [
-    "body{font-family:'Segoe UI',Arial,sans-serif;background:#0f1117;color:#f0f4ff;padding:30px;font-size:12px}",
-    "h1{font-size:22px;color:#818CF8;margin:0 0 4px}",
-    ".sub{color:#94a3b8;margin-bottom:18px}",
-    ".stats{display:flex;gap:12px;margin:18px 0}.stat{background:#171923;border:1px solid #252B3B;border-radius:8px;padding:12px;flex:1}.sv{font-size:20px;font-weight:800;color:#34D399}.sl{font-size:10px;color:#94a3b8;text-transform:uppercase}",
-    ".identity{background:#171923;border:1px solid #252B3B;border-radius:10px;padding:16px;margin:18px 0}.identity strong{font-size:18px;color:#fff}.identity span{display:block;color:#94a3b8;margin-top:3px}",
-    ".scorecard{background:#171923;border:1px solid #252B3B;border-radius:10px;padding:14px;margin-bottom:14px;break-inside:avoid}.score-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.score-head span{display:block;color:#94a3b8;font-size:11px;margin-top:3px}.final{font-size:24px;font-weight:900;color:#34D399}.meta{color:#94a3b8;font-size:11px;margin:8px 0 10px}",
-    "table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#1E2333;color:#94a3b8;font-size:10px;text-transform:uppercase;padding:7px;text-align:left}td{padding:7px;border-bottom:1px solid #252B3B;color:#dbeafe}.odd{background:#14181f}",
-    "h2{margin:24px 0 8px;color:#c7d2fe}",
-    "@media print{body{background:#fff;color:#111}.identity,.scorecard,.stat{background:#fff;border-color:#ddd}.identity strong{color:#111}th{background:#eee;color:#333}td{color:#111;border-color:#ddd}.odd{background:#f8fafc}.sub,.meta,.sl,.identity span{color:#555}}",
-  ].join("");
-
   const reportUser = user || scorecard?.user || {};
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Individual Performance Dossier</title><style>${css}</style></head><body>
-    <h1>Individual Performance Dossier</h1>
-    <div class="sub">Periode ${quarter} ${year} · ${start} sampai ${end}</div>
-    <div class="identity"><strong>${reportUser.name || '-'}</strong><span>${ROLES[reportUser.role]?.label || reportUser.role || '-'} · ${reportUser.email || scorecard?.user?.email || ''}</span></div>
-    <div class="stats"><div class="stat"><div class="sv">${rows.length}</div><div class="sl">Total Activity</div></div><div class="stat"><div class="sv">${fmtDur(totalMins)}</div><div class="sl">Manhour</div></div><div class="stat"><div class="sv">${scoreLabel(scorecard?.scorecard?.finalScore)}</div><div class="sl">Final KPI</div></div></div>
-    <h2>KPI Scorecard</h2>${scorecardHtml}
-    <h2>Activity Detail</h2><table><thead><tr><th>Tanggal</th><th>Member</th><th>Source</th><th>Kategori</th><th>Aktivitas / Ticket</th><th>Durasi</th><th>Status</th></tr></thead><tbody>${activityRows}</tbody></table>
-  </body></html>`;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  let y = drawTitle(doc, 'Individual Performance Dossier', `Periode ${quarter} ${year} | ${start} sampai ${end}`);
 
-  const win = window.open("", "_blank", "width=1160,height=780");
-  if (!win) { alert("Pop-up diblokir browser. Izinkan pop-up untuk export PDF."); return; }
-  win.document.write(html);
-  win.document.close();
-  win.onload = function() { win.focus(); win.print(); };
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(219, 226, 239);
+  doc.roundedRect(14, y, 182, 22, 3, 3, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42);
+  doc.text(reportUser.name || '-', 19, y + 8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`${ROLES[reportUser.role]?.label || reportUser.role || '-'} | ${reportUser.email || scorecard?.user?.email || ''}`, 19, y + 15);
+  y += 30;
+
+  y = drawCards(doc, [
+    { label: 'Total Activity', value: rows.length, color: '#4f46e5' },
+    { label: 'Manhour', value: fmtDur(totalMins), color: '#14b8a6' },
+    { label: 'Final KPI', value: scoreLabel(scorecard?.scorecard?.finalScore), color: '#22c55e' },
+  ], y);
+
+  y = drawSection(doc, 'KPI Scorecard', y);
+  autoTable(doc, {
+    startY: y,
+    head: [['Profile', 'Final Score', 'QB', 'Jira Done', 'Bonus']],
+    body: [[
+      scorecard?.profile?.label || 'KPI Scorecard',
+      scoreLabel(scorecard?.scorecard?.finalScore),
+      scorecard?.scorecard?.qbMultiplier || 0,
+      scorecard?.scorecard?.completedJiraTaskCount || 0,
+      scorecard?.scorecard?.eligibleBonus ? 'Eligible' : 'Tidak',
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 8, cellPadding: 1.8 },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc.lastAutoTable?.finalY || y) + 6;
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Domain', 'Score', 'Catatan']],
+    body: (scorecard?.profile?.domains || []).map((domain) => [
+      domain.label,
+      scoreLabel(scorecard?.scorecard?.scores?.[domain.key]),
+      scorecard?.scorecard?.notes?.[domain.key] || '-',
+    ]),
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 8, cellPadding: 1.8, overflow: 'linebreak' },
+    margin: { left: 14, right: 14 },
+    columnStyles: { 2: { cellWidth: 100 } },
+  });
+  y = (doc.lastAutoTable?.finalY || y) + 10;
+
+  y = drawSection(doc, 'Activity Detail', y);
+  autoTable(doc, {
+    startY: y,
+    head: [['Tanggal', 'Member', 'Source', 'Kategori', 'Aktivitas / Ticket', 'Durasi', 'Status']],
+    body: rows.map((a) => {
+      const def = ACTS[a.actKey] || {};
+      return [
+        a.date || '-',
+        a.user || '-',
+        def.source === 'jira' ? 'Jira' : 'App',
+        def.label || a.actKey || '-',
+        `${a.ticketId ? `${a.ticketId} ` : ''}${a.ticketTitle || a.topic || a.prName || ''}`,
+        fmtDur(a.dur),
+        a.status || '-',
+      ];
+    }),
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+    margin: { left: 14, right: 14 },
+    columnStyles: { 4: { cellWidth: 58 } },
+  });
+
+  addFooter(doc);
+  doc.save(`individual-performance-${safeName(reportUser.name || 'member')}-${quarter}-${year}.pdf`);
 }

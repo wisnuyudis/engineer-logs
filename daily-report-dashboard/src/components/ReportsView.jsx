@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { T, FONT, MONO } from '../theme/tokens';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { ROLES, isAdmin, isMgr } from '../constants/taxonomy';
-import { exportCSV, exportPDF, exportQuarterlyKpiCSV, exportQuarterlyKpiPDF } from '../utils/exports';
+import { exportCSV, exportKpiSummaryCSV, exportKpiSummaryPDF, exportPDF, exportQuarterlyKpiCSV, exportQuarterlyKpiPDF } from '../utils/exports';
 import { Card, Lbl, Inp, Btn, Tag, Avi } from './ui/Primitives';
 import { fmtH } from '../utils/formatters';
 import api from '../lib/api';
@@ -54,6 +54,7 @@ export function ReportsView({ activities, members, currentUser }) {
   const isAdminRole = isAdmin(currentUser.role);
   const isHeadRole = isMgr(currentUser.role) && !isAdminRole;
   const isSelfOnly = !isAdminRole && !isHeadRole;
+  const canExportKpiReports = isAdminRole || isHeadRole;
   const scopeLabel = isAdminRole ? 'Semua user' : isHeadRole ? 'Turunan saya' : 'Hanya saya';
 
   const toggleSort = (col) => {
@@ -166,6 +167,18 @@ export function ReportsView({ activities, members, currentUser }) {
 
   const displayRows = exportMode === 'quarterly' ? selectedKpiRows : visible;
 
+  const kpiSummaryUsers = useMemo(() => (
+    scopeMembers
+      .filter((member) => member.status !== 'invited')
+      .map((member) => {
+        const role = String(member.role || '').toLowerCase();
+        const group = role === 'pm' || role === 'project manager' ? 'pm' : 'engineer';
+        const isSupported = ['delivery', 'se', 'engineer', 'pm', 'project manager'].includes(role);
+        return { ...member, group, isSupported };
+      })
+      .filter((member) => member.isSupported)
+  ), [scopeMembers]);
+
   const loadQuarterlyScorecards = async () => {
     if (!selectedKpiMember) {
       toast.error('Pilih tepat 1 member untuk laporan kinerja kuartalan.');
@@ -179,6 +192,24 @@ export function ReportsView({ activities, members, currentUser }) {
     return res.data;
   };
 
+  const loadKpiSummaryScorecards = async () => {
+    if (!canExportKpiReports) {
+      toast.error('Laporan KPI hanya tersedia untuk admin/manager.');
+      return null;
+    }
+    const results = await Promise.all(
+      kpiSummaryUsers.map(async (member) => {
+        try {
+          const res = await api.get(`/kpi/scorecards/${member.id}`, { params: { year: exportYear, quarter: exportQuarter } });
+          return { user: member, group: member.group, scorecard: res.data?.unsupported ? null : res.data };
+        } catch {
+          return { user: member, group: member.group, scorecard: null };
+        }
+      })
+    );
+    return results;
+  };
+
   const handleExport = async (format) => {
     if (exportMode === 'activity') {
       if (format === 'csv') exportCSV(visible, members, ACTS);
@@ -188,6 +219,15 @@ export function ReportsView({ activities, members, currentUser }) {
 
     setExporting(true);
     try {
+      if (exportMode === 'kpi-summary') {
+        const items = await loadKpiSummaryScorecards();
+        if (!items) return;
+        const payload = { items, year: exportYear, quarter: exportQuarter };
+        if (format === 'csv') exportKpiSummaryCSV(payload);
+        else exportKpiSummaryPDF(payload);
+        return;
+      }
+
       const scorecard = await loadQuarterlyScorecards();
       if (!scorecard) return;
       const payload = { rows: selectedKpiRows, members, ACTS, scorecard, user: selectedKpiMember, year: exportYear, quarter: exportQuarter };
@@ -397,14 +437,17 @@ export function ReportsView({ activities, members, currentUser }) {
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10 }}>
             {[
               ['activity', 'Rekap Aktivitas', 'Gabungan log aktivitas sesuai filter dan range tanggal.'],
-              ['quarterly', 'Kinerja Kuartalan', '1 member, 1 quarter, lengkap dengan KPI scorecard.'],
+              ...(canExportKpiReports ? [
+                ['quarterly', 'Kinerja Kuartalan', '1 member, 1 quarter, lengkap dengan KPI scorecard.'],
+                ['kpi-summary', 'Ringkasan KPI Tim', 'List KPI seluruh engineer dan project manager dalam 1 quarter.'],
+              ] : []),
             ].map(([value, title, desc]) => (
               <button
                 key={value}
                 onClick={() => {
                   setExportMode(value);
                   setMDD(false);
-                  if (value === 'quarterly' && userSel.length > 1) setUS([]);
+                  if ((value === 'quarterly' || value === 'kpi-summary') && userSel.length > 1) setUS([]);
                 }}
                 style={{ textAlign:'left',padding:'12px 13px',borderRadius:11,border:`1.5px solid ${exportMode === value ? T.indigo : T.border}`,background:exportMode === value ? T.indigoLo : T.surfaceHi,color:T.textPri,cursor:'pointer',fontFamily:FONT }}
               >
@@ -419,12 +462,14 @@ export function ReportsView({ activities, members, currentUser }) {
         <div style={{ display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:12,flexWrap:'wrap' }}>
           <div>
             <div style={{ fontSize:10,fontWeight:800,color:T.textSec,textTransform:'uppercase',letterSpacing:'.07em' }}>
-              {exportMode === 'activity' ? 'Filter Rekap Aktivitas' : 'Parameter Kinerja Kuartalan'}
+              {exportMode === 'activity' ? 'Filter Rekap Aktivitas' : exportMode === 'quarterly' ? 'Parameter Kinerja Kuartalan' : 'Parameter Ringkasan KPI Tim'}
             </div>
             <div style={{ fontSize:11,color:T.textMute,marginTop:3 }}>
               {exportMode === 'activity'
                 ? 'Atur filter aktivitas lalu export CSV/PDF dari hasil yang terlihat.'
-                : 'Pilih 1 user dan periode quarter untuk export scorecard KPI.'}
+                : exportMode === 'quarterly'
+                  ? 'Pilih 1 user dan periode quarter untuk export scorecard KPI.'
+                  : 'Export KPI semua engineer dan project manager pada quarter terpilih.'}
             </div>
           </div>
           <div style={{ fontSize:11,color:T.textMute }}>
@@ -474,7 +519,7 @@ export function ReportsView({ activities, members, currentUser }) {
               </div>
             </div>
           </div>
-        ) : (
+        ) : exportMode === 'quarterly' ? (
           <>
             <div className="report-filter-stack">
               <div className="report-filter-row">
@@ -506,6 +551,30 @@ export function ReportsView({ activities, members, currentUser }) {
               </div>
             )}
           </>
+        ) : (
+          <div className="report-filter-stack">
+            <div className="report-filter-row">
+              <div className="report-filter-field is-date">
+                <Lbl>Tahun</Lbl>
+                <input type="number" value={exportYear} onChange={(event) => setExportYear(Number(event.target.value) || new Date().getFullYear())} style={{ width:'100%',boxSizing:'border-box',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }} />
+              </div>
+              <div className="report-filter-field is-date">
+                <Lbl>Quarter</Lbl>
+                <select value={exportQuarter} onChange={(event) => setExportQuarter(event.target.value)} style={{ width:'100%',padding:'8px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri,fontSize:12 }}>
+                  {['Q1','Q2','Q3','Q4'].map((quarter) => <option key={quarter} value={quarter}>{quarter}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="report-filter-actions">
+              <div style={{ fontSize:11,color:T.textMute }}>
+                {kpiSummaryUsers.filter((member) => member.group === 'engineer').length} engineer · {kpiSummaryUsers.filter((member) => member.group === 'pm').length} project manager akan dihitung.
+              </div>
+              <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+                <Btn v="teal" sz="sm" disabled={exporting} onClick={() => handleExport('csv')}>{exporting ? 'Loading...' : 'CSV'}</Btn>
+                <Btn v="ghost" sz="sm" disabled={exporting} onClick={() => handleExport('pdf')}>{exporting ? 'Loading...' : 'PDF'}</Btn>
+              </div>
+            </div>
+          </div>
         )}
       </Card>
       <div className="reports-layout">
@@ -812,6 +881,7 @@ export function ReportsView({ activities, members, currentUser }) {
               exportMode === 'activity' && dateFrom && `≥${dateFrom}`,
               exportMode === 'activity' && dateTo && `≤${dateTo}`,
               exportMode === 'quarterly' && `${exportYear} ${exportQuarter}`,
+              exportMode === 'kpi-summary' && `KPI Summary ${exportYear} ${exportQuarter}`,
             ]
               .filter(Boolean)
               .map((f, i) => (
