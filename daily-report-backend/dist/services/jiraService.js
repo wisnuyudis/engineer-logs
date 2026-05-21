@@ -120,6 +120,31 @@ const extractNamedFieldValueByMap = (fields, fieldMap, fieldNames) => {
     }
     return null;
 };
+const parseJiraIssueLinks = (issueLinks) => {
+    if (!Array.isArray(issueLinks))
+        return [];
+    return issueLinks
+        .map((link) => {
+        const linkedIssue = link?.inwardIssue || link?.outwardIssue;
+        if (!linkedIssue?.key)
+            return null;
+        const direction = link?.inwardIssue ? 'inward' : 'outward';
+        const relation = direction === 'inward' ? link?.type?.inward : link?.type?.outward;
+        return {
+            id: linkedIssue.id ? String(linkedIssue.id) : null,
+            key: String(linkedIssue.key),
+            direction,
+            typeName: link?.type?.name ? String(link.type.name) : null,
+            relation: relation ? String(relation) : null,
+            summary: linkedIssue.fields?.summary || null,
+            issueTypeName: linkedIssue.fields?.issuetype?.name || null,
+            statusName: linkedIssue.fields?.status?.name || null,
+            statusCategoryKey: linkedIssue.fields?.status?.statusCategory?.key || null,
+            statusCategoryName: linkedIssue.fields?.status?.statusCategory?.name || null,
+        };
+    })
+        .filter((link) => Boolean(link));
+};
 const resolveJiraActKey = (issueKey, issueTypeName, projectName, workTypeName) => {
     const key = (issueKey || '').toUpperCase();
     const issueType = (issueTypeName || '').toLowerCase();
@@ -351,7 +376,7 @@ const searchJiraIssues = async ({ jql, fields }) => {
         fieldMap['client'],
         fieldMap['account'],
     ].filter(Boolean);
-    const queryFields = Array.from(new Set([...fields, ...additionalFields]));
+    const queryFields = Array.from(new Set([...fields, 'issuelinks', ...additionalFields]));
     while (true) {
         const payload = {
             jql,
@@ -435,6 +460,7 @@ const searchJiraIssues = async ({ jql, fields }) => {
                         bodyText: flattenJiraComment(comment.body),
                     }))
                     : [],
+                linkedIssues: parseJiraIssueLinks(issue.fields?.issuelinks),
             });
         }
         nextPageToken = data.nextPageToken || undefined;

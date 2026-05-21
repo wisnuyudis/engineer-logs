@@ -118,6 +118,11 @@ function formatBizDaysHuman(value) {
   return `${num} hari kerja`;
 }
 
+function formatBlockingBugs(links) {
+  if (!Array.isArray(links) || !links.length) return '—';
+  return links.map((link) => `${link.issueKey}${link.statusName ? ` (${link.statusName})` : ''}`).join(', ');
+}
+
 function HybridDetailsTable({ title, columns, rows }) {
   if (!rows?.length) return null;
   return (
@@ -493,7 +498,7 @@ export function KpiManagementView({ currentUser }) {
                         <HybridMetric
                           label="Task Accuracy"
                           score={scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.score ?? null}
-                          detail={`${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimeSubtaskCount || 0}/${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.eligibleSubtaskCount || 0} subtask tepat waktu · ${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimePct ?? 'N/A'}%`}
+                          detail={`${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimeSubtaskCount || 0}/${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.eligibleSubtaskCount || 0} subtask tepat waktu · ${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.onTimePct ?? 'N/A'}% · ${scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.excusedBlockedSubtaskCount || 0} excused blocker`}
                         />
                         <HybridMetric
                           label="Dokumentasi"
@@ -513,10 +518,11 @@ export function KpiManagementView({ currentUser }) {
                           { key:'dueDate', label:'Due Date' },
                           { key:'actualEndAt', label:'Actual End' },
                           { key:'status', label:'Status' },
+                          { key:'blockingBugs', label:'Blocked By', render: (row) => formatBlockingBugs(row.blockingBugs) },
                         ]}
                         rows={(scorecardData?.scorecard?.breakdown?.impl?.components?.taskAccuracy?.items || []).map((item) => ({
                           ...item,
-                          status: item.actualEndAt ? (item.onTime ? 'On time' : 'Late') : 'Open',
+                          status: item.excusedByBlocker ? 'Excused by blocker' : (item.actualEndAt ? (item.onTime ? 'On time' : 'Late') : 'Open'),
                         }))}
                       />
                       <HybridDetailsTable
@@ -568,9 +574,14 @@ export function KpiManagementView({ currentUser }) {
                           { key:'dueDate', label:'Due Date' },
                           { key:'actualEndAt', label:'Actual End' },
                           { key:'lateHuman', label:'Keterlambatan' },
+                          { key:'status', label:'Status' },
+                          { key:'blockingBugs', label:'Blocked By', render: (row) => formatBlockingBugs(row.blockingBugs) },
                           { key:'score', label:'Skor' },
                         ]}
-                        rows={scorecardData?.scorecard?.breakdown?.pm?.components?.execution?.items || []}
+                        rows={(scorecardData?.scorecard?.breakdown?.pm?.components?.execution?.items || []).map((item) => ({
+                          ...item,
+                          status: item.excusedByBlocker ? 'Excused by blocker' : (item.pendingWithinDueDate ? 'Pending within due date' : 'Normal'),
+                        }))}
                       />
                       <HybridDetailsTable
                         title="Detail report PM"
@@ -580,9 +591,14 @@ export function KpiManagementView({ currentUser }) {
                           { key:'actualPmEndAt', label:'Actual End Pekerjaan PM' },
                           { key:'reportActualEndAt', label:'Actual End Report PM' },
                           { key:'businessDaysLate', label:'Keterlambatan', render: (row) => formatBizDaysHuman(row.businessDaysLate) },
+                          { key:'status', label:'Status' },
+                          { key:'blockingBugs', label:'Blocked By', render: (row) => formatBlockingBugs(row.blockingBugs) },
                           { key:'score', label:'Skor' },
                         ]}
-                        rows={scorecardData?.scorecard?.breakdown?.pm?.components?.report?.items || []}
+                        rows={(scorecardData?.scorecard?.breakdown?.pm?.components?.report?.items || []).map((item) => ({
+                          ...item,
+                          status: item.excusedByBlocker ? 'Excused by blocker' : (item.pendingWithinDueDate ? 'Pending within due date' : 'Normal'),
+                        }))}
                       />
                       <Inp label="Catatan" value={notes?.pm ?? ''} onChange={(e)=>setNotes((prev)=>({ ...prev, pm: e.target.value }))} placeholder="Opsional" />
                     </div>

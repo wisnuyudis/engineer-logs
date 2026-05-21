@@ -119,6 +119,31 @@ const extractNamedFieldValueByMap = (
   return null;
 };
 
+const parseJiraIssueLinks = (issueLinks: any[] | undefined) => {
+  if (!Array.isArray(issueLinks)) return [];
+
+  return issueLinks
+    .map((link) => {
+      const linkedIssue = link?.inwardIssue || link?.outwardIssue;
+      if (!linkedIssue?.key) return null;
+      const direction = link?.inwardIssue ? 'inward' : 'outward';
+      const relation = direction === 'inward' ? link?.type?.inward : link?.type?.outward;
+      return {
+        id: linkedIssue.id ? String(linkedIssue.id) : null,
+        key: String(linkedIssue.key),
+        direction,
+        typeName: link?.type?.name ? String(link.type.name) : null,
+        relation: relation ? String(relation) : null,
+        summary: linkedIssue.fields?.summary || null,
+        issueTypeName: linkedIssue.fields?.issuetype?.name || null,
+        statusName: linkedIssue.fields?.status?.name || null,
+        statusCategoryKey: linkedIssue.fields?.status?.statusCategory?.key || null,
+        statusCategoryName: linkedIssue.fields?.status?.statusCategory?.name || null,
+      };
+    })
+    .filter((link): link is NonNullable<typeof link> => Boolean(link));
+};
+
 export const resolveJiraActKey = (
   issueKey: string,
   issueTypeName?: string | null,
@@ -381,6 +406,18 @@ export type JiraSearchIssue = {
   customerName: string | null;
   timeSpentSeconds: number;
   comments: Array<{ id: string; createdAt: string | null; bodyText: string }>;
+  linkedIssues: Array<{
+    id: string | null;
+    key: string;
+    direction: string;
+    typeName: string | null;
+    relation: string | null;
+    summary: string | null;
+    issueTypeName: string | null;
+    statusName: string | null;
+    statusCategoryKey: string | null;
+    statusCategoryName: string | null;
+  }>;
 };
 
 type SearchJiraIssuesOptions = {
@@ -421,7 +458,7 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
     fieldMap['client'],
     fieldMap['account'],
   ].filter(Boolean);
-  const queryFields = Array.from(new Set([...fields, ...additionalFields]));
+  const queryFields = Array.from(new Set([...fields, 'issuelinks', ...additionalFields]));
 
   while (true) {
     const payload = {
@@ -507,6 +544,7 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
               bodyText: flattenJiraComment(comment.body),
             }))
           : [],
+        linkedIssues: parseJiraIssueLinks(issue.fields?.issuelinks),
       });
     }
 

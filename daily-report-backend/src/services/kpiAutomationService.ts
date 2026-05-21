@@ -261,6 +261,29 @@ const parsePrioritySeverity = (priorityName: string | null) => {
   return 4;
 };
 
+const getBlockingBugLinks = (issue: Awaited<ReturnType<typeof searchJiraIssues>>[number]) =>
+  (issue.linkedIssues || []).filter((link) => {
+    const relation = normalizeSummary(link.relation);
+    const typeName = normalizeSummary(link.typeName);
+    const issueType = normalizeSummary(link.issueTypeName);
+    const isBlockedByRelation = relation.includes('blocked by') || (link.direction === 'inward' && typeName.includes('block'));
+    return isBlockedByRelation && issueType === 'bug';
+  });
+
+const isExcusedByBlockingBug = (
+  issue: Awaited<ReturnType<typeof searchJiraIssues>>[number],
+  dueDate: string | null,
+  actualEndAt: string | null
+) => {
+  const blockingBugLinks = getBlockingBugLinks(issue);
+  if (!blockingBugLinks.length) return false;
+  const due = endOfDueDate(dueDate);
+  if (!due) return false;
+  if (!actualEndAt) return isDueDatePassed(dueDate);
+  const actual = new Date(actualEndAt);
+  return !Number.isNaN(actual.getTime()) && actual > due;
+};
+
 const computeImplementationDomain = (
   issues: Awaited<ReturnType<typeof searchJiraIssues>>,
   npsEntries: KpiNpsScoreInput[],
@@ -291,6 +314,8 @@ const computeImplementationDomain = (
   const taskItems = eligibleTasks.map((issue) => {
     const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
+    const blockingBugLinks = getBlockingBugLinks(issue);
+    const excusedByBlocker = isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt);
     const onTime = Boolean(actualEndAt && due && new Date(actualEndAt) <= due);
     return {
       issueKey: issue.key,
@@ -298,20 +323,27 @@ const computeImplementationDomain = (
       dueDate: issue.dueDate,
       actualEndAt,
       onTime,
+      excusedByBlocker,
+      blockingBugs: blockingBugLinks.map((link) => ({ issueKey: link.key, statusName: link.statusName })),
     };
   });
-  const onTimeSubtaskCount = eligibleTasks.filter((issue) => {
+  const scoredTasks = eligibleTasks.filter((issue) => {
+    const actualEndAt = toIsoDate(issue.actualEndDate);
+    return !isExcusedByBlockingBug(issue, issue.dueDate, actualEndAt);
+  });
+  const onTimeSubtaskCount = scoredTasks.filter((issue) => {
     const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
     return actualEndAt && due && new Date(actualEndAt) <= due;
   }).length;
-  const lateSubtaskCount = eligibleTasks.filter((issue) => {
+  const lateSubtaskCount = scoredTasks.filter((issue) => {
     const actualEndAt = toIsoDate(issue.actualEndDate);
     const due = endOfDueDate(issue.dueDate);
     return actualEndAt && due && new Date(actualEndAt) > due;
   }).length;
-  const openSubtaskCount = eligibleTasks.filter((issue) => !toIsoDate(issue.actualEndDate)).length;
-  const onTimePct = eligibleTasks.length ? (onTimeSubtaskCount / eligibleTasks.length) * 100 : null;
+  const openSubtaskCount = scoredTasks.filter((issue) => !toIsoDate(issue.actualEndDate)).length;
+  const excusedBlockedSubtaskCount = eligibleTasks.length - scoredTasks.length;
+  const onTimePct = scoredTasks.length ? (onTimeSubtaskCount / scoredTasks.length) * 100 : null;
   const taskScore = onTimePct === null ? null : implementationTaskScore(onTimePct);
 
   const docStatus = REQUIRED_IMPL_DOCS.map((docName) => {
@@ -365,10 +397,12 @@ const computeImplementationDomain = (
       components: {
         taskAccuracy: {
           score: taskScore,
-          eligibleSubtaskCount: eligibleTasks.length,
+          eligibleSubtaskCount: scoredTasks.length,
+          rawEligibleSubtaskCount: eligibleTasks.length,
           onTimeSubtaskCount,
           lateSubtaskCount,
           openSubtaskCount,
+          excusedBlockedSubtaskCount,
           onTimePct: onTimePct === null ? null : Number(onTimePct.toFixed(2)),
           items: taskItems,
         },
@@ -443,9 +477,13 @@ const computePreventiveMaintenanceDomain = (
     if (job) {
       const jobActualEndAt = toIsoDate(job.actualEndDate);
       const lateMinutes = diffMinutesFromDueEnd(job.dueDate, jobActualEndAt);
-      const score = jobActualEndAt
-        ? pmExecutionScore(lateMinutes)
-        : (isDueDatePassed(job.dueDate) ? -1 : null);
+      const blockingBugLinks = getBlockingBugLinks(job);
+      const excusedByBlocker = isExcusedByBlockingBug(job, job.dueDate, jobActualEndAt);
+      const score = excusedByBlocker
+        ? null
+        : jobActualEndAt
+          ? pmExecutionScore(lateMinutes)
+          : (isDueDatePassed(job.dueDate) ? -1 : null);
       execItems.push({
         parentRef,
         parentDueDate,
@@ -456,6 +494,9 @@ const computePreventiveMaintenanceDomain = (
         lateMinutes: roundScore(lateMinutes),
         lateHuman: formatHumanDuration(lateMinutes),
         score,
+        blockedByBug: blockingBugLinks.length > 0,
+        excusedByBlocker,
+        blockingBugs: blockingBugLinks.map((link) => ({ issueKey: link.key, statusName: link.statusName })),
         pendingWithinDueDate: !jobActualEndAt && !isDueDatePassed(job.dueDate),
       });
     }
@@ -464,11 +505,15 @@ const computePreventiveMaintenanceDomain = (
     const reportActualEndAt = report ? toIsoDate(report.actualEndDate) : null;
     const reportDays = businessDaysBetween(relatedJobActualEndAt, reportActualEndAt);
     const reportDueDate = report?.dueDate || parentDueDate;
+    const reportBlockingBugLinks = report ? getBlockingBugLinks(report) : [];
+    const reportExcusedByBlocker = report ? isExcusedByBlockingBug(report, reportDueDate, reportActualEndAt) : false;
     const reportScore = !report
       ? 4
-      : reportActualEndAt
-        ? pmReportScore(reportDays)
-        : (isDueDatePassed(reportDueDate) ? -1 : null);
+      : reportExcusedByBlocker
+        ? null
+        : reportActualEndAt
+          ? pmReportScore(reportDays)
+          : (isDueDatePassed(reportDueDate) ? -1 : null);
     reportItems.push({
       parentRef,
       parentDueDate,
@@ -481,6 +526,9 @@ const computePreventiveMaintenanceDomain = (
       businessDaysLate: reportDays,
       score: reportScore,
       assumedByPolicy: !report,
+      blockedByBug: reportBlockingBugLinks.length > 0,
+      excusedByBlocker: reportExcusedByBlocker,
+      blockingBugs: reportBlockingBugLinks.map((link) => ({ issueKey: link.key, statusName: link.statusName })),
       pendingWithinDueDate: !!report && !reportActualEndAt && !isDueDatePassed(reportDueDate),
     });
   }
