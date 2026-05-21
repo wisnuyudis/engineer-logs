@@ -20,19 +20,32 @@ const fmtHour = (value) => value === null || value === undefined ? 'N/A' : `${Nu
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
 const fmtPeriod = (period) => `${period?.startDate || '-'} s/d ${period?.endDate || '-'}`;
 
-const buildInlineBars = (rows, keys) => {
+const buildSvgBars = (rows, keys, labelKey = 'label') => {
   const max = Math.max(1, ...rows.flatMap((row) => keys.map((key) => Number(row[key] || 0))));
-  return rows.map((row) => `
-    <div class="bar-row">
-      <div class="bar-label">${esc(row.customer || row.month)}</div>
-      <div class="bar-stack">
-        ${keys.map((key) => {
+  const rowHeight = 34;
+  const labelWidth = 170;
+  const chartWidth = 760;
+  const height = Math.max(42, rows.length * rowHeight + 12);
+  const colors = { problem: '#ef4444', change: '#14b8a6', total: '#6366f1' };
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${labelWidth + chartWidth + 72} ${height}" role="img">
+      ${rows.map((row, index) => {
+        let x = labelWidth;
+        const y = index * rowHeight + 8;
+        return `
+          <text x="0" y="${y + 15}" class="svg-label">${esc(row[labelKey] || row.customer || row.month)}</text>
+          ${keys.map((key) => {
           const value = Number(row[key] || 0);
-          return `<div class="bar ${key}" style="width:${Math.max(3, (value / max) * 100)}%"><span>${value}</span></div>`;
+          const width = Math.max(value ? 18 : 0, (value / max) * chartWidth);
+          const rect = `<rect x="${x}" y="${y}" width="${width}" height="20" rx="5" fill="${colors[key] || '#64748b'}"></rect>`;
+          const label = value ? `<text x="${x + width + 6}" y="${y + 14}" class="svg-value">${value}</text>` : '';
+          x += width;
+          return rect + label;
         }).join('')}
-      </div>
-    </div>
-  `).join('');
+        `;
+      }).join('')}
+    </svg>
+  `;
 };
 
 export function ExecutiveReportView() {
@@ -105,6 +118,17 @@ export function ExecutiveReportView() {
     const trendRows = selectedCustomer
       ? (data.monthlyTrend || []).filter((row) => row.customer === selectedCustomer)
       : trendChart;
+    const customerChartRows = selectedCustomer
+      ? customerRows.map((row) => ({ customer: row.customer, problem: row.problem, change: row.change }))
+      : customerTypeChart;
+    const topTopicRows = selectedCustomer
+      ? Object.values(issues.reduce((acc, issue) => {
+          const topic = issue.summary || issue.key;
+          acc[topic] = acc[topic] || { topic, count: 0 };
+          acc[topic].count += 1;
+          return acc;
+        }, {})).sort((a, b) => b.count - a.count)
+      : (data.topTopics || []);
     const title = selectedCustomer ? `Executive Report - ${selectedCustomer}` : 'Executive Summary - SUP Problem & Change';
     const win = window.open('', '_blank');
     if (!win) {
@@ -118,6 +142,7 @@ export function ExecutiveReportView() {
         <title>${esc(title)}</title>
         <style>
           @page { size: A4 landscape; margin: 14mm; }
+          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing:border-box; }
           body { font-family: Inter, Arial, sans-serif; color:#111827; margin:0; background:#fff; }
           h1 { margin:0; font-size:22px; }
           h2 { margin:24px 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:#334155; }
@@ -129,15 +154,16 @@ export function ExecutiveReportView() {
           table { width:100%; border-collapse:collapse; font-size:10px; }
           th { text-align:left; background:#eef2f7; color:#475569; text-transform:uppercase; letter-spacing:.05em; font-size:9px; }
           th, td { padding:7px 8px; border:1px solid #dbe3ef; vertical-align:top; }
-          .bar-row { display:grid; grid-template-columns:170px 1fr; gap:10px; align-items:center; margin:6px 0; font-size:10px; }
-          .bar-label { font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-          .bar-stack { display:flex; gap:5px; align-items:center; min-height:22px; }
-          .bar { min-width:24px; height:20px; border-radius:7px; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:flex-end; padding-right:6px; box-sizing:border-box; }
-          .bar.problem { background:linear-gradient(90deg,#ef4444,#f97316); }
-          .bar.change { background:linear-gradient(90deg,#14b8a6,#22c55e); }
-          .bar.total { background:linear-gradient(90deg,#6366f1,#06b6d4); }
+          .chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; page-break-inside:avoid; }
+          .chart-box { border:1px solid #dbe3ef; border-radius:12px; padding:10px; background:#fff; }
+          .chart-svg { width:100%; height:auto; display:block; }
+          .svg-label { font-size:10px; font-weight:700; fill:#334155; }
+          .svg-value { font-size:10px; font-weight:800; fill:#111827; }
           .breakdown { display:flex; gap:4px; flex-wrap:wrap; }
           .pill { border:1px solid #c7d2fe; color:#3730a3; background:#eef2ff; border-radius:999px; padding:2px 7px; font-size:9px; font-weight:700; }
+          .topic-list { display:grid; grid-template-columns:repeat(2,1fr); gap:6px 12px; font-size:10px; }
+          .topic-item { display:flex; justify-content:space-between; border-bottom:1px solid #e5e7eb; padding:4px 0; }
+          @media print { .chart-box, table, .cards { page-break-inside:avoid; } }
         </style>
       </head>
       <body>
@@ -150,8 +176,16 @@ export function ExecutiveReportView() {
           <div class="card"><div class="label">Customer</div><div class="value">${selectedCustomer ? 1 : (data.totals?.customers || 0)}</div></div>
         </div>
 
-        <h2>Trend Tiket</h2>
-        ${buildInlineBars(trendRows.map((row) => ({ month: row.month, problem: row.problem, change: row.change })), ['problem','change'])}
+        <div class="chart-grid">
+          <div class="chart-box">
+            <h2>Tren Tiket per Bulan</h2>
+            ${buildSvgBars(trendRows.map((row) => ({ label: row.month, problem: row.problem, change: row.change })), ['problem','change'])}
+          </div>
+          <div class="chart-box">
+            <h2>Problem vs Change per Customer</h2>
+            ${buildSvgBars(customerChartRows.map((row) => ({ label: row.customer, problem: row.problem, change: row.change })), ['problem','change'])}
+          </div>
+        </div>
 
         <h2>Ringkasan Customer</h2>
         <table>
@@ -169,14 +203,19 @@ export function ExecutiveReportView() {
           </tbody>
         </table>
 
+        <h2>Top Jenis Tiket Berdasarkan Topik</h2>
+        <div class="topic-list">
+          ${topTopicRows.map((item, index) => `<div class="topic-item"><span>${index + 1}. ${esc(item.topic)}</span><strong>${item.count}</strong></div>`).join('')}
+        </div>
+
         <h2>Detail SUP</h2>
         <table>
           <thead><tr><th>Issue</th><th>Customer</th><th>Type</th><th>Topic</th><th>Status</th><th>Created</th><th>Resolution</th></tr></thead>
           <tbody>
-            ${issues.map((issue) => `<tr><td>${esc(issue.key)}</td><td>${esc(issue.customer)}</td><td>${esc(issue.type)}</td><td>${esc(issue.ticketTopic)}</td><td>${esc(issue.status)}</td><td>${esc(issue.createdAt ? issue.createdAt.slice(0, 10) : '-')}</td><td>${fmtHour(issue.resolutionHours)}</td></tr>`).join('')}
+            ${issues.map((issue) => `<tr><td>${esc(issue.key)}</td><td>${esc(issue.customer)}</td><td>${esc(issue.type)}</td><td>${esc(selectedCustomer ? issue.summary : issue.ticketTopic)}</td><td>${esc(issue.status)}</td><td>${esc(issue.createdAt ? issue.createdAt.slice(0, 10) : '-')}</td><td>${fmtHour(issue.resolutionHours)}</td></tr>`).join('')}
           </tbody>
         </table>
-        <script>window.print();</script>
+        <script>setTimeout(() => window.print(), 350);</script>
       </body>
       </html>`);
     win.document.close();

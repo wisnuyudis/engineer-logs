@@ -140,7 +140,7 @@ const getExecutiveReport = async (req, res) => {
             const customer = inferCustomer(issue);
             const type = classifyTicket(issue);
             const key = monthKey(issue.createdAt);
-            const resolutionHours = hoursBetween(issue.createdAt, issue.resolutionDate);
+            const resolutionHours = hoursBetween(issue.actualStartDate, issue.actualEndDate);
             const solutionCategory = inferSolutionCategory(issue);
             const row = customers.get(customer) || {
                 customer,
@@ -181,7 +181,7 @@ const getExecutiveReport = async (req, res) => {
             totalTickets: row.totalTickets,
             problem: row.problem,
             change: row.change,
-            avgResolutionHours: row.totalTickets ? Number((row._resolutionSum / row.totalTickets).toFixed(2)) : 0,
+            avgResolutionHours: row._resolutionCount ? Number((row._resolutionSum / row.totalTickets).toFixed(2)) : null,
             resolvedTicketCount: row._resolutionCount,
             totalResolutionHours: Number(row._resolutionSum.toFixed(2)),
             ticketsPerMonth: Number((row.totalTickets / monthCount).toFixed(2)),
@@ -211,8 +211,10 @@ const getExecutiveReport = async (req, res) => {
                 ticketTopic: classifySpecificTicketTopic(issue),
                 status: issue.statusName,
                 createdAt: issue.createdAt,
+                actualStartDate: issue.actualStartDate,
+                actualEndDate: issue.actualEndDate,
                 resolutionDate: issue.resolutionDate,
-                resolutionHours: hoursBetween(issue.createdAt, issue.resolutionDate),
+                resolutionHours: hoursBetween(issue.actualStartDate, issue.actualEndDate),
                 priority: issue.priorityName,
             })),
         });
