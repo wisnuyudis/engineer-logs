@@ -384,9 +384,9 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period) => {
             .filter((issue) => normalizeSummary(issue.summary).startsWith('report pm'))
             .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))[0];
         if (job) {
-            const jobDoneAt = toIsoDate(job.resolutionDate);
-            const lateMinutes = diffMinutesFromDueEnd(job.dueDate, jobDoneAt);
-            const score = jobDoneAt
+            const jobActualEndAt = toIsoDate(job.actualEndDate);
+            const lateMinutes = diffMinutesFromDueEnd(job.dueDate, jobActualEndAt);
+            const score = jobActualEndAt
                 ? pmExecutionScore(lateMinutes)
                 : (isDueDatePassed(job.dueDate) ? -1 : null);
             execItems.push({
@@ -394,20 +394,21 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period) => {
                 parentDueDate,
                 issueKey: job.key,
                 dueDate: job.dueDate,
-                doneAt: jobDoneAt,
+                actualEndAt: jobActualEndAt,
+                doneAt: jobActualEndAt,
                 lateMinutes: roundScore(lateMinutes),
                 lateHuman: formatHumanDuration(lateMinutes),
                 score,
-                pendingWithinDueDate: !jobDoneAt && !isDueDatePassed(job.dueDate),
+                pendingWithinDueDate: !jobActualEndAt && !isDueDatePassed(job.dueDate),
             });
         }
-        const relatedJobDoneAt = job ? toIsoDate(job.resolutionDate) : null;
-        const reportDoneAt = report ? toIsoDate(report.resolutionDate) : null;
-        const reportDays = businessDaysBetween(relatedJobDoneAt, reportDoneAt);
+        const relatedJobActualEndAt = job ? toIsoDate(job.actualEndDate) : null;
+        const reportActualEndAt = report ? toIsoDate(report.actualEndDate) : null;
+        const reportDays = businessDaysBetween(relatedJobActualEndAt, reportActualEndAt);
         const reportDueDate = report?.dueDate || parentDueDate;
         const reportScore = !report
             ? 4
-            : reportDoneAt
+            : reportActualEndAt
                 ? pmReportScore(reportDays)
                 : (isDueDatePassed(reportDueDate) ? -1 : null);
         reportItems.push({
@@ -415,12 +416,14 @@ const computePreventiveMaintenanceDomain = (issues, parentDueDates, period) => {
             parentDueDate,
             issueKey: report?.key || null,
             dueDate: reportDueDate,
-            actualPmDoneAt: relatedJobDoneAt,
-            reportDoneAt,
+            actualPmEndAt: relatedJobActualEndAt,
+            actualPmDoneAt: relatedJobActualEndAt,
+            reportActualEndAt,
+            reportDoneAt: reportActualEndAt,
             businessDaysLate: reportDays,
             score: reportScore,
             assumedByPolicy: !report,
-            pendingWithinDueDate: !!report && !reportDoneAt && !isDueDatePassed(reportDueDate),
+            pendingWithinDueDate: !!report && !reportActualEndAt && !isDueDatePassed(reportDueDate),
         });
     }
     const executionScore = averageScores(execItems.map((item) => item.score));

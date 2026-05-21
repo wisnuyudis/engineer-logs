@@ -566,7 +566,7 @@ export function KpiManagementView({ currentUser }) {
                           { key:'parentRef', label:'Parent' },
                           { key:'issueKey', label:'Issue' },
                           { key:'dueDate', label:'Due Date' },
-                          { key:'doneAt', label:'Done At' },
+                          { key:'actualEndAt', label:'Actual End' },
                           { key:'lateHuman', label:'Keterlambatan' },
                           { key:'score', label:'Skor' },
                         ]}
@@ -577,8 +577,8 @@ export function KpiManagementView({ currentUser }) {
                         columns={[
                           { key:'parentRef', label:'Parent' },
                           { key:'issueKey', label:'Issue' },
-                          { key:'actualPmDoneAt', label:'Actual PM Done' },
-                          { key:'reportDoneAt', label:'Report Done' },
+                          { key:'actualPmEndAt', label:'Actual End Pekerjaan PM' },
+                          { key:'reportActualEndAt', label:'Actual End Report PM' },
                           { key:'businessDaysLate', label:'Keterlambatan', render: (row) => formatBizDaysHuman(row.businessDaysLate) },
                           { key:'score', label:'Skor' },
                         ]}
