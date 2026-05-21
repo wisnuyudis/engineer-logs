@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T, FONT, DISPLAY } from '../theme/tokens';
-import { canManageKpi, canManageKpiNps, teamOf } from '../constants/taxonomy';
+import { canManageKpi, canManageKpiNps, isMgr, teamOf } from '../constants/taxonomy';
 import { Avi, RoleBadge, TeamBadge, Divider } from './ui/Primitives';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -22,7 +22,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
       label: 'Reports',
       children: [
         { id: "/reports/activity", icon: "▤", label: "Activity Report" },
-        { id: "/reports/executive", icon: "▧", label: "Executive Report" },
+        ...(isMgr(user.role) ? [{ id: "/reports/executive", icon: "▧", label: "Executive Report" }] : []),
       ],
     },
   ];

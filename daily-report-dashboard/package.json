@@ -13,6 +13,8 @@
     "@tanstack/react-query": "^5.99.2",
     "axios": "^1.16.1",
     "docx-preview": "^0.3.7",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.577.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",

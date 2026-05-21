@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, CartesianGrid, LabelList, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { T, MONO, DISPLAY } from '../theme/tokens';
 import { Card, Btn, Inp, Lbl, Tag } from './ui/Primitives';
 import api from '../lib/api';
@@ -17,35 +19,92 @@ const quarterRange = (year, quarter) => {
 };
 
 const fmtHour = (value) => value === null || value === undefined ? 'N/A' : `${Number(value).toFixed(1)}h`;
-const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
 const fmtPeriod = (period) => `${period?.startDate || '-'} s/d ${period?.endDate || '-'}`;
+const safeName = (value) => String(value || 'report').replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
 
-const buildSvgBars = (rows, keys, labelKey = 'label') => {
+const addPdfFooter = (doc) => {
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Page ${page} / ${pageCount}`, doc.internal.pageSize.getWidth() - 18, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+  }
+};
+
+const ensurePdfSpace = (doc, y, needed = 30) => {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (y + needed < pageHeight - 14) return y;
+  doc.addPage();
+  return 16;
+};
+
+const drawPdfSection = (doc, title, y) => {
+  y = ensurePdfSpace(doc, y, 18);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59);
+  doc.text(title.toUpperCase(), 14, y);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(14, y + 3, doc.internal.pageSize.getWidth() - 14, y + 3);
+  return y + 9;
+};
+
+const drawPdfCards = (doc, cards, y) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const gap = 6;
+  const cardWidth = (pageWidth - 28 - gap * (cards.length - 1)) / cards.length;
+  cards.forEach((card, index) => {
+    const x = 14 + index * (cardWidth + gap);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(219, 226, 239);
+    doc.roundedRect(x, y, cardWidth, 22, 3, 3, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(String(card.label).toUpperCase(), x + 4, y + 7);
+    doc.setFontSize(16);
+    doc.setTextColor(card.color || '#111827');
+    doc.text(String(card.value), x + 4, y + 17);
+  });
+  return y + 30;
+};
+
+const drawPdfBarChart = (doc, title, rows, keys, y, options = {}) => {
+  y = drawPdfSection(doc, title, y);
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const chartWidth = pageWidth - 70;
+  const labelWidth = 42;
+  const rowHeight = 7;
   const max = Math.max(1, ...rows.flatMap((row) => keys.map((key) => Number(row[key] || 0))));
-  const rowHeight = 34;
-  const labelWidth = 170;
-  const chartWidth = 760;
-  const height = Math.max(42, rows.length * rowHeight + 12);
-  const colors = { problem: '#ef4444', change: '#14b8a6', total: '#6366f1' };
-  return `
-    <svg class="chart-svg" viewBox="0 0 ${labelWidth + chartWidth + 72} ${height}" role="img">
-      ${rows.map((row, index) => {
-        let x = labelWidth;
-        const y = index * rowHeight + 8;
-        return `
-          <text x="0" y="${y + 15}" class="svg-label">${esc(row[labelKey] || row.customer || row.month)}</text>
-          ${keys.map((key) => {
-          const value = Number(row[key] || 0);
-          const width = Math.max(value ? 18 : 0, (value / max) * chartWidth);
-          const rect = `<rect x="${x}" y="${y}" width="${width}" height="20" rx="5" fill="${colors[key] || '#64748b'}"></rect>`;
-          const label = value ? `<text x="${x + width + 6}" y="${y + 14}" class="svg-value">${value}</text>` : '';
-          x += width;
-          return rect + label;
-        }).join('')}
-        `;
-      }).join('')}
-    </svg>
-  `;
+  const colors = { problem: [239, 68, 68], change: [20, 184, 166], total: [99, 102, 241] };
+  const visibleRows = rows.slice(0, options.limit || 14);
+
+  y = ensurePdfSpace(doc, y, Math.max(18, visibleRows.length * rowHeight + 12));
+  visibleRows.forEach((row, index) => {
+    const cy = y + index * rowHeight;
+    const label = String(row.label || row.customer || row.month || '-');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(51, 65, 85);
+    doc.text(doc.splitTextToSize(label, labelWidth - 2)[0], 14, cy + 4.5);
+
+    let x = 14 + labelWidth;
+    keys.forEach((key) => {
+      const value = Number(row[key] || 0);
+      const width = value ? Math.max(6, (value / max) * chartWidth) : 0;
+      doc.setFillColor(...(colors[key] || [100, 116, 139]));
+      if (width > 0) doc.roundedRect(x, cy, width, 4.8, 1.4, 1.4, 'F');
+      if (value > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(15, 23, 42);
+        doc.text(String(value), x + width + 2, cy + 4);
+      }
+      x += width;
+    });
+  });
+  return y + visibleRows.length * rowHeight + 8;
 };
 
 export function ExecutiveReportView() {
@@ -103,12 +162,11 @@ export function ExecutiveReportView() {
   const generateExecutivePdf = (type) => {
     if (!data) return;
     const selectedCustomer = type === 'customer' ? reportCustomer : '';
+    if (type === 'customer' && !selectedCustomer) return;
+
     const issues = selectedCustomer
       ? (data.issues || []).filter((issue) => issue.customer === selectedCustomer)
       : (data.issues || []);
-    if (type === 'customer' && !selectedCustomer) {
-      return;
-    }
     const customerRows = selectedCustomer
       ? (data.customerRows || []).filter((row) => row.customer === selectedCustomer)
       : (data.customerRows || []);
@@ -130,95 +188,90 @@ export function ExecutiveReportView() {
         }, {})).sort((a, b) => b.count - a.count)
       : (data.topTopics || []);
     const title = selectedCustomer ? `Executive Report - ${selectedCustomer}` : 'Executive Summary - SUP Problem & Change';
-    const win = window.open('', '_blank');
-    if (!win) {
-      alert('Pop-up diblokir browser. Izinkan pop-up untuk generate report PDF.');
-      return;
-    }
 
-    win.document.write(`<!doctype html>
-      <html>
-      <head>
-        <title>${esc(title)}</title>
-        <style>
-          @page { size: A4 landscape; margin: 14mm; }
-          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing:border-box; }
-          body { font-family: Inter, Arial, sans-serif; color:#111827; margin:0; background:#fff; }
-          h1 { margin:0; font-size:22px; }
-          h2 { margin:24px 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:#334155; }
-          .muted { color:#64748b; font-size:11px; margin-top:4px; }
-          .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:16px; }
-          .card { border:1px solid #dbe3ef; border-radius:12px; padding:12px; background:#f8fafc; }
-          .label { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#64748b; font-weight:700; }
-          .value { font-size:24px; font-weight:900; margin-top:5px; }
-          table { width:100%; border-collapse:collapse; font-size:10px; }
-          th { text-align:left; background:#eef2f7; color:#475569; text-transform:uppercase; letter-spacing:.05em; font-size:9px; }
-          th, td { padding:7px 8px; border:1px solid #dbe3ef; vertical-align:top; }
-          .chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; page-break-inside:avoid; }
-          .chart-box { border:1px solid #dbe3ef; border-radius:12px; padding:10px; background:#fff; }
-          .chart-svg { width:100%; height:auto; display:block; }
-          .svg-label { font-size:10px; font-weight:700; fill:#334155; }
-          .svg-value { font-size:10px; font-weight:800; fill:#111827; }
-          .breakdown { display:flex; gap:4px; flex-wrap:wrap; }
-          .pill { border:1px solid #c7d2fe; color:#3730a3; background:#eef2ff; border-radius:999px; padding:2px 7px; font-size:9px; font-weight:700; }
-          .topic-list { display:grid; grid-template-columns:repeat(2,1fr); gap:6px 12px; font-size:10px; }
-          .topic-item { display:flex; justify-content:space-between; border-bottom:1px solid #e5e7eb; padding:4px 0; }
-          @media print { .chart-box, table, .cards { page-break-inside:avoid; } }
-        </style>
-      </head>
-      <body>
-        <h1>${esc(title)}</h1>
-        <div class="muted">Periode: ${esc(fmtPeriod(data.period))} · Generated ${new Date().toLocaleString('id-ID')}</div>
-        <div class="cards">
-          <div class="card"><div class="label">Total Tiket</div><div class="value">${issues.length}</div></div>
-          <div class="card"><div class="label">Problem</div><div class="value">${issues.filter((issue) => issue.type === 'problem').length}</div></div>
-          <div class="card"><div class="label">Change</div><div class="value">${issues.filter((issue) => issue.type === 'change').length}</div></div>
-          <div class="card"><div class="label">Customer</div><div class="value">${selectedCustomer ? 1 : (data.totals?.customers || 0)}</div></div>
-        </div>
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    let y = 16;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(15, 23, 42);
+    doc.text(title, 14, y);
+    y += 7;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Periode: ${fmtPeriod(data.period)} | Generated ${new Date().toLocaleString('id-ID')}`, 14, y);
+    y += 8;
 
-        <div class="chart-grid">
-          <div class="chart-box">
-            <h2>Tren Tiket per Bulan</h2>
-            ${buildSvgBars(trendRows.map((row) => ({ label: row.month, problem: row.problem, change: row.change })), ['problem','change'])}
-          </div>
-          <div class="chart-box">
-            <h2>Problem vs Change per Customer</h2>
-            ${buildSvgBars(customerChartRows.map((row) => ({ label: row.customer, problem: row.problem, change: row.change })), ['problem','change'])}
-          </div>
-        </div>
+    y = drawPdfCards(doc, [
+      { label: 'Total Tiket', value: issues.length, color: '#4f46e5' },
+      { label: 'Problem', value: issues.filter((issue) => issue.type === 'problem').length, color: '#ef4444' },
+      { label: 'Change', value: issues.filter((issue) => issue.type === 'change').length, color: '#14b8a6' },
+      { label: 'Customer', value: selectedCustomer ? 1 : (data.totals?.customers || 0), color: '#f59e0b' },
+    ], y);
 
-        <h2>Ringkasan Customer</h2>
-        <table>
-          <thead><tr><th>Customer</th><th>Total</th><th>Problem</th><th>Change</th><th>Avg Resolution</th><th>Tiket / Month</th><th>% Problem</th></tr></thead>
-          <tbody>
-            ${customerRows.map((row) => `<tr><td>${esc(row.customer)}</td><td>${row.totalTickets}</td><td>${row.problem}</td><td>${row.change}</td><td>${fmtHour(row.avgResolutionHours)}</td><td>${row.ticketsPerMonth}</td><td>${row.problemPct}%</td></tr>`).join('')}
-          </tbody>
-        </table>
+    y = drawPdfBarChart(doc, 'Tren Tiket per Bulan', trendRows.map((row) => ({ label: row.month, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 8 });
+    y = drawPdfBarChart(doc, 'Problem vs Change per Customer', customerChartRows.map((row) => ({ label: row.customer, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 12 });
 
-        <h2>Kategori Solusi per Customer</h2>
-        <table>
-          <thead><tr><th>Customer</th><th>Pecahan Kategori</th><th>Total</th></tr></thead>
-          <tbody>
-            ${solutionRows.map((row) => `<tr><td>${esc(row.customer)}</td><td><div class="breakdown">${row.categories.map((item) => `<span class="pill">${esc(item.category)}: ${item.count}</span>`).join('')}</div></td><td>${row.total}</td></tr>`).join('')}
-          </tbody>
-        </table>
+    y = drawPdfSection(doc, 'Ringkasan Tiket per Customer', y);
+    autoTable(doc, {
+      startY: y,
+      head: [['Customer', 'Total', 'Problem', 'Change', 'Avg Resolution', 'Tiket / Month', '% Problem']],
+      body: customerRows.map((row) => [row.customer, row.totalTickets, row.problem, row.change, fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
+      theme: 'grid',
+      headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2 },
+    });
+    y = (doc.lastAutoTable?.finalY || y) + 10;
 
-        <h2>Top Jenis Tiket Berdasarkan Topik</h2>
-        <div class="topic-list">
-          ${topTopicRows.map((item, index) => `<div class="topic-item"><span>${index + 1}. ${esc(item.topic)}</span><strong>${item.count}</strong></div>`).join('')}
-        </div>
+    y = drawPdfSection(doc, 'Kategori Solusi per Customer', y);
+    autoTable(doc, {
+      startY: y,
+      head: [['Customer', 'Pecahan Kategori', 'Total']],
+      body: solutionRows.map((row) => [
+        row.customer,
+        row.categories.map((item) => `${item.category}: ${item.count}`).join(', '),
+        row.total,
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: { 1: { cellWidth: 180 } },
+    });
+    y = (doc.lastAutoTable?.finalY || y) + 10;
 
-        <h2>Detail SUP</h2>
-        <table>
-          <thead><tr><th>Issue</th><th>Customer</th><th>Type</th><th>Topic</th><th>Status</th><th>Created</th><th>Resolution</th></tr></thead>
-          <tbody>
-            ${issues.map((issue) => `<tr><td>${esc(issue.key)}</td><td>${esc(issue.customer)}</td><td>${esc(issue.type)}</td><td>${esc(selectedCustomer ? issue.summary : issue.ticketTopic)}</td><td>${esc(issue.status)}</td><td>${esc(issue.createdAt ? issue.createdAt.slice(0, 10) : '-')}</td><td>${fmtHour(issue.resolutionHours)}</td></tr>`).join('')}
-          </tbody>
-        </table>
-        <script>setTimeout(() => window.print(), 350);</script>
-      </body>
-      </html>`);
-    win.document.close();
+    y = drawPdfSection(doc, 'Top Jenis Tiket Berdasarkan Topik', y);
+    autoTable(doc, {
+      startY: y,
+      head: [['#', 'Topik', 'Count']],
+      body: topTopicRows.map((item, index) => [index + 1, item.topic, item.count]),
+      theme: 'grid',
+      headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: { 1: { cellWidth: 210 } },
+    });
+    y = (doc.lastAutoTable?.finalY || y) + 10;
+
+    y = drawPdfSection(doc, 'Detail SUP', y);
+    autoTable(doc, {
+      startY: y,
+      head: [['Issue', 'Customer', 'Type', 'Topic', 'Status', 'Created', 'Resolution']],
+      body: issues.map((issue) => [
+        issue.key,
+        issue.customer,
+        issue.type,
+        selectedCustomer ? (issue.summary || '-') : (issue.ticketTopic || '-'),
+        issue.status || '-',
+        issue.createdAt ? issue.createdAt.slice(0, 10) : '-',
+        fmtHour(issue.resolutionHours),
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+      styles: { fontSize: 7, cellPadding: 1.8 },
+      columnStyles: { 3: { cellWidth: 88 } },
+    });
+
+    addPdfFooter(doc);
+    doc.save(`${safeName(title)}-${data.period?.startDate || 'start'}-${data.period?.endDate || 'end'}.pdf`);
   };
 
   return (

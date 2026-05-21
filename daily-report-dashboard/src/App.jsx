@@ -20,6 +20,7 @@ import { RoleBadge, Avi, Btn } from './components/ui/Primitives';
 import { Toaster } from 'sonner';
 import React from 'react';
 import api from './lib/api';
+import { isMgr } from './constants/taxonomy';
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -159,6 +160,7 @@ export default function App() {
   const pageTitle = TITLES[view] || TITLES["/"];
   const isLoading = loadingMembers || loadingActs || loadingTax;
   const hasPageFab = view === '/members';
+  const canViewExecutiveReport = isMgr(user.role);
 
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.textPri }}>
@@ -218,7 +220,7 @@ export default function App() {
                   <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} onResetPassword={handleResetMemberPassword} activities={acts} />} />
                   <Route path="/reports" element={<Navigate to="/reports/activity" replace />} />
                   <Route path="/reports/activity" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
-                  <Route path="/reports/executive" element={<ExecutiveReportView />} />
+                  <Route path="/reports/executive" element={canViewExecutiveReport ? <ExecutiveReportView /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={syncUser} />} />
                   <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
                   <Route path="/kpi-nps" element={<KpiNpsView currentUser={user} />} />
