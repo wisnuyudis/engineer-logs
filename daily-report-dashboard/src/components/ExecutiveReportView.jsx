@@ -32,30 +32,37 @@ const addPdfFooter = (doc) => {
   }
 };
 
+const pdfPage = (doc) => ({
+  width: doc.internal.pageSize.getWidth(),
+  height: doc.internal.pageSize.getHeight(),
+  margin: 12,
+});
+
 const ensurePdfSpace = (doc, y, needed = 30) => {
-  const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed < pageHeight - 14) return y;
+  const { height, margin } = pdfPage(doc);
+  if (y + needed < height - margin) return y;
   doc.addPage();
-  return 16;
+  return margin;
 };
 
 const drawPdfSection = (doc, title, y) => {
   y = ensurePdfSpace(doc, y, 18);
+  const { width, margin } = pdfPage(doc);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(30, 41, 59);
-  doc.text(title.toUpperCase(), 14, y);
+  doc.text(title.toUpperCase(), margin, y);
   doc.setDrawColor(226, 232, 240);
-  doc.line(14, y + 3, doc.internal.pageSize.getWidth() - 14, y + 3);
+  doc.line(margin, y + 3, width - margin, y + 3);
   return y + 9;
 };
 
 const drawPdfCards = (doc, cards, y) => {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const gap = 6;
-  const cardWidth = (pageWidth - 28 - gap * (cards.length - 1)) / cards.length;
+  const { width, margin } = pdfPage(doc);
+  const gap = 4;
+  const cardWidth = (width - margin * 2 - gap * (cards.length - 1)) / cards.length;
   cards.forEach((card, index) => {
-    const x = 14 + index * (cardWidth + gap);
+    const x = margin + index * (cardWidth + gap);
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(219, 226, 239);
     doc.roundedRect(x, y, cardWidth, 22, 3, 3, 'FD');
@@ -72,39 +79,48 @@ const drawPdfCards = (doc, cards, y) => {
 
 const drawPdfBarChart = (doc, title, rows, keys, y, options = {}) => {
   y = drawPdfSection(doc, title, y);
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const chartWidth = pageWidth - 70;
-  const labelWidth = 42;
-  const rowHeight = 7;
+  const { width, height, margin } = pdfPage(doc);
+  const labelWidth = options.labelWidth || 46;
+  const rowHeight = options.rowHeight || 7;
+  const valuePad = 10;
+  const chartWidth = width - margin * 2 - labelWidth - valuePad;
+  const bottomLimit = height - margin;
   const max = Math.max(1, ...rows.flatMap((row) => keys.map((key) => Number(row[key] || 0))));
   const colors = { problem: [239, 68, 68], change: [20, 184, 166], total: [99, 102, 241] };
-  const visibleRows = rows.slice(0, options.limit || 14);
+  const visibleRows = rows.slice(0, options.limit || 12);
 
   y = ensurePdfSpace(doc, y, Math.max(18, visibleRows.length * rowHeight + 12));
   visibleRows.forEach((row, index) => {
-    const cy = y + index * rowHeight;
+    if (y + rowHeight > bottomLimit) {
+      doc.addPage();
+      y = margin;
+    }
+    const cy = y;
     const label = String(row.label || row.customer || row.month || '-');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(51, 65, 85);
-    doc.text(doc.splitTextToSize(label, labelWidth - 2)[0], 14, cy + 4.5);
+    doc.text(doc.splitTextToSize(label, labelWidth - 2)[0], margin, cy + 4.5);
 
-    let x = 14 + labelWidth;
+    let x = margin + labelWidth;
     keys.forEach((key) => {
       const value = Number(row[key] || 0);
-      const width = value ? Math.max(6, (value / max) * chartWidth) : 0;
+      const rawWidth = value ? Math.max(5, (value / max) * chartWidth) : 0;
+      const remainingWidth = Math.max(0, margin + labelWidth + chartWidth - x);
+      const barWidth = Math.min(rawWidth, remainingWidth);
       doc.setFillColor(...(colors[key] || [100, 116, 139]));
-      if (width > 0) doc.roundedRect(x, cy, width, 4.8, 1.4, 1.4, 'F');
+      if (barWidth > 0) doc.roundedRect(x, cy, barWidth, 4.8, 1.4, 1.4, 'F');
       if (value > 0) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
         doc.setTextColor(15, 23, 42);
-        doc.text(String(value), x + width + 2, cy + 4);
+        doc.text(String(value), Math.min(x + barWidth + 1.5, width - margin - 4), cy + 4);
       }
-      x += width;
+      x += barWidth;
     });
+    y += rowHeight;
   });
-  return y + visibleRows.length * rowHeight + 8;
+  return y + 8;
 };
 
 export function ExecutiveReportView() {
@@ -189,17 +205,18 @@ export function ExecutiveReportView() {
       : (data.topTopics || []);
     const title = selectedCustomer ? `Executive Report - ${selectedCustomer}` : 'Executive Summary - SUP Problem & Change';
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    let y = 16;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    let y = 14;
+    const { margin } = pdfPage(doc);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
+    doc.setFontSize(15);
     doc.setTextColor(15, 23, 42);
-    doc.text(title, 14, y);
+    doc.text(doc.splitTextToSize(title, doc.internal.pageSize.getWidth() - margin * 2), margin, y);
     y += 7;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Periode: ${fmtPeriod(data.period)} | Generated ${new Date().toLocaleString('id-ID')}`, 14, y);
+    doc.text(`Periode: ${fmtPeriod(data.period)} | Generated ${new Date().toLocaleString('id-ID')}`, margin, y);
     y += 8;
 
     y = drawPdfCards(doc, [
@@ -209,8 +226,8 @@ export function ExecutiveReportView() {
       { label: 'Customer', value: selectedCustomer ? 1 : (data.totals?.customers || 0), color: '#f59e0b' },
     ], y);
 
-    y = drawPdfBarChart(doc, 'Tren Tiket per Bulan', trendRows.map((row) => ({ label: row.month, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 8 });
-    y = drawPdfBarChart(doc, 'Problem vs Change per Customer', customerChartRows.map((row) => ({ label: row.customer, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 12 });
+    y = drawPdfBarChart(doc, 'Tren Tiket per Bulan', trendRows.map((row) => ({ label: row.month, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 8, labelWidth: 34 });
+    y = drawPdfBarChart(doc, 'Problem vs Change per Customer', customerChartRows.map((row) => ({ label: row.customer, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 10, labelWidth: 52 });
 
     y = drawPdfSection(doc, 'Ringkasan Tiket per Customer', y);
     autoTable(doc, {
@@ -219,7 +236,8 @@ export function ExecutiveReportView() {
       body: customerRows.map((row) => [row.customer, row.totalTickets, row.problem, row.change, fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 2 },
+      styles: { fontSize: 7, cellPadding: 1.6 },
+      margin: { left: margin, right: margin },
     });
     y = (doc.lastAutoTable?.finalY || y) + 10;
 
@@ -234,8 +252,9 @@ export function ExecutiveReportView() {
       ]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: { 1: { cellWidth: 180 } },
+      styles: { fontSize: 7, cellPadding: 1.6 },
+      margin: { left: margin, right: margin },
+      columnStyles: { 1: { cellWidth: 108 } },
     });
     y = (doc.lastAutoTable?.finalY || y) + 10;
 
@@ -246,8 +265,9 @@ export function ExecutiveReportView() {
       body: topTopicRows.map((item, index) => [index + 1, item.topic, item.count]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: { 1: { cellWidth: 210 } },
+      styles: { fontSize: 7, cellPadding: 1.6 },
+      margin: { left: margin, right: margin },
+      columnStyles: { 1: { cellWidth: 140 } },
     });
     y = (doc.lastAutoTable?.finalY || y) + 10;
 
@@ -266,8 +286,9 @@ export function ExecutiveReportView() {
       ]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
-      styles: { fontSize: 7, cellPadding: 1.8 },
-      columnStyles: { 3: { cellWidth: 88 } },
+      styles: { fontSize: 6.4, cellPadding: 1.4, overflow: 'linebreak' },
+      margin: { left: margin, right: margin },
+      columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 25 }, 2: { cellWidth: 15 }, 3: { cellWidth: 62 }, 4: { cellWidth: 22 }, 5: { cellWidth: 20 }, 6: { cellWidth: 18 } },
     });
 
     addPdfFooter(doc);
