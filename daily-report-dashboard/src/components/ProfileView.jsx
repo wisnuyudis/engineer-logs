@@ -88,7 +88,7 @@ export function ProfileView({ user, activities, onUpdate }) {
         <div className="profile-stack">
           <Card p={22}>
             <div style={{ display:"flex",alignItems:"flex-start",gap:14,marginBottom:18 }}>
-              <Avi av={user.avatar} team={user.team} sz={60} />
+              <Avi av={user.avatar} name={user.name} team={user.team} sz={60} />
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:18,fontWeight:800,color:T.textPri,fontFamily:DISPLAY }}>{user.name}</div>
                 <div style={{ fontSize:12,color:T.textMute,marginTop:2,overflow:"hidden",textOverflow:"ellipsis" }}>{user.email}</div>

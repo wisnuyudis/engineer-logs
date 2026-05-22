@@ -351,7 +351,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                     return (
                       <div key={m.id} style={{ minWidth:0 }}>
                         <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5 }}>
-                          <Avi av={m.avatar} team={m.team} sz={22} />
+                          <Avi av={m.avatar} name={m.name} team={m.team} sz={22} />
                           <span style={{ fontSize:11,color:T.textPri,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.name.split(" ")[0]}</span>
                         </div>
                         <div style={{ height:64,background:T.surfaceHi,borderRadius:8,overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"flex-end" }}>
@@ -421,7 +421,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                 </div>
                 {topMember ? (
                   <div style={{ display:"flex",alignItems:"center",gap:12 }}>
-                    <Avi av={topMember.avatar} team={topMember.team} sz={42} />
+                    <Avi av={topMember.avatar} name={topMember.name} team={topMember.team} sz={42} />
                     <div style={{ flex:1,minWidth:0 }}>
                       <div style={{ fontSize:14,fontWeight:700,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{topMember.name}</div>
                       <div style={{ fontSize:11,color:T.textMute,marginTop:2 }}>{topMember.activitiesCount} aktivitas · {fmtH(topMember.totalHours * 60)}</div>
@@ -460,7 +460,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
           {leaderboard.map((m,i)=>(
             <div key={m.id} className="leaderboard-row" style={{ borderBottom:`1px solid ${T.border}`,background:i===0?`${T.green}08`:T.surface }}>
               <span style={{ fontSize:16,width:24,flexShrink:0,textAlign:"center" }}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</span>
-              <Avi av={m.avatar} team={m.team} sz={36} />
+              <Avi av={m.avatar} name={m.name} team={m.team} sz={36} />
               <div style={{ flex:1,minWidth:0 }}>
                 <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:5,flexWrap:"wrap" }}>
                   <span style={{ fontSize:12,fontWeight:i<3?700:400,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis" }}>{m.name}</span>
@@ -516,7 +516,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                 display:"flex",alignItems:"center",gap:10,transition:"border-color .15s" }}>
               {memberDetailUser ? (
                 <>
-                  <Avi av={memberDetailUser.avatar} team={memberDetailUser.team} sz={28} />
+                  <Avi av={memberDetailUser.avatar} name={memberDetailUser.name} team={memberDetailUser.team} sz={28} />
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:13,fontWeight:700,color:T.textPri }}>{memberDetailUser.name}</div>
                     <div style={{ fontSize:10,color:T.textMute }}>{ROLES[memberDetailUser.role]?.label} · {memberDetailUser.position}</div>
@@ -543,7 +543,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
                           background:sel?T.indigoLo:T.surface,
                           borderLeft:`3px solid ${sel?T.indigo:"transparent"}`,
                           borderBottom:`1px solid ${T.border}`,transition:"all .1s" }}>
-                        <Avi av={m.avatar} team={m.team} sz={32} />
+                        <Avi av={m.avatar} name={m.name} team={m.team} sz={32} />
                         <div style={{ flex:1,minWidth:0 }}>
                           <div style={{ fontSize:12,fontWeight:sel?700:500,color:sel?T.indigoHi:T.textPri }}>{m.name}</div>
                           <div style={{ fontSize:10,color:T.textMute,marginTop:1 }}>{ROLES[m.role]?.label} · {mActs.length} aktivitas</div>
@@ -565,7 +565,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
               <Card p={20} style={{ marginBottom:14 }}>
                 <div style={{ display:"flex",alignItems:"flex-start",gap:16,marginBottom:16 }}>
                   <div style={{ position:"relative" }}>
-                    <Avi av={memberDetailUser.avatar} team={memberDetailUser.team} sz={56} />
+                    <Avi av={memberDetailUser.avatar} name={memberDetailUser.name} team={memberDetailUser.team} sz={56} />
                     {memberDetailUser.status==="active"&&<div style={{ position:"absolute",bottom:2,right:2,width:10,height:10,borderRadius:"50%",background:T.green,border:`2px solid ${T.surface}` }} />}
                     {memberDetailUser.status==="suspended"&&<div style={{ position:"absolute",bottom:2,right:2,width:10,height:10,borderRadius:"50%",background:T.amber,border:`2px solid ${T.surface}` }} />}
                   </div>

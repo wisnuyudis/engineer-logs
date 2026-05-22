@@ -171,18 +171,29 @@ const scoreLabel = (value) => (
   value === null || value === undefined ? 'N/A' : Number(value).toFixed(2)
 );
 
-const formatEvidenceDate = (value) => {
+const formatEvidenceDate = (value, options = {}) => {
   const raw = cleanCell(value);
   if (!raw) return '-';
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
-  const hasTime = /T|\d{2}:\d{2}/.test(raw);
-  return date.toLocaleDateString('id-ID', {
+  const withTime = options.withTime || /T|\d{2}:\d{2}/.test(raw);
+  const formatted = date.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    ...(hasTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+    ...(withTime ? { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' } : {}),
   });
+  return withTime ? `${formatted} WIB` : formatted;
+};
+
+const isEvidenceDateInRange = (value, start, end) => {
+  const raw = cleanCell(value);
+  if (!raw || !start || !end) return true;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return false;
+  const startDate = new Date(`${start}T00:00:00+07:00`);
+  const endDate = new Date(`${end}T23:59:59.999+07:00`);
+  return date >= startDate && date <= endDate;
 };
 
 const gradeKpi = (score) => {
@@ -352,7 +363,7 @@ const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) 
   return evidence;
 };
 
-const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = {}) => {
+const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard, periodStart, periodEnd } = {}) => {
   const breakdown = scorecard?.scorecard?.breakdown || {};
   const sections = {
     implementation: [],
@@ -427,17 +438,12 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
     });
   });
 
-  const supActivityKeys = new Set(
-    rows
-      .map((activity) => cleanCell(activity.ticketId))
-      .filter((issueKey) => issueKey.toUpperCase().startsWith('SUP-'))
-      .map((issueKey) => issueKey.toUpperCase())
-  );
   const supByIssue = new Map();
   const recordSup = (issueKey, patch) => {
     const normalizedIssueKey = cleanCell(issueKey).toUpperCase();
     if (!normalizedIssueKey.startsWith('SUP-')) return;
-    if (supActivityKeys.size && !supActivityKeys.has(normalizedIssueKey)) return;
+    if (patch.fromBreakdown && !isEvidenceDateInRange(patch.periodDate || patch.start, periodStart, periodEnd)) return;
+    if (!patch.fromBreakdown && !supByIssue.has(normalizedIssueKey)) return;
     const current = supByIssue.get(normalizedIssueKey) || {
       issue: cleanCell(issueKey),
       type: '',
@@ -445,41 +451,48 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
       start: '',
       end: '',
       status: '',
+      scores: [],
     };
     const next = { ...current };
     if (patch.type && !next.type) next.type = patch.type;
     if (patch.topic && patch.topic !== '-' && (!next.topic || patch.preferTopic)) next.topic = patch.topic;
-    if (patch.start && !next.start) next.start = patch.start;
+    if (patch.start && (!next.start || patch.preferStart)) next.start = patch.start;
     if (patch.end) next.end = patch.end;
-    if (patch.status && patch.status !== 'N/A') next.status = patch.status;
+    if (patch.status && patch.status !== 'N/A' && (!next.status || patch.preferStatus)) next.status = patch.status;
+    if (patch.score && !next.scores.includes(patch.score)) next.scores = [...next.scores, patch.score];
     supByIssue.set(normalizedIssueKey, next);
   };
 
   (breakdown.cm?.components?.response?.items || []).forEach((item) => {
     recordSup(item.issueKey, {
+      fromBreakdown: true,
+      periodDate: item.createdAt,
       type: 'Problem',
-      topic: item.summary || item.priority,
       start: item.createdAt,
       end: item.firstCommentAt,
-      status: `Response ${scoreLabel(item.score)}`,
+      score: `Response ${scoreLabel(item.score)}`,
     });
   });
   (breakdown.cm?.components?.resolution?.items || []).forEach((item) => {
     recordSup(item.issueKey, {
+      fromBreakdown: true,
+      periodDate: item.actualStartAt,
       type: 'Problem',
-      topic: item.summary || item.priority,
+      preferStart: true,
       start: item.actualStartAt,
       end: item.actualEndAt,
-      status: `Resolution ${scoreLabel(item.score)}`,
+      score: `Resolution ${scoreLabel(item.score)}`,
     });
   });
   (breakdown.enh?.components?.response?.items || []).forEach((item) => {
     recordSup(item.issueKey, {
+      fromBreakdown: true,
+      periodDate: item.createdAt,
       type: 'Change',
       topic: item.summary,
       start: item.createdAt,
       end: item.firstCommentAt,
-      status: `Response ${scoreLabel(item.score)}`,
+      score: `Response ${scoreLabel(item.score)}`,
     });
   });
 
@@ -490,9 +503,9 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
       type: 'SUP Activity',
       topic: activity.ticketTitle || activity.topic || activity.prName || ACTS[activity.actKey]?.label,
       preferTopic: true,
-      start: activity.date,
       end: activity.date,
       status: activity.status === 'completed' ? 'Selesai' : activity.status,
+      preferStatus: true,
     });
   });
 
@@ -503,9 +516,10 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
         item.issue,
         item.type || 'SUP',
         item.topic || '-',
-        formatEvidenceDate(item.start),
-        formatEvidenceDate(item.end),
+        formatEvidenceDate(item.start, { withTime: true }),
+        formatEvidenceDate(item.end, { withTime: true }),
         item.status || '-',
+        item.scores?.join(' / ') || '-',
       ]);
     });
 
@@ -764,7 +778,7 @@ export function exportQuarterlyKpiPDF({ rows, ACTS, scorecard, user, year, quart
   y = (doc.lastAutoTable?.finalY || y) + 10;
 
   y = drawSection(doc, 'Assigned Jira Tasks / SUP Evidence', y);
-  const evidenceSections = collectQuarterlyEvidenceSections({ rows, ACTS, scorecard });
+  const evidenceSections = collectQuarterlyEvidenceSections({ rows, ACTS, scorecard, periodStart: start, periodEnd: end });
   const hasEvidence = Object.values(evidenceSections).some((sectionRows) => sectionRows.length > 0);
   if (!hasEvidence) {
     autoTable(doc, {
@@ -793,13 +807,14 @@ export function exportQuarterlyKpiPDF({ rows, ACTS, scorecard, user, year, quart
       4: { cellWidth: 26 },
       5: { cellWidth: 24 },
     });
-    y = drawEvidenceTable(doc, y, 'SUP Problem / Change', ['Issue', 'Type', 'Topic / Priority', 'Start / Created', 'End / Response', 'Status'], evidenceSections.sup, {
-      0: { cellWidth: 25 },
-      1: { cellWidth: 31 },
-      2: { cellWidth: 58 },
-      3: { cellWidth: 27 },
-      4: { cellWidth: 27 },
+    y = drawEvidenceTable(doc, y, 'SUP Problem / Change', ['Issue', 'Type', 'Topic', 'Actual Start', 'Actual End / Response', 'Status', 'Score'], evidenceSections.sup, {
+      0: { cellWidth: 23 },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 50 },
+      3: { cellWidth: 30 },
+      4: { cellWidth: 30 },
       5: { cellWidth: 14 },
+      6: { cellWidth: 15 },
     });
     y = drawEvidenceTable(doc, y, 'Operational Service / MSS', ['Level', 'Issue', 'Summary', 'Due Date', 'Actual End', 'Status'], evidenceSections.ops, {
       0: { cellWidth: 18 },

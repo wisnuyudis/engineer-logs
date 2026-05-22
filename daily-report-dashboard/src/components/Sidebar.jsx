@@ -9,6 +9,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
   const location = useLocation();
   const activePath = location.pathname;
   const [openGroups, setOpenGroups] = useState({});
+  const canViewKpiReport = ['admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(String(user.role || '').toLowerCase());
 
   const coreItems = [
     { id: "/", icon: "▦", label: "Dashboard" },
@@ -22,7 +23,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
       label: 'Reports',
       children: [
         { id: "/reports/activity", icon: "▤", label: "Activity Report" },
-        ...(isMgr(user.role) ? [{ id: "/reports/kpi", icon: "◇", label: "KPI Report" }] : []),
+        ...(canViewKpiReport ? [{ id: "/reports/kpi", icon: "◇", label: "KPI Report" }] : []),
         ...(isMgr(user.role) ? [{ id: "/reports/executive", icon: "▧", label: "Executive Report" }] : []),
       ],
     },
@@ -151,7 +152,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
       
       <div style={{ padding:"12px 10px 14px",borderTop:`1px solid ${T.border}` }}>
         <button onClick={()=>{navigate("/profile"); onClose?.();}} style={{ width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px",borderRadius:12,cursor:"pointer",background:activePath==="/profile"?T.indigoLo:T.surfaceHi,border:`1px solid ${activePath==="/profile"?T.indigo+"40":T.border}`,fontFamily:FONT,transition:"all .15s",marginBottom:8 }}>
-          <Avi av={user.avatar} team={user.team} sz={34} />
+          <Avi av={user.avatar} name={user.name} team={user.team} sz={34} />
           <div style={{ flex:1,overflow:"hidden",textAlign:"left" }}>
             <div style={{ fontSize:12,fontWeight:700,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user.name}</div>
             <div style={{ marginTop:4,display:"flex",gap:4,flexWrap:"wrap" }}>

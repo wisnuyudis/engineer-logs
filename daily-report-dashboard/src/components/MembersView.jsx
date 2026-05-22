@@ -252,7 +252,7 @@ function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, onResetPasswo
       {isSusp&&<div style={{ position:"absolute",top:0,left:0,right:0,height:2,background:`repeating-linear-gradient(90deg,${T.amber} 0,${T.amber} 7px,transparent 7px,transparent 14px)` }} />}
       <div style={{ display:"flex",alignItems:"flex-start",gap:10,marginBottom:12 }}>
         <div style={{ position:"relative" }}>
-          <Avi av={m.avatar} team={m.team} sz={40} />
+          <Avi av={m.avatar} name={m.name} team={m.team} sz={40} />
           {m.status==="active"&&<div style={{ position:"absolute",bottom:1,right:1,width:8,height:8,borderRadius:"50%",background:T.green,border:`2px solid ${T.surface}` }} />}
         </div>
         <div style={{ flex:1,minWidth:0 }}>

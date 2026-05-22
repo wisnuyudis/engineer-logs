@@ -227,7 +227,7 @@ export function ReportsView({ activities, members, currentUser }) {
                   onClick={() => setUS((p) => single ? (sel ? [] : [m.id]) : (sel ? p.filter((n) => n !== m.id) : [...p, m.id]))}
                   style={{ width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 10px',border:'none',cursor:'pointer',fontFamily:FONT,fontSize:12,textAlign:'left',background:sel ? T.indigoLo : T.surface,color:sel ? T.indigoHi : T.textSec,borderLeft:`3px solid ${sel ? T.indigo : 'transparent'}` }}
                 >
-                  <Avi av={m.avatar} team={m.team} sz={20} />
+                  <Avi av={m.avatar} name={m.name} team={m.team} sz={20} />
                   <div style={{ flex:1,overflow:'hidden' }}>
                     <div style={{ fontSize:12,fontWeight:sel ? 700 : 400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{m.name}</div>
                     <div style={{ fontSize:9,color:T.textMute }}>{ROLES[m.role]?.label}</div>
@@ -561,7 +561,7 @@ export function ReportsView({ activities, members, currentUser }) {
                               transition: 'all .1s',
                             }}
                           >
-                            <Avi av={m.avatar} team={m.team} sz={20} />
+                            <Avi av={m.avatar} name={m.name} team={m.team} sz={20} />
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                               <div style={{ fontSize: 12, fontWeight: sel ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
                               <div style={{ fontSize: 9, color: T.textMute }}>{ROLES[m.role]?.label}</div>
@@ -761,7 +761,7 @@ export function ReportsView({ activities, members, currentUser }) {
                         <td style={{ padding: '8px 12px', color: T.textMute, fontFamily: MONO, fontSize: 11 }}>{a.date}</td>
                         <td style={{ padding: '8px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {m && <Avi av={m.avatar} team={m.team} sz={20} />}
+                            {m && <Avi av={m.avatar} name={m.name} team={m.team} sz={20} />}
                             <span style={{ color: T.textSec }}>{a.user}</span>
                           </div>
                         </td>

@@ -180,7 +180,7 @@ export function KpiReportView({ activities, members, currentUser }) {
                   }}
                   style={{ width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 10px',border:'none',cursor:'pointer',fontFamily:FONT,fontSize:12,textAlign:'left',background:selected ? T.indigoLo : T.surface,color:selected ? T.indigoHi : T.textSec,borderLeft:`3px solid ${selected ? T.indigo : 'transparent'}` }}
                 >
-                  <Avi av={member.avatar} team={member.team} sz={20} />
+                  <Avi av={member.avatar} name={member.name} team={member.team} sz={20} />
                   <div style={{ flex:1,overflow:'hidden' }}>
                     <div style={{ fontSize:12,fontWeight:selected ? 700 : 400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{member.name}</div>
                     <div style={{ fontSize:9,color:T.textMute }}>{ROLES[member.role]?.label || member.role}</div>

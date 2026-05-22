@@ -123,11 +123,18 @@ export function PwInp({ label, value, onChange, error }) {
     </div>
   );
 }
-export function Avi({ av, team, sz=36 }) {
+const initialsFromName = (name = '') => {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '';
+  return parts.slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+};
+
+export function Avi({ av, name, team, sz=36 }) {
   const g = team==="presales" ? `linear-gradient(135deg,${T.violet},#C084FC)` : team==="delivery" ? `linear-gradient(135deg,#0D9488,${T.teal})` : `linear-gradient(135deg,${T.indigo},${T.indigoHi})`;
+  const label = String(av || '').trim() || initialsFromName(name);
   return (
     <div style={{ width:sz,height:sz,borderRadius:"50%",background:g,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:sz*.32,fontWeight:800,color:"#fff",letterSpacing:".02em" }}>
-      {av}
+      {label}
     </div>
   );
 }
