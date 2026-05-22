@@ -546,6 +546,7 @@ const computeCorrectiveMaintenanceDomain = (issues) => {
         }
         responseItems.push({
             issueKey: issue.key,
+            summary: issue.summary,
             priority: issue.priorityName,
             firstCommentAt,
             createdAt: issue.createdAt,
@@ -554,6 +555,7 @@ const computeCorrectiveMaintenanceDomain = (issues) => {
         });
         resolutionItems.push({
             issueKey: issue.key,
+            summary: issue.summary,
             priority: issue.priorityName,
             severity,
             actualStartAt: issue.actualStartDate,
@@ -617,6 +619,7 @@ const computeEnhancementDomain = (issues) => {
         }
         return {
             issueKey: issue.key,
+            summary: issue.summary,
             createdAt: issue.createdAt,
             firstCommentAt,
             actualHours: roundScore(diffHours(issue.createdAt, firstCommentAt)),

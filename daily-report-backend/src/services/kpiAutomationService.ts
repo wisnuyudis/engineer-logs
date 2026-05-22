@@ -613,6 +613,7 @@ const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
 
     responseItems.push({
       issueKey: issue.key,
+      summary: issue.summary,
       priority: issue.priorityName,
       firstCommentAt,
       createdAt: issue.createdAt,
@@ -622,6 +623,7 @@ const computeCorrectiveMaintenanceDomain = (issues: Awaited<ReturnType<typeof se
 
     resolutionItems.push({
       issueKey: issue.key,
+      summary: issue.summary,
       priority: issue.priorityName,
       severity,
       actualStartAt: issue.actualStartDate,
@@ -689,6 +691,7 @@ const computeEnhancementDomain = (issues: Awaited<ReturnType<typeof searchJiraIs
 
     return {
       issueKey: issue.key,
+      summary: issue.summary,
       createdAt: issue.createdAt,
       firstCommentAt,
       actualHours: roundScore(diffHours(issue.createdAt, firstCommentAt)),

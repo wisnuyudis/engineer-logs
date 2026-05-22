@@ -204,6 +204,12 @@ const gradeKpi = (score) => {
   return 'Kurang';
 };
 
+const averageEvidenceScores = (values = []) => {
+  const nums = values.map(Number).filter((value) => Number.isFinite(value));
+  if (!nums.length) return null;
+  return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+};
+
 const kpiSummaryRows = (items = []) => items.map((item) => {
   const scores = item.scorecard?.scorecard?.scores || {};
   return [
@@ -451,7 +457,7 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard, per
       start: '',
       end: '',
       status: '',
-      scores: [],
+      scoreValues: [],
     };
     const next = { ...current };
     if (patch.type && !next.type) next.type = patch.type;
@@ -459,7 +465,9 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard, per
     if (patch.start && (!next.start || patch.preferStart)) next.start = patch.start;
     if (patch.end) next.end = patch.end;
     if (patch.status && patch.status !== 'N/A' && (!next.status || patch.preferStatus)) next.status = patch.status;
-    if (patch.score && !next.scores.includes(patch.score)) next.scores = [...next.scores, patch.score];
+    if (patch.scoreValue !== null && patch.scoreValue !== undefined && !next.scoreValues.includes(patch.scoreValue)) {
+      next.scoreValues = [...next.scoreValues, patch.scoreValue];
+    }
     supByIssue.set(normalizedIssueKey, next);
   };
 
@@ -468,9 +476,10 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard, per
       fromBreakdown: true,
       periodDate: item.createdAt,
       type: 'Problem',
+      topic: item.summary,
       start: item.createdAt,
       end: item.firstCommentAt,
-      score: `Response ${scoreLabel(item.score)}`,
+      scoreValue: item.score,
     });
   });
   (breakdown.cm?.components?.resolution?.items || []).forEach((item) => {
@@ -478,10 +487,11 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard, per
       fromBreakdown: true,
       periodDate: item.actualStartAt,
       type: 'Problem',
+      topic: item.summary,
       preferStart: true,
       start: item.actualStartAt,
       end: item.actualEndAt,
-      score: `Resolution ${scoreLabel(item.score)}`,
+      scoreValue: item.score,
     });
   });
   (breakdown.enh?.components?.response?.items || []).forEach((item) => {
@@ -492,7 +502,7 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard, per
       topic: item.summary,
       start: item.createdAt,
       end: item.firstCommentAt,
-      score: `Response ${scoreLabel(item.score)}`,
+      scoreValue: item.score,
     });
   });
 
@@ -519,7 +529,7 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard, per
         formatEvidenceDate(item.start, { withTime: true }),
         formatEvidenceDate(item.end, { withTime: true }),
         item.status || '-',
-        item.scores?.join(' / ') || '-',
+        scoreLabel(averageEvidenceScores(item.scoreValues)),
       ]);
     });
 
