@@ -197,6 +197,7 @@ const kpiSummaryRows = (items = []) => items.map((item) => {
 });
 
 const cleanCell = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+const isJiraIssueKey = (value) => /^[A-Z][A-Z0-9]+-\d+$/i.test(cleanCell(value));
 
 const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) => {
   const breakdown = scorecard?.scorecard?.breakdown || {};
@@ -204,8 +205,10 @@ const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) 
   const seen = new Set();
   const push = ({ domain, type, issue, summary, parent, due, actual, status }) => {
     const issueKey = cleanCell(issue || parent);
+    const parentRaw = cleanCell(parent);
+    const parentDisplay = parentRaw && !isJiraIssueKey(parentRaw) ? 'Parent PM' : parentRaw;
     if (!issueKey) return;
-    const key = `${domain}|${type}|${issueKey}|${cleanCell(parent)}`;
+    const key = `${domain}|${type}|${issueKey}|${parentDisplay}`;
     if (seen.has(key)) return;
     seen.add(key);
     evidence.push([
@@ -213,7 +216,7 @@ const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) 
       type || '-',
       issueKey,
       cleanCell(summary) || '-',
-      cleanCell(parent) || '-',
+      parentDisplay || '-',
       cleanCell(due) || '-',
       cleanCell(actual) || '-',
       cleanCell(status) || '-',
@@ -237,6 +240,7 @@ const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) 
       domain: 'Preventive Maintenance',
       type: 'Pekerjaan PM',
       issue: item.issueKey,
+      summary: 'Pekerjaan PM',
       parent: item.parentRef,
       due: item.dueDate,
       actual: item.actualEndAt,
@@ -249,6 +253,7 @@ const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) 
       domain: 'Preventive Maintenance',
       type: 'Report PM',
       issue: item.issueKey,
+      summary: item.assumedByPolicy ? 'Report PM assumed by policy' : 'Report PM',
       parent: item.parentRef,
       due: item.dueDate,
       actual: item.reportActualEndAt,
@@ -331,6 +336,173 @@ const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) 
   });
 
   return evidence;
+};
+
+const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = {}) => {
+  const breakdown = scorecard?.scorecard?.breakdown || {};
+  const sections = {
+    implementation: [],
+    pm: [],
+    sup: [],
+    ops: [],
+  };
+  const seen = {
+    implementation: new Set(),
+    pm: new Set(),
+    sup: new Set(),
+    ops: new Set(),
+  };
+  const push = (section, keyParts, row) => {
+    const key = keyParts.map(cleanCell).join('|');
+    if (!key || seen[section].has(key)) return;
+    seen[section].add(key);
+    sections[section].push(row.map((value) => cleanCell(value) || '-'));
+  };
+
+  (breakdown.impl?.components?.taskAccuracy?.items || []).forEach((item) => {
+    push('implementation', [item.issueKey], [
+      item.issueKey,
+      item.summary,
+      item.dueDate,
+      item.actualEndAt,
+      item.excusedByBlocker ? 'Blocked score 4' : item.actualEndAt ? (item.onTime ? 'On time' : 'Late') : 'Open',
+    ]);
+  });
+
+  const pmGroups = new Map();
+  const addPmItem = (item, kind) => {
+    const parentRaw = cleanCell(item.parentRef || item.parentKey || item.parentIssueKey);
+    const groupKey = parentRaw || item.issueKey || kind;
+    const group = pmGroups.get(groupKey) || {
+      parentLabel: isJiraIssueKey(parentRaw) ? parentRaw : 'Parent PM',
+      parentDueDate: item.parentDueDate || item.dueDate || '-',
+      items: [],
+    };
+    group.items.push({ ...item, kind });
+    pmGroups.set(groupKey, group);
+  };
+  (breakdown.pm?.components?.execution?.items || []).forEach((item) => addPmItem(item, 'Pekerjaan PM'));
+  (breakdown.pm?.components?.report?.items || []).forEach((item) => addPmItem(item, 'Report PM'));
+
+  Array.from(pmGroups.values()).forEach((group, index) => {
+    const parentLabel = group.parentLabel === 'Parent PM' && pmGroups.size > 1 ? `Parent PM ${index + 1}` : group.parentLabel;
+    push('pm', ['parent', parentLabel, group.parentDueDate, index], [
+      'Parent',
+      parentLabel,
+      `Due parent: ${group.parentDueDate || '-'}`,
+      group.parentDueDate,
+      '-',
+      '-',
+    ]);
+    group.items.forEach((item) => {
+      const isExecution = item.kind === 'Pekerjaan PM';
+      const actual = isExecution ? item.actualEndAt : item.reportActualEndAt;
+      const status = item.assumedByPolicy
+        ? 'Assumed by policy'
+        : item.pendingWithinDueDate
+          ? 'Pending within due date'
+          : scoreLabel(item.score);
+      push('pm', [parentLabel, item.kind, item.issueKey || 'policy'], [
+        'Child',
+        item.issueKey ? `  ${item.issueKey}` : '  Report PM',
+        item.kind,
+        item.dueDate,
+        actual,
+        status,
+      ]);
+    });
+  });
+
+  (breakdown.cm?.components?.response?.items || []).forEach((item) => {
+    push('sup', ['cm-response', item.issueKey], [
+      item.issueKey,
+      'Problem response',
+      item.priority,
+      item.createdAt,
+      item.firstCommentAt,
+      scoreLabel(item.score),
+    ]);
+  });
+  (breakdown.cm?.components?.resolution?.items || []).forEach((item) => {
+    push('sup', ['cm-resolution', item.issueKey], [
+      item.issueKey,
+      'Problem resolution',
+      item.priority,
+      item.actualStartAt,
+      item.actualEndAt,
+      scoreLabel(item.score),
+    ]);
+  });
+  (breakdown.enh?.components?.response?.items || []).forEach((item) => {
+    push('sup', ['enh-response', item.issueKey], [
+      item.issueKey,
+      'Change response',
+      '-',
+      item.createdAt,
+      item.firstCommentAt,
+      scoreLabel(item.score),
+    ]);
+  });
+
+  rows.forEach((activity) => {
+    const issueKey = cleanCell(activity.ticketId);
+    if (!issueKey.toUpperCase().startsWith('SUP-')) return;
+    push('sup', ['activity', issueKey], [
+      issueKey,
+      'SUP activity',
+      activity.ticketTitle || activity.topic || activity.prName || ACTS[activity.actKey]?.label,
+      activity.date,
+      activity.date,
+      activity.status === 'completed' ? 'Selesai' : activity.status,
+    ]);
+  });
+
+  (breakdown.ops?.components?.taskTree?.items || []).forEach((task) => {
+    push('ops', ['task', task.taskKey], [
+      'Task',
+      task.taskKey,
+      task.taskSummary,
+      task.dueDate,
+      task.resolutionDate,
+      task.statusName,
+    ]);
+    (task.subtasks || []).forEach((subtask) => {
+      push('ops', ['subtask', task.taskKey, subtask.issueKey], [
+        'Subtask',
+        `  ${subtask.issueKey}`,
+        subtask.summary,
+        subtask.dueDate,
+        subtask.actualEndAt || subtask.resolutionDate,
+        subtask.statusName,
+      ]);
+    });
+  });
+
+  return sections;
+};
+
+const drawEvidenceTable = (doc, y, title, head, body, columnStyles = {}) => {
+  if (!body.length) return y;
+  y = drawSection(doc, title, y);
+  autoTable(doc, {
+    startY: y,
+    head: [head],
+    body,
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 7, cellPadding: 1.4, overflow: 'linebreak' },
+    margin: { left: 14, right: 14 },
+    columnStyles,
+    didParseCell: (data) => {
+      if (data.section !== 'body') return;
+      const firstValue = String(data.row.raw?.[0] || '');
+      if (firstValue === 'Parent' || firstValue === 'Task') {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fillColor = [248, 250, 252];
+      }
+    },
+  });
+  return (doc.lastAutoTable?.finalY || y) + 8;
 };
 
 export function exportKpiSummaryCSV({ items, year, quarter }) {
@@ -539,28 +711,54 @@ export function exportQuarterlyKpiPDF({ rows, ACTS, scorecard, user, year, quart
   });
   y = (doc.lastAutoTable?.finalY || y) + 10;
 
-  const evidenceRows = collectQuarterlyEvidenceRows({ rows, ACTS, scorecard });
   y = drawSection(doc, 'Assigned Jira Tasks / SUP Evidence', y);
-  autoTable(doc, {
-    startY: y,
-    head: [['Domain', 'Type', 'Issue', 'Summary', 'Parent', 'Due/Created', 'Actual/Done', 'Status']],
-    body: evidenceRows.length ? evidenceRows : [['-', '-', 'Tidak ada evidence Jira', '-', '-', '-', '-', '-']],
-    theme: 'grid',
-    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
-    styles: { fontSize: 6.7, cellPadding: 1.3, overflow: 'linebreak' },
-    margin: { left: 14, right: 14 },
-    columnStyles: {
-      0: { cellWidth: 27 },
-      1: { cellWidth: 23 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 42 },
-      4: { cellWidth: 20 },
-      5: { cellWidth: 22 },
-      6: { cellWidth: 22 },
-      7: { cellWidth: 24 },
-    },
-  });
-  y = (doc.lastAutoTable?.finalY || y) + 10;
+  const evidenceSections = collectQuarterlyEvidenceSections({ rows, ACTS, scorecard });
+  const hasEvidence = Object.values(evidenceSections).some((sectionRows) => sectionRows.length > 0);
+  if (!hasEvidence) {
+    autoTable(doc, {
+      startY: y,
+      head: [['Info']],
+      body: [['Tidak ada evidence Jira pada periode ini.']],
+      theme: 'grid',
+      headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 1.8 },
+      margin: { left: 14, right: 14 },
+    });
+    y = (doc.lastAutoTable?.finalY || y) + 10;
+  } else {
+    y = drawEvidenceTable(doc, y, 'Implementation', ['Issue', 'Summary', 'Due Date', 'Actual End', 'Status'], evidenceSections.implementation, {
+      0: { cellWidth: 25 },
+      1: { cellWidth: 75 },
+      2: { cellWidth: 27 },
+      3: { cellWidth: 27 },
+      4: { cellWidth: 28 },
+    });
+    y = drawEvidenceTable(doc, y, 'Preventive Maintenance', ['Level', 'Issue', 'Summary', 'Due Date', 'Actual End', 'Status'], evidenceSections.pm, {
+      0: { cellWidth: 18 },
+      1: { cellWidth: 30 },
+      2: { cellWidth: 58 },
+      3: { cellWidth: 26 },
+      4: { cellWidth: 26 },
+      5: { cellWidth: 24 },
+    });
+    y = drawEvidenceTable(doc, y, 'SUP Problem / Change', ['Issue', 'Type', 'Topic / Priority', 'Start / Created', 'End / Response', 'Status'], evidenceSections.sup, {
+      0: { cellWidth: 25 },
+      1: { cellWidth: 31 },
+      2: { cellWidth: 58 },
+      3: { cellWidth: 27 },
+      4: { cellWidth: 27 },
+      5: { cellWidth: 14 },
+    });
+    y = drawEvidenceTable(doc, y, 'Operational Service / MSS', ['Level', 'Issue', 'Summary', 'Due Date', 'Actual End', 'Status'], evidenceSections.ops, {
+      0: { cellWidth: 18 },
+      1: { cellWidth: 30 },
+      2: { cellWidth: 70 },
+      3: { cellWidth: 24 },
+      4: { cellWidth: 24 },
+      5: { cellWidth: 16 },
+    });
+    y += 2;
+  }
 
   y = drawSection(doc, 'Activity Detail', y);
   autoTable(doc, {
