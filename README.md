@@ -1,50 +1,171 @@
 # EngineerLog
 
-EngineerLog adalah aplikasi daily report internal untuk tim Delivery dan Presales.
-Stack saat ini:
+EngineerLog adalah aplikasi internal untuk pencatatan aktivitas harian, sinkronisasi pekerjaan Jira, KPI/QB, report operasional, dan integrasi Telegram bot untuk tim Delivery dan Presales.
 
-- Frontend: React + Vite
+## Stack
+
+- Frontend: React 19 + Vite + React Query + Recharts
 - Backend: Node.js + Express + TypeScript
 - Database: MongoDB via Prisma
-- Integrasi: Jira, Telegram bot, upload attachment, KPI manual, audit trail, auth refresh token
+- Auth: JWT access token + refresh token cookie + session rotation
+- Integrasi: Jira, Telegram bot, SMTP, upload attachment, native PDF export
+- Dokumentasi database: [database_erd.md](./database_erd.md)
 
-## Fitur Utama
+## Fitur Saat Ini
 
-- Login dengan access token + refresh token
-- Daily activity log manual
-- Sinkronisasi activity dari Jira
-- Integrasi Telegram untuk input log
-- Team member management
-- Dashboard operasional
-- Report dengan scope akses berdasarkan role
-- KPI manual per periode
-- Audit trail untuk perubahan penting
+- Login dengan refresh token, audit session, dan MFA/TOTP policy untuk role user/manager sesuai konfigurasi aplikasi.
+- Activity Log manual dari web dan Telegram, termasuk lampiran dokumen.
+- Attachment activity dengan validasi tipe file dan fitur preview/download.
+- Sinkronisasi worklog Jira ke activity, dengan proteksi agar activity hasil sync Jira tidak bisa diedit manual.
+- Dashboard role-based untuk admin/head, delivery, presales, dan detail member.
+- Presales dashboard dengan total jam kerja, aktivitas, pipeline, dan task per kategori.
+- Master Activity untuk taxonomy aktivitas aktif/nonaktif.
+- SMTP Setting terpusat untuk invite/test email.
+- Jira integration untuk OAuth user, webhook worklog, upcoming task 15 hari, KPI automation, dan SUP/problem-change report.
+- Telegram bot command: `/cek`, `/cek tim`, `/kpi`, `/log terakhir`, `/status ISSUEKEY`, dan `/help`, plus reminder due H-3/H-1/overdue.
+- Audit trail untuk login/logout, user, activity, KPI, integrasi, dan perubahan penting.
 
-## Struktur Repo
+## Menu Utama
 
-- `daily-report-backend/` - API server, bot Telegram, Prisma schema
-- `daily-report-dashboard/` - frontend React
-- `database_erd.md` - dokumentasi ERD dan schema database
-- `kpi/` - dokumen KPI PDF
-- `start.sh` - helper untuk restart backend dan frontend
+- `Dashboard`
+  - Overview admin/head, personal delivery, personal presales, KPI personal, dan detail member.
+- `Activity Log`
+  - Input/edit activity manual, info prospect optional untuk presales, attachment preview/download.
+- `Team Members`
+  - Add/invite member, optional supervisor, reset password, status active/suspended.
+- `Reports`
+  - `Activity Report`: export rekap activity CSV/PDF berdasarkan filter.
+  - `KPI Report`: khusus admin/manager; export Kinerja Kuartalan dan Ringkasan KPI Tim.
+  - `Executive Report`: khusus admin/manager; report SUP problem/change by customer dengan native PDF.
+- `KPI`
+  - `Scorecard`: administrasi scorecard KPI.
+  - `NPS`: input NPS per project `[IMP]` dan task `[OP]`.
+- `Setting`
+  - `Master Activity`
+  - `SMTP`
+- `Audit Trail`
+  - Khusus admin.
+
+## Report
+
+### Activity Report
+
+Activity Report digunakan untuk export aktivitas berdasarkan filter tim, member, source, customer, dan tanggal.
+
+Format export:
+
+- CSV
+- PDF native via `jspdf` + `jspdf-autotable`
+
+### KPI Report
+
+KPI Report hanya dapat diakses oleh role admin dan manager/head.
+
+Isi:
+
+- `Kinerja Kuartalan`
+  - 1 user, 1 quarter.
+  - Memuat identitas user, total activity, manhour, KPI scorecard, evidence Jira, dan detail activity.
+  - Evidence Jira dipisah menjadi Implementation, Preventive Maintenance, SUP Problem/Change, dan Operational Service/MSS.
+  - SUP Problem/Change difilter berdasarkan actual start/created di quarter tersebut dan menampilkan topic Jira, actual start/end, status, dan score akhir.
+- `Ringkasan KPI Tim`
+  - Semua engineer dan project manager dalam 1 quarter.
+  - Memuat summary total engineer, total project manager, total Jira task eligible QB, serta tabel KPI engineer dan PM.
+
+### Executive Report
+
+Executive Report berfokus pada ticketing `SUP-*` untuk Problem dan Change.
+
+Isi utama:
+
+- tren tiket per bulan per customer
+- problem vs change per customer
+- ringkasan tiket per customer
+- kategori solusi per customer
+- top jenis tiket berdasarkan topic
+- report by customer dengan detail SUP, actual start, actual end, dan resolution hour
+
+Customer alias dimapping menjadi entitas customer utama, contoh `Mega Crowdstrike` dan `Mega Appsealing` menjadi `Bank Mega`.
+
+## KPI Dan QB
+
+KPI delivery/PM dihitung hybrid dari data Jira dan input manual.
+
+Domain utama:
+
+- Implementation `[IMP]`
+- Preventive Maintenance `[MA]`
+- Corrective Maintenance dari SUP Problem
+- Enhancement dari SUP Change
+- Operational Service / MSS `[OP]`
+
+Catatan perhitungan:
+
+- Implementation menghitung task accuracy, dokumentasi, dan NPS project.
+- NPS Implementation diinput per epic/project `[IMP]`, bukan general.
+- NPS Operational diinput per task `[OP]`.
+- Preventive Maintenance memakai actual end pekerjaan PM dan report PM.
+- Blocked by bug dapat memberi skor fair sesuai aturan blocker.
+- QB menghitung eligible Jira task/subtask sesuai aturan domain, termasuk perlakuan khusus `[OP]` untuk subtask operational.
+
+## Integrasi Jira
+
+Integrasi Jira digunakan untuk:
+
+- OAuth connect user ke akun Jira
+- webhook worklog untuk activity sync
+- upcoming task schedule 15 hari
+- KPI automation berdasarkan issue, due date, actual start/end, status category, dan linked blocker bug
+- NPS item discovery untuk `[IMP]` dan `[OP]`
+- executive report dari `SUP-*`
+
+Requirement operasional:
+
+- backend harus punya URL HTTPS publik untuk callback OAuth dan webhook
+- service account Jira harus punya akses baca ke project yang dipakai
+- user perlu menyimpan `jiraAccountId` untuk mapping assignee
+
+## Telegram Bot
+
+Fitur bot:
+
+- input log activity via wizard
+- `/cek` untuk task pribadi next 15 days
+- `/cek tim` untuk admin/head melihat schedule bawahan
+- `/kpi` untuk KPI ringkas quarter berjalan
+- `/log terakhir` untuk 5 activity terakhir
+- `/status ISSUEKEY` untuk cek cepat status Jira
+- reminder otomatis untuk due H-3, H-1, dan overdue
+
+## Security Dan Compliance
+
+- JWT access token pendek + refresh token cookie.
+- Refresh token disimpan sebagai hash di `AuthSession`.
+- MFA/TOTP support dengan secret terenkripsi.
+- Security headers di frontend/proxy.
+- Email domain invite/member dibatasi ke domain internal sesuai policy.
+- Attachment upload disanitasi dan dibatasi ke tipe dokumen yang diizinkan.
+- Audit trail untuk perubahan penting.
 
 ## Requirement
 
 - Node.js 20+
 - npm
-- MongoDB Atlas atau MongoDB yang bisa diakses backend
+- MongoDB Atlas atau MongoDB yang dapat diakses backend
+- Docker + Docker Compose untuk deployment container
 - Environment variables backend yang valid
 
 ## Setup Backend
 
-Masuk ke folder backend:
-
 ```bash
 cd daily-report-backend
 npm install
+npx prisma generate
+npx prisma db push
+npm run dev
 ```
 
-Buat atau perbarui `.env` sesuai kebutuhan environment. Variabel yang dipakai saat ini antara lain:
+Contoh environment backend:
 
 ```env
 DATABASE_URL=
@@ -62,85 +183,50 @@ ATLASSIAN_REDIRECT_URI=
 JIRA_WEBHOOK_SECRET=
 ```
 
-Lalu generate Prisma client dan sync schema:
-
-```bash
-npx prisma generate
-npx prisma db push
-```
-
-Jalankan backend:
-
-```bash
-npm run dev
-```
+SMTP dapat diatur dari menu aplikasi, tetapi environment tetap dapat dipakai untuk konfigurasi awal jika service membutuhkan fallback.
 
 ## Setup Frontend
-
-Masuk ke folder frontend:
 
 ```bash
 cd daily-report-dashboard
 npm install
-```
-
-Jalankan frontend:
-
-```bash
 npm run dev
 ```
 
-## Menjalankan Keduanya
+Default lokal:
 
-Gunakan helper script di root:
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:4000`
+- API base: `http://localhost:4000/api`
+
+## Build
 
 ```bash
-./start.sh
+cd daily-report-backend
+npm run build
+
+cd ../daily-report-dashboard
+npm run build
 ```
 
-Script ini akan:
-
-- membersihkan port `4000` dan `5173`
-- menjalankan backend
-- menjalankan frontend
-
-## Deploy Dengan Docker
-
-Repo ini sekarang menyediakan setup Docker untuk backend dan frontend sekaligus.
-
-Prasyarat:
-
-- Docker
-- Docker Compose plugin (`docker compose`)
-- file `daily-report-backend/.env` sudah sesuai environment server
-
-Langkah:
+## Docker Deploy
 
 ```bash
-git pull
 docker compose build
 docker compose up -d
 ```
 
-Service yang dijalankan:
+Service:
 
-- `frontend` di port `80`
-- `backend` di port `4000`
+- `frontend`: port `80`, serve Vite build via Nginx
+- `backend`: port `4000`
 
-Arsitektur runtime:
+Volume/persistensi:
 
-- frontend dibuild dengan Vite lalu diserve oleh Nginx
-- request `/api` dan `/uploads` dari frontend diproxy ke container backend
-- state session bot Telegram dipersist di volume Docker terpisah
-- folder upload backend dipersist di volume Docker `backend_uploads`
+- upload backend
+- session state Telegram bot
 
-Catatan environment penting:
-
-- set `FRONTEND_URL` ke origin publik frontend, misalnya `http://192.168.30.141`
-- set `PORT=4000`
-- tetap isi `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, dan env integrasi lain yang dibutuhkan
-
-Perintah operasional umum:
+Operasional:
 
 ```bash
 docker compose logs -f
@@ -148,59 +234,21 @@ docker compose restart
 docker compose down
 ```
 
-## Default URL Lokal
+## Struktur Repo
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:4000`
-- API base: `http://localhost:4000/api`
-
-## Integrasi Jira
-
-Saat ini integrasi Jira dipakai untuk dua hal:
-
-1. OAuth connect user app ke akun Jira
-2. Webhook worklog untuk sinkronisasi activity otomatis
-
-Requirement operasional:
-
-- backend harus punya URL HTTPS publik untuk callback OAuth dan webhook
-- akun service Jira backend harus punya akses baca ke project yang mau disinkronkan
-
-## KPI
-
-KPI saat ini dihitung dari scorecard manual per periode.
-
-Peran yang memakai KPI:
-
-- Engineer Delivery
-- Project Manager
-
-Presales tidak memakai KPI quarter, tetapi tetap bisa melihat statistik aktivitas.
-
-## Audit Trail
-
-Audit trail mencatat perubahan penting seperti:
-
-- login/logout
-- create/update/delete activity
-- update user/member
-- save KPI
-- recalculate QB
-- connect/disconnect Jira
-
-Halaman audit trail hanya tersedia untuk admin.
-
-## Dokumentasi Tambahan
-
-- [ERD / Database Schema](./database_erd.md)
-- KPI reference ada di folder `kpi/`
+- `daily-report-backend/` - Express API, Telegram bot, Jira integration, Prisma schema
+- `daily-report-dashboard/` - React dashboard
+- `database_erd.md` - ERD dan detail schema database
+- `kpi/` - dokumen referensi KPI
+- `security-sast-report.json` - hasil security review internal
+- `docker-compose.yml` - deployment container
+- `start.sh` - helper lokal untuk menjalankan backend dan frontend
 
 ## Catatan Operasional
 
-- Login sekarang memakai refresh token cookie `refresh_token`
-- Frontend otomatis me-refresh access token ketika menerima `401`
-- Activity dari Jira tidak bisa diubah manual dari aplikasi
-- Report dibatasi berdasarkan role:
-  - admin: semua data
-  - head: subtree bawahan
-  - user biasa: diri sendiri
+- Activity `source = jira` tidak bisa diedit manual.
+- Activity manual non-Jira bisa diedit.
+- Add member supervisor bersifat optional.
+- Inisial avatar otomatis dibuat dari nama jika avatar kosong.
+- KPI Report hanya untuk admin dan manager/head.
+- Executive Report hanya untuk role yang memiliki akses manager/admin sesuai guard aplikasi.
