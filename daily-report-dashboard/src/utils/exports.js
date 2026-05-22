@@ -171,6 +171,20 @@ const scoreLabel = (value) => (
   value === null || value === undefined ? 'N/A' : Number(value).toFixed(2)
 );
 
+const formatEvidenceDate = (value) => {
+  const raw = cleanCell(value);
+  if (!raw) return '-';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  const hasTime = /T|\d{2}:\d{2}/.test(raw);
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    ...(hasTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+  });
+};
+
 const gradeKpi = (score) => {
   if (score === null || score === undefined || Number.isNaN(Number(score))) return 'N/A';
   const value = Number(score);
@@ -363,8 +377,8 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
     push('implementation', [item.issueKey], [
       item.issueKey,
       item.summary,
-      item.dueDate,
-      item.actualEndAt,
+      formatEvidenceDate(item.dueDate),
+      formatEvidenceDate(item.actualEndAt),
       item.excusedByBlocker ? 'Blocked score 4' : item.actualEndAt ? (item.onTime ? 'On time' : 'Late') : 'Open',
     ]);
   });
@@ -389,8 +403,8 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
     push('pm', ['parent', parentLabel, group.parentDueDate, index], [
       'Parent',
       parentLabel,
-      `Due parent: ${group.parentDueDate || '-'}`,
-      group.parentDueDate,
+      `Due parent: ${formatEvidenceDate(group.parentDueDate)}`,
+      formatEvidenceDate(group.parentDueDate),
       '-',
       '-',
     ]);
@@ -406,64 +420,102 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
         'Child',
         item.issueKey ? `  ${item.issueKey}` : '  Report PM',
         item.kind,
-        item.dueDate,
-        actual,
+        formatEvidenceDate(item.dueDate),
+        formatEvidenceDate(actual),
         status,
       ]);
     });
   });
 
+  const supActivityKeys = new Set(
+    rows
+      .map((activity) => cleanCell(activity.ticketId))
+      .filter((issueKey) => issueKey.toUpperCase().startsWith('SUP-'))
+      .map((issueKey) => issueKey.toUpperCase())
+  );
+  const supByIssue = new Map();
+  const recordSup = (issueKey, patch) => {
+    const normalizedIssueKey = cleanCell(issueKey).toUpperCase();
+    if (!normalizedIssueKey.startsWith('SUP-')) return;
+    if (supActivityKeys.size && !supActivityKeys.has(normalizedIssueKey)) return;
+    const current = supByIssue.get(normalizedIssueKey) || {
+      issue: cleanCell(issueKey),
+      type: '',
+      topic: '',
+      start: '',
+      end: '',
+      status: '',
+    };
+    const next = { ...current };
+    if (patch.type && !next.type) next.type = patch.type;
+    if (patch.topic && patch.topic !== '-' && (!next.topic || patch.preferTopic)) next.topic = patch.topic;
+    if (patch.start && !next.start) next.start = patch.start;
+    if (patch.end) next.end = patch.end;
+    if (patch.status && patch.status !== 'N/A') next.status = patch.status;
+    supByIssue.set(normalizedIssueKey, next);
+  };
+
   (breakdown.cm?.components?.response?.items || []).forEach((item) => {
-    push('sup', ['cm-response', item.issueKey], [
-      item.issueKey,
-      'Problem response',
-      item.priority,
-      item.createdAt,
-      item.firstCommentAt,
-      scoreLabel(item.score),
-    ]);
+    recordSup(item.issueKey, {
+      type: 'Problem',
+      topic: item.summary || item.priority,
+      start: item.createdAt,
+      end: item.firstCommentAt,
+      status: `Response ${scoreLabel(item.score)}`,
+    });
   });
   (breakdown.cm?.components?.resolution?.items || []).forEach((item) => {
-    push('sup', ['cm-resolution', item.issueKey], [
-      item.issueKey,
-      'Problem resolution',
-      item.priority,
-      item.actualStartAt,
-      item.actualEndAt,
-      scoreLabel(item.score),
-    ]);
+    recordSup(item.issueKey, {
+      type: 'Problem',
+      topic: item.summary || item.priority,
+      start: item.actualStartAt,
+      end: item.actualEndAt,
+      status: `Resolution ${scoreLabel(item.score)}`,
+    });
   });
   (breakdown.enh?.components?.response?.items || []).forEach((item) => {
-    push('sup', ['enh-response', item.issueKey], [
-      item.issueKey,
-      'Change response',
-      '-',
-      item.createdAt,
-      item.firstCommentAt,
-      scoreLabel(item.score),
-    ]);
+    recordSup(item.issueKey, {
+      type: 'Change',
+      topic: item.summary,
+      start: item.createdAt,
+      end: item.firstCommentAt,
+      status: `Response ${scoreLabel(item.score)}`,
+    });
   });
 
   rows.forEach((activity) => {
     const issueKey = cleanCell(activity.ticketId);
     if (!issueKey.toUpperCase().startsWith('SUP-')) return;
-    push('sup', ['activity', issueKey], [
-      issueKey,
-      'SUP activity',
-      activity.ticketTitle || activity.topic || activity.prName || ACTS[activity.actKey]?.label,
-      activity.date,
-      activity.date,
-      activity.status === 'completed' ? 'Selesai' : activity.status,
-    ]);
+    recordSup(issueKey, {
+      type: 'SUP Activity',
+      topic: activity.ticketTitle || activity.topic || activity.prName || ACTS[activity.actKey]?.label,
+      preferTopic: true,
+      start: activity.date,
+      end: activity.date,
+      status: activity.status === 'completed' ? 'Selesai' : activity.status,
+    });
   });
+
+  Array.from(supByIssue.values())
+    .sort((left, right) => left.issue.localeCompare(right.issue, undefined, { numeric: true }))
+    .forEach((item) => {
+      push('sup', ['sup', item.issue], [
+        item.issue,
+        item.type || 'SUP',
+        item.topic || '-',
+        formatEvidenceDate(item.start),
+        formatEvidenceDate(item.end),
+        item.status || '-',
+      ]);
+    });
 
   (breakdown.ops?.components?.taskTree?.items || []).forEach((task) => {
     push('ops', ['task', task.taskKey], [
       'Task',
       task.taskKey,
       task.taskSummary,
-      task.dueDate,
-      task.resolutionDate,
+      formatEvidenceDate(task.dueDate),
+      formatEvidenceDate(task.resolutionDate),
       task.statusName,
     ]);
     (task.subtasks || []).forEach((subtask) => {
@@ -471,8 +523,8 @@ const collectQuarterlyEvidenceSections = ({ rows = [], ACTS = {}, scorecard } = 
         'Subtask',
         `  ${subtask.issueKey}`,
         subtask.summary,
-        subtask.dueDate,
-        subtask.actualEndAt || subtask.resolutionDate,
+        formatEvidenceDate(subtask.dueDate),
+        formatEvidenceDate(subtask.actualEndAt || subtask.resolutionDate),
         subtask.statusName,
       ]);
     });
