@@ -196,6 +196,143 @@ const kpiSummaryRows = (items = []) => items.map((item) => {
   ];
 });
 
+const cleanCell = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+const collectQuarterlyEvidenceRows = ({ rows = [], ACTS = {}, scorecard } = {}) => {
+  const breakdown = scorecard?.scorecard?.breakdown || {};
+  const evidence = [];
+  const seen = new Set();
+  const push = ({ domain, type, issue, summary, parent, due, actual, status }) => {
+    const issueKey = cleanCell(issue || parent);
+    if (!issueKey) return;
+    const key = `${domain}|${type}|${issueKey}|${cleanCell(parent)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    evidence.push([
+      domain || '-',
+      type || '-',
+      issueKey,
+      cleanCell(summary) || '-',
+      cleanCell(parent) || '-',
+      cleanCell(due) || '-',
+      cleanCell(actual) || '-',
+      cleanCell(status) || '-',
+    ]);
+  };
+
+  (breakdown.impl?.components?.taskAccuracy?.items || []).forEach((item) => {
+    push({
+      domain: 'Implementation',
+      type: 'Subtask [IMP]',
+      issue: item.issueKey,
+      summary: item.summary,
+      due: item.dueDate,
+      actual: item.actualEndAt,
+      status: item.excusedByBlocker ? 'Blocked score 4' : item.actualEndAt ? (item.onTime ? 'On time' : 'Late') : 'Open',
+    });
+  });
+
+  (breakdown.pm?.components?.execution?.items || []).forEach((item) => {
+    push({
+      domain: 'Preventive Maintenance',
+      type: 'Pekerjaan PM',
+      issue: item.issueKey,
+      parent: item.parentRef,
+      due: item.dueDate,
+      actual: item.actualEndAt,
+      status: item.pendingWithinDueDate ? 'Pending within due date' : scoreLabel(item.score),
+    });
+  });
+
+  (breakdown.pm?.components?.report?.items || []).forEach((item) => {
+    push({
+      domain: 'Preventive Maintenance',
+      type: 'Report PM',
+      issue: item.issueKey,
+      parent: item.parentRef,
+      due: item.dueDate,
+      actual: item.reportActualEndAt,
+      status: item.assumedByPolicy ? 'Assumed by policy' : item.pendingWithinDueDate ? 'Pending within due date' : scoreLabel(item.score),
+    });
+  });
+
+  (breakdown.cm?.components?.resolution?.items || []).forEach((item) => {
+    push({
+      domain: 'Corrective Maintenance',
+      type: 'SUP Problem',
+      issue: item.issueKey,
+      summary: item.priority,
+      due: item.actualStartAt,
+      actual: item.actualEndAt,
+      status: scoreLabel(item.score),
+    });
+  });
+
+  (breakdown.cm?.components?.response?.items || []).forEach((item) => {
+    push({
+      domain: 'Corrective Maintenance',
+      type: 'SUP Problem',
+      issue: item.issueKey,
+      summary: item.priority,
+      due: item.createdAt,
+      actual: item.firstCommentAt,
+      status: scoreLabel(item.score),
+    });
+  });
+
+  (breakdown.enh?.components?.response?.items || []).forEach((item) => {
+    push({
+      domain: 'Enhancement',
+      type: 'SUP Change',
+      issue: item.issueKey,
+      due: item.createdAt,
+      actual: item.firstCommentAt,
+      status: scoreLabel(item.score),
+    });
+  });
+
+  (breakdown.ops?.components?.taskTree?.items || []).forEach((task) => {
+    push({
+      domain: 'Operational Service / MSS',
+      type: 'Task [OP]',
+      issue: task.taskKey,
+      summary: task.taskSummary,
+      due: task.dueDate,
+      actual: task.resolutionDate,
+      status: task.statusName,
+    });
+    (task.subtasks || []).forEach((subtask) => {
+      push({
+        domain: 'Operational Service / MSS',
+        type: 'Subtask [OP]',
+        issue: subtask.issueKey,
+        parent: task.taskKey,
+        summary: subtask.summary,
+        due: subtask.dueDate,
+        actual: subtask.actualEndAt || subtask.resolutionDate,
+        status: subtask.statusName,
+      });
+    });
+  });
+
+  rows.forEach((activity) => {
+    const def = ACTS[activity.actKey] || {};
+    const issueKey = cleanCell(activity.ticketId);
+    const normalizedIssueKey = issueKey.toUpperCase();
+    if (!issueKey || (def.source !== 'jira' && !normalizedIssueKey.startsWith('SUP-'))) return;
+    push({
+      domain: 'Jira Activity',
+      type: normalizedIssueKey.startsWith('SUP-') ? 'SUP' : 'Task/Subtask',
+      issue: issueKey,
+      summary: activity.ticketTitle || activity.topic || activity.prName || def.label,
+      actual: activity.date,
+      status: activity.status === 'completed' ? 'Selesai' : activity.status,
+    });
+  });
+
+  return evidence;
+};
+
 export function exportKpiSummaryCSV({ items, year, quarter }) {
   const esc = v => {
     const s = String(v == null ? "" : v);
@@ -302,6 +439,16 @@ export function exportQuarterlyKpiCSV({ rows, ACTS, scorecard, user, year, quart
     ].map(esc).join(","));
   });
 
+  const evidenceRows = collectQuarterlyEvidenceRows({ rows, ACTS, scorecard });
+  lines.push("");
+  lines.push(["Assigned Jira Tasks / SUP Evidence"].map(esc).join(","));
+  lines.push(["Domain","Type","Issue","Summary","Parent","Due / Created","Actual / Done","Status"].map(esc).join(","));
+  if (evidenceRows.length) {
+    evidenceRows.forEach((row) => lines.push(row.map(esc).join(",")));
+  } else {
+    lines.push(["-","-","Tidak ada evidence Jira","-","-","-","-","-"].map(esc).join(","));
+  }
+
   lines.push("");
   lines.push(["Activities"].map(esc).join(","));
   lines.push(["Tanggal","Member","Source","Kategori","Ticket ID","Judul / Topik","Customer","Durasi (mnt)","Status","Catatan"].map(esc).join(","));
@@ -389,6 +536,29 @@ export function exportQuarterlyKpiPDF({ rows, ACTS, scorecard, user, year, quart
     styles: { fontSize: 8, cellPadding: 1.8, overflow: 'linebreak' },
     margin: { left: 14, right: 14 },
     columnStyles: { 2: { cellWidth: 100 } },
+  });
+  y = (doc.lastAutoTable?.finalY || y) + 10;
+
+  const evidenceRows = collectQuarterlyEvidenceRows({ rows, ACTS, scorecard });
+  y = drawSection(doc, 'Assigned Jira Tasks / SUP Evidence', y);
+  autoTable(doc, {
+    startY: y,
+    head: [['Domain', 'Type', 'Issue', 'Summary', 'Parent', 'Due/Created', 'Actual/Done', 'Status']],
+    body: evidenceRows.length ? evidenceRows : [['-', '-', 'Tidak ada evidence Jira', '-', '-', '-', '-', '-']],
+    theme: 'grid',
+    headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
+    styles: { fontSize: 6.7, cellPadding: 1.3, overflow: 'linebreak' },
+    margin: { left: 14, right: 14 },
+    columnStyles: {
+      0: { cellWidth: 27 },
+      1: { cellWidth: 23 },
+      2: { cellWidth: 22 },
+      3: { cellWidth: 42 },
+      4: { cellWidth: 20 },
+      5: { cellWidth: 22 },
+      6: { cellWidth: 22 },
+      7: { cellWidth: 24 },
+    },
   });
   y = (doc.lastAutoTable?.finalY || y) + 10;
 

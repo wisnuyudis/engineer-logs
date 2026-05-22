@@ -7,6 +7,7 @@ import { DashboardView } from './components/DashboardView';
 import { ActivitiesView } from './components/ActivitiesView';
 import { MembersView } from './components/MembersView';
 import { ReportsView } from './components/ReportsView';
+import { KpiReportView } from './components/KpiReportView';
 import { ExecutiveReportView } from './components/ExecutiveReportView';
 import { ProfileView } from './components/ProfileView';
 import { TaxonomyView } from './components/TaxonomyView';
@@ -148,6 +149,7 @@ export default function App() {
     "/members": "Team Members",
     "/reports": "Reports",
     "/reports/activity": "Activity Report",
+    "/reports/kpi": "KPI Report",
     "/reports/executive": "Executive Report",
     "/profile": "Profil Saya",
     "/kpi-admin": "KPI",
@@ -160,7 +162,7 @@ export default function App() {
   const pageTitle = TITLES[view] || TITLES["/"];
   const isLoading = loadingMembers || loadingActs || loadingTax;
   const hasPageFab = view === '/members';
-  const canViewExecutiveReport = isMgr(user.role);
+  const canViewReportKpi = isMgr(user.role);
 
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.textPri }}>
@@ -220,7 +222,8 @@ export default function App() {
                   <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} onResetPassword={handleResetMemberPassword} activities={acts} />} />
                   <Route path="/reports" element={<Navigate to="/reports/activity" replace />} />
                   <Route path="/reports/activity" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
-                  <Route path="/reports/executive" element={canViewExecutiveReport ? <ExecutiveReportView /> : <Navigate to="/reports/activity" replace />} />
+                  <Route path="/reports/kpi" element={canViewReportKpi ? <KpiReportView activities={acts} members={members} currentUser={user} /> : <Navigate to="/reports/activity" replace />} />
+                  <Route path="/reports/executive" element={canViewReportKpi ? <ExecutiveReportView /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={syncUser} />} />
                   <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
                   <Route path="/kpi-nps" element={<KpiNpsView currentUser={user} />} />

@@ -22,6 +22,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
       label: 'Reports',
       children: [
         { id: "/reports/activity", icon: "▤", label: "Activity Report" },
+        ...(isMgr(user.role) ? [{ id: "/reports/kpi", icon: "◇", label: "KPI Report" }] : []),
         ...(isMgr(user.role) ? [{ id: "/reports/executive", icon: "▧", label: "Executive Report" }] : []),
       ],
     },
