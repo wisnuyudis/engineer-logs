@@ -157,6 +157,116 @@ export function exportPDF(rows, members, ACTS) {
   doc.save(`engineer-report-${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
+const npsScopeLabel = (scope) => {
+  if (scope === 'impl_project') return '[IMP] Implementation Epic';
+  if (scope === 'op_task') return '[OP] Operational Task';
+  if (scope === 'pm_record') return '[MA] Preventive Maintenance';
+  return scope || '-';
+};
+
+export function exportNpsCSV({ items, year, quarter }) {
+  const headers = [
+    'Quarter',
+    'Scope',
+    'Issue Key',
+    'Project Key',
+    'Project Name',
+    'Summary',
+    'Issue Type',
+    'Status',
+    'Assigned User',
+    'Done At',
+    'NPS',
+    'Komentar',
+    'Updated At',
+  ];
+  const esc = (value) => {
+    const s = String(value == null ? '' : value);
+    return (s.includes(',') || s.includes('"') || s.includes('\n'))
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+  const lines = [headers.map(esc).join(',')];
+  items.forEach((item) => {
+    lines.push([
+      `${quarter} ${year}`,
+      npsScopeLabel(item.scope),
+      item.jiraIssueKey || '',
+      item.projectKey || '',
+      item.projectName || '',
+      item.summary || '',
+      item.issueTypeName || '',
+      item.statusName || '',
+      item.assignedPmDisplayName || '',
+      item.resolutionDate || '',
+      item.score ?? '',
+      item.comment || '',
+      item.updatedAt || '',
+    ].map(esc).join(','));
+  });
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `nps-report-${quarter}-${year}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export function exportNpsPDF({ items, year, quarter, actor, canSeeAll }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const avgScore = items.length
+    ? items.reduce((sum, item) => sum + Number(item.score || 0), 0) / items.length
+    : 0;
+  let y = drawTitle(
+    doc,
+    'NPS Report',
+    `Seraphim Digital Technology | ${quarter} ${year} | ${canSeeAll ? 'All NPS' : `Assigned to ${actor?.name || '-'}`}`
+  );
+  y = drawCards(doc, [
+    { label: 'Total Input', value: items.length, color: '#4f46e5' },
+    { label: 'Implementation', value: items.filter((item) => item.scope === 'impl_project').length, color: '#4f46e5' },
+    { label: 'Operational', value: items.filter((item) => item.scope === 'op_task').length, color: '#14b8a6' },
+    { label: 'Preventive Maint.', value: items.filter((item) => item.scope === 'pm_record').length, color: '#f59e0b' },
+    { label: 'Avg NPS', value: items.length ? avgScore.toFixed(2) : '-', color: '#22c55e' },
+  ], y);
+  y = drawSection(doc, 'NPS Detail', y);
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Scope', 'Issue', 'Project', 'Summary', 'Assigned', 'Done At', 'NPS', 'Komentar']],
+    body: items.map((item) => [
+      npsScopeLabel(item.scope),
+      item.jiraIssueKey || '-',
+      item.projectKey || item.projectName || '-',
+      item.summary || '-',
+      item.assignedPmDisplayName || '-',
+      item.resolutionDate ? new Date(item.resolutionDate).toLocaleString('id-ID') : '-',
+      item.score ?? '-',
+      item.comment || '-',
+    ]),
+    styles: { fontSize: 7, cellPadding: 2, valign: 'top' },
+    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: {
+      0: { cellWidth: 34 },
+      1: { cellWidth: 22 },
+      2: { cellWidth: 30 },
+      3: { cellWidth: 62 },
+      4: { cellWidth: 34 },
+      5: { cellWidth: 30 },
+      6: { cellWidth: 14, halign: 'center' },
+      7: { cellWidth: 58 },
+    },
+  });
+
+  addFooter(doc);
+  doc.save(`nps-report-${quarter}-${year}.pdf`);
+}
+
 const quarterRange = (year, quarter) => {
   const ranges = {
     Q1: [`${year}-01-01`, `${year}-03-31`],

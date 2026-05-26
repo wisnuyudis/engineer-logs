@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { T, FONT, MONO, DISPLAY } from '../theme/tokens';
-import { ROLES, isMgr, isAdmin, teamOf, hasKpiProfile } from '../constants/taxonomy';
+import { ROLES, isMgr, isAdmin, teamOf, hasKpiProfile, canManageKpiNps } from '../constants/taxonomy';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import { calcKPI } from '../utils/kpi';
 import { currentQuarter } from '../utils/kpiManual';
 import { Card, Avi, RoleBadge, TeamBadge, Tag } from './ui/Primitives';
 import { PersonalKPI } from './shared/PersonalKPI';
+import { KpiNpsSummaryPanel } from './shared/KpiNpsSummaryPanel';
 import api from '../lib/api';
 
 const pipelineUpdatedAt = (activity) => {
@@ -76,6 +77,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
   const myTeam = teamOf(currentUser.role);
   const isAdminRole = isAdmin(currentUser.role);
   const canSeeOwnKpi = hasKpiProfile(currentUser.role);
+  const canSeeNpsDashboard = canManageKpiNps(currentUser.role);
   const isPresalesUser = myTeam === 'presales';
   const [tab, setTab] = useState(canSeeTeam ? "overview" : canSeeOwnKpi ? "kpi" : "personal");
   const [memberDetailId, setMemberDetail] = useState(null);
@@ -217,13 +219,13 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
 
   const tabs = canSeeTeam
     ? isAdminRole
-      ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
+      ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"},{id:"nps",label:"◎ NPS"}]
       : canSeeOwnKpi
-        ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"},{id:"kpi",label:"📈 KPI Saya"}]
-        : [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"}]
+        ? [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"},{id:"kpi",label:"📈 KPI Saya"},...(canSeeNpsDashboard ? [{id:"nps",label:"◎ NPS"}] : [])]
+        : [{id:"overview",label:"📊 Overview"},{id:"leaderboard",label:"🏆 Leaderboard"},{id:"memberdetail",label:"👤 Detail Member"},...(canSeeNpsDashboard ? [{id:"nps",label:"◎ NPS"}] : [])]
     : canSeeOwnKpi
-      ? [{id:"kpi",label:"📈 KPI Saya"}]
-      : [{id:"personal",label:"📊 Dashboard Saya"}];
+      ? [{id:"kpi",label:"📈 KPI Saya"},...(canSeeNpsDashboard ? [{id:"nps",label:"◎ NPS"}] : [])]
+      : [{id:"personal",label:"📊 Dashboard Saya"},...(canSeeNpsDashboard ? [{id:"nps",label:"◎ NPS"}] : [])];
 
   const memberDetailUser = visibleMembers.find(m=>m.id===memberDetailId) || visibleMembers[0] || null;
   const memberDetailPeriodActs = useMemo(() => {
@@ -495,6 +497,10 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
           <JiraScheduleCard user={currentUser} />
           <PersonalKPI user={currentUser} activities={activities} />
         </div>
+      )}
+
+      {tab==="nps" && canSeeNpsDashboard && (
+        <KpiNpsSummaryPanel currentUser={currentUser} />
       )}
 
       {tab==="personal" && !canSeeTeam && (

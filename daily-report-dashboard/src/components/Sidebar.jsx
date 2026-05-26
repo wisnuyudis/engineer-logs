@@ -10,6 +10,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
   const activePath = location.pathname;
   const [openGroups, setOpenGroups] = useState({});
   const canViewKpiReport = ['admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(String(user.role || '').toLowerCase());
+  const canViewNpsReport = canManageKpiNps(user.role);
 
   const coreItems = [
     { id: "/", icon: "▦", label: "Dashboard" },
@@ -24,6 +25,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
       children: [
         { id: "/reports/activity", icon: "▤", label: "Activity Report" },
         ...(canViewKpiReport ? [{ id: "/reports/kpi", icon: "◇", label: "KPI Report" }] : []),
+        ...(canViewNpsReport ? [{ id: "/reports/nps", icon: "◎", label: "NPS Report" }] : []),
         ...(isMgr(user.role) ? [{ id: "/reports/executive", icon: "▧", label: "Executive Report" }] : []),
       ],
     },
