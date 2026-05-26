@@ -141,7 +141,7 @@ model KpiNpsEntry {
   id                    String   @id @default(auto()) @map("_id") @db.ObjectId
   year                  Int
   quarter               String
-  scope                 String   // impl_project, op_task
+  scope                 String   // impl_project, op_task, pm_record
   jiraIssueId           String?
   jiraIssueKey          String
   projectKey            String?

@@ -538,7 +538,7 @@ export const upsertKpiNpsEntry = async (req: AuthRequest, res: Response) => {
     const score = Number(req.body?.score);
     const comment = req.body?.comment == null ? null : String(req.body.comment);
 
-    if (!['impl_project', 'op_task'].includes(scope)) {
+    if (!['impl_project', 'op_task', 'pm_record'].includes(scope)) {
       return res.status(400).json({ error: 'Scope NPS tidak valid.' });
     }
     if (!jiraIssueKey) {

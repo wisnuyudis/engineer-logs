@@ -9,6 +9,7 @@ import api from '../lib/api';
 const scopeMeta = {
   impl_project: { label: 'Implementation Epic', short: '[IMP]', color: T.indigoHi, lo: T.indigoLo },
   op_task: { label: 'Operational Task', short: '[OP]', color: T.teal, lo: T.tealLo },
+  pm_record: { label: 'Preventive Maintenance', short: '[MA]', color: T.amber, lo: T.amberLo, recordOnly: true },
 };
 
 function formatDateTime(value) {
@@ -88,6 +89,7 @@ export function KpiNpsView({ currentUser }) {
       all: raw.length,
       impl_project: raw.filter((item) => item.scope === 'impl_project').length,
       op_task: raw.filter((item) => item.scope === 'op_task').length,
+      pm_record: raw.filter((item) => item.scope === 'pm_record').length,
       filled: raw.filter((item) => item.hasScore).length,
       missing: raw.filter((item) => !item.hasScore).length,
     };
@@ -201,7 +203,7 @@ export function KpiNpsView({ currentUser }) {
               Input NPS per Project / Task
             </div>
             <div style={{ fontSize: 12, color: T.textMute, maxWidth: 760, lineHeight: 1.5 }}>
-              NPS `[IMP]` muncul dari Epic yang selesai pada periode. PM hanya melihat Epic jika ada subtask BAST yang di-assign ke akun Jira PM tersebut; Head/Admin melihat semua. NPS `[OP]` muncul dari task `[OP]` yang selesai pada periode.
+              NPS `[IMP]` muncul dari Epic yang selesai pada periode. NPS `[OP]` muncul dari task `[OP]` yang selesai pada periode. `[MA]` Preventive Maintenance hanya untuk pencatatan, tidak masuk perhitungan poin KPI.
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -239,6 +241,7 @@ export function KpiNpsView({ currentUser }) {
               ['all', `Semua (${counts.all})`],
               ['impl_project', `[IMP] (${counts.impl_project})`],
               ['op_task', `[OP] (${counts.op_task})`],
+              ['pm_record', `[MA] (${counts.pm_record})`],
             ].map(([key, label]) => (
               <button key={key} onClick={() => setScopeFilter(key)} style={{ padding: '8px 12px', borderRadius: 999, border: `1.5px solid ${scopeFilter === key ? T.indigo : T.border}`, background: scopeFilter === key ? T.indigoLo : T.surfaceHi, color: scopeFilter === key ? T.indigoHi : T.textSec, cursor: 'pointer', fontFamily: FONT, fontSize: 11, fontWeight: scopeFilter === key ? 800 : 600 }}>
                 {label}
@@ -298,6 +301,7 @@ export function KpiNpsView({ currentUser }) {
                       <td>
                         <Tag color={meta.color} lo={meta.lo}>{meta.short}</Tag>
                         <div style={{ fontSize: 10, color: T.textMute, marginTop: 6 }}>{meta.label}</div>
+                        {meta.recordOnly && <div style={{ fontSize: 10, color: T.amber, marginTop: 4 }}>Pencatatan saja</div>}
                       </td>
                       <td>
                         <a href={item.issueUrl} target="_blank" rel="noreferrer" style={{ color: T.indigoHi, fontWeight: 800, fontFamily: MONO, textDecoration: 'none' }}>

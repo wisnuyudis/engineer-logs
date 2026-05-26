@@ -557,6 +557,8 @@ const fetchKpiNpsCandidates = async (startDate, endDate) => {
     });
     const opIssues = opTasks.filter((issue) => (isProjectPrefix(issue.projectName, '[OP]')
         && normalizeSummary(issue.issueTypeName) !== 'bug'));
+    const pmIssues = opTasks.filter((issue) => (isProjectPrefix(issue.projectName, '[MA]')
+        && normalizeSummary(issue.issueTypeName) !== 'bug'));
     const bastAssigneesByOpTask = new Map();
     for (const keys of chunk(opIssues.map((issue) => issue.key), 50)) {
         if (!keys.length)
@@ -592,7 +594,21 @@ const fetchKpiNpsCandidates = async (startDate, endDate) => {
             assignedPmDisplayName: bastAssignee?.displayName || issue.assigneeDisplayName,
         };
     });
-    return [...implCandidates, ...opCandidates];
+    const pmCandidates = pmIssues.map((issue) => ({
+        scope: 'pm_record',
+        jiraIssueId: issue.id,
+        jiraIssueKey: issue.key,
+        issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
+        projectKey: issue.projectKey,
+        projectName: issue.projectName,
+        summary: issue.summary,
+        issueTypeName: issue.issueTypeName,
+        statusName: issue.statusName,
+        resolutionDate: issue.resolutionDate,
+        assignedPmAccountId: issue.assigneeAccountId,
+        assignedPmDisplayName: issue.assigneeDisplayName,
+    }));
+    return [...implCandidates, ...opCandidates, ...pmCandidates];
 };
 exports.fetchKpiNpsCandidates = fetchKpiNpsCandidates;
 const fetchUpcomingJiraScheduleByAssignee = async (assigneeAccountId, dayWindow = 15) => {
