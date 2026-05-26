@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { T, FONT, MONO, DISPLAY } from '../theme/tokens';
-import { ROLES, isMgr, isAdmin, teamOf, hasKpiProfile, canManageKpiNps } from '../constants/taxonomy';
+import { ROLES, isMgr, isAdmin, teamOf, hasKpiProfile, canViewKpiNps } from '../constants/taxonomy';
 import { useTaxonomy } from '../contexts/TaxonomyContext';
 import { fmtH, fmtIDR } from '../utils/formatters';
 import { calcKPI } from '../utils/kpi';
@@ -77,7 +77,7 @@ export function DashboardView({ currentUser, activities, members, onAdminEditNps
   const myTeam = teamOf(currentUser.role);
   const isAdminRole = isAdmin(currentUser.role);
   const canSeeOwnKpi = hasKpiProfile(currentUser.role);
-  const canSeeNpsDashboard = canManageKpiNps(currentUser.role);
+  const canSeeNpsDashboard = canViewKpiNps(currentUser.role);
   const isPresalesUser = myTeam === 'presales';
   const [tab, setTab] = useState(canSeeTeam ? "overview" : canSeeOwnKpi ? "kpi" : "personal");
   const [memberDetailId, setMemberDetail] = useState(null);

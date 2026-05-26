@@ -22,7 +22,7 @@ import { RoleBadge, Avi, Btn } from './components/ui/Primitives';
 import { Toaster } from 'sonner';
 import React from 'react';
 import api from './lib/api';
-import { canManageKpiNps, isMgr } from './constants/taxonomy';
+import { canViewKpiNps, isMgr } from './constants/taxonomy';
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -165,7 +165,7 @@ export default function App() {
   const isLoading = loadingMembers || loadingActs || loadingTax;
   const hasPageFab = view === '/members';
   const canViewKpiReport = ['admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(String(user.role || '').toLowerCase());
-  const canViewNpsReport = canManageKpiNps(user.role);
+  const canViewNpsReport = canViewKpiNps(user.role);
   const canViewExecutiveReport = isMgr(user.role);
 
   return (

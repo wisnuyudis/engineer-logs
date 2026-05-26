@@ -50,6 +50,7 @@ export const isMgr = (role) => ["Admin", "admin", "superadmin", "Superadmin", "s
 export const canManageKpi = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery"].includes(role);
 export const canManageKpiNps = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery", "PM", "pm"].includes(role);
 export const hasKpiProfile = (role) => ["delivery", "SE", "PM", "pm"].includes(role);
+export const canViewKpiNps = (role) => canManageKpiNps(role) || hasKpiProfile(role);
 
 export const getKpiTarget = (domainKey, user) => {
   if (user?.role === "PM" && domainKey === "pm") return 30; // 30 jam target

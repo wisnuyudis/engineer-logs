@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T, FONT, DISPLAY } from '../theme/tokens';
-import { canManageKpi, canManageKpiNps, isMgr, teamOf } from '../constants/taxonomy';
+import { canManageKpi, canManageKpiNps, canViewKpiNps, isMgr, teamOf } from '../constants/taxonomy';
 import { Avi, RoleBadge, TeamBadge, Divider } from './ui/Primitives';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -10,7 +10,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
   const activePath = location.pathname;
   const [openGroups, setOpenGroups] = useState({});
   const canViewKpiReport = ['admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(String(user.role || '').toLowerCase());
-  const canViewNpsReport = canManageKpiNps(user.role);
+  const canViewNpsReport = canViewKpiNps(user.role);
 
   const coreItems = [
     { id: "/", icon: "▦", label: "Dashboard" },

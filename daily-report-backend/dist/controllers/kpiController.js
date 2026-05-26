@@ -10,6 +10,7 @@ const prisma = new client_1.PrismaClient();
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
 const canManageKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery', 'pm'].includes(normalizeRole(role));
 const canSeeAllKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery'].includes(normalizeRole(role));
+const canViewRelatedKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery', 'pm', 'se', 'delivery'].includes(normalizeRole(role));
 const getQuarterDateRange = (year, quarter) => {
     switch (quarter) {
         case 'Q1': return { startDate: `${year}-01-01`, endDate: `${year}-03-31` };
@@ -53,11 +54,16 @@ const getKpiNpsScoreInputs = async (year, quarter) => {
         updatedAt: entry.updatedAt?.toISOString?.() || null,
     }));
 };
-const getAuthorizedKpiNpsCandidates = async (actor, year, quarter) => {
+const getAuthorizedKpiNpsCandidates = async (actor, year, quarter, perspective = 'input') => {
     const { startDate, endDate } = getQuarterDateRange(year, quarter);
     const candidates = await (0, jiraService_1.fetchKpiNpsCandidates)(startDate, endDate);
     if (canSeeAllKpiNps(actor.role))
         return candidates;
+    if (perspective === 'related') {
+        return candidates.filter((candidate) => (actor.jiraAccountId
+            && Array.isArray(candidate.relatedEngineerAccountIds)
+            && candidate.relatedEngineerAccountIds.includes(actor.jiraAccountId)));
+    }
     return candidates.filter((candidate) => candidate.assignedPmAccountId && candidate.assignedPmAccountId === actor.jiraAccountId);
 };
 const mapScorecardResponse = (user, profile, scorecard, year, quarter, options = {}) => ({
@@ -409,7 +415,8 @@ const getKpiProfiles = async (_req, res) => {
 exports.getKpiProfiles = getKpiProfiles;
 const getKpiNpsEntries = async (req, res) => {
     try {
-        if (!canManageKpiNps(req.user?.role)) {
+        const perspective = req.query.perspective === 'related' ? 'related' : 'input';
+        if (perspective === 'related' ? !canViewRelatedKpiNps(req.user?.role) : !canManageKpiNps(req.user?.role)) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }
         const year = (0, kpiManual_1.normalizeYear)(req.query.year);
@@ -421,9 +428,9 @@ const getKpiNpsEntries = async (req, res) => {
         if (!actor)
             return res.status(401).json({ error: 'Unauthorized' });
         if (!canSeeAllKpiNps(actor.role) && !actor.jiraAccountId) {
-            return res.status(400).json({ error: 'Akun Jira PM belum terhubung.' });
+            return res.status(400).json({ error: perspective === 'related' ? 'Akun Jira user belum terhubung.' : 'Akun Jira PM belum terhubung.' });
         }
-        const candidates = await getAuthorizedKpiNpsCandidates(actor, year, quarter);
+        const candidates = await getAuthorizedKpiNpsCandidates(actor, year, quarter, perspective);
         const entries = candidates.length
             ? await prisma.kpiNpsEntry.findMany({
                 where: {
@@ -440,6 +447,7 @@ const getKpiNpsEntries = async (req, res) => {
         res.json({
             period: { year, quarter, label: (0, kpiManual_1.buildQuarterLabel)(year, quarter) },
             canSeeAll: canSeeAllKpiNps(actor.role),
+            perspective,
             items: candidates.map((candidate) => {
                 const entry = entryMap.get(`${candidate.scope}:${candidate.jiraIssueKey}`);
                 return {

@@ -33,7 +33,7 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ['kpi-nps-summary', year, quarter],
     queryFn: async () => {
-      const res = await api.get('/kpi/nps', { params: { year, quarter } });
+      const res = await api.get('/kpi/nps', { params: { year, quarter, perspective: 'related' } });
       return res.data;
     },
   });
@@ -112,7 +112,7 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
               NPS yang Sudah Diinput
             </div>
             <div style={{ fontSize: 12, color: T.textMute, maxWidth: 760, lineHeight: 1.5 }}>
-              Menampilkan detail NPS, assignee, dan komentar. Admin/Head melihat semua data; PM melihat data yang assigned ke akun Jira miliknya.
+              Menampilkan detail NPS, engineer terkait, PM penginput, dan komentar. Admin/Head melihat semua data; user lain melihat NPS yang berkaitan dengan akun Jira miliknya.
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -212,7 +212,8 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
                   <th>Issue</th>
                   <th>Project</th>
                   <th>Summary</th>
-                  <th>Assigned User</th>
+                  <th>Related Engineer</th>
+                  <th>PM Input</th>
                   <th>Done At</th>
                   <th>NPS</th>
                   <th>Komentar</th>
@@ -242,6 +243,7 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
                         <div style={{ fontWeight: 700 }}>{item.summary || '-'}</div>
                         <div style={{ color: T.textMute, marginTop: 4 }}>{item.issueTypeName || '-'} · {item.statusName || '-'}</div>
                       </td>
+                      <td>{(item.relatedEngineerDisplayNames || []).join(', ') || '-'}</td>
                       <td>{item.assignedPmDisplayName || '-'}</td>
                       <td>{formatDateTime(item.resolutionDate)}</td>
                       <td><Tag color={T.green} lo={T.greenLo}>NPS {item.score}</Tag></td>
