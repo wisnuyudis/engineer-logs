@@ -144,6 +144,12 @@ export default function App() {
     const res = await api.patch(`/users/${id}/reset-password`, { newPassword });
     return res.data;
   };
+  const handleUpdateMemberSupervisor = async (id, supervisorId) => {
+    const res = await api.patch(`/users/${id}`, { supervisorId: supervisorId || null });
+    queryClient.setQueryData(['members'], old => (old || []).map(m => m.id === id ? { ...m, ...res.data } : m));
+    queryClient.invalidateQueries({ queryKey: ['members'] });
+    return res.data;
+  };
 
   const TITLES = {
     "/": "Dashboard",
@@ -243,7 +249,7 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<DashboardView currentUser={user} activities={acts} members={members} onAdminEditNps={handleAdminEditNps} />} />
                   <Route path="/activities" element={<ActivitiesView currentUser={user} members={members} onAdd={handleAddAct} />} />
-                  <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} onResetPassword={handleResetMemberPassword} activities={acts} />} />
+                  <Route path="/members" element={<MembersView currentUser={user} members={members} onToggle={handleToggleMember} onDelete={handleDeleteMember} onAdd={handleAddMember} onResetPassword={handleResetMemberPassword} onUpdateSupervisor={handleUpdateMemberSupervisor} activities={acts} />} />
                   <Route path="/reports" element={<Navigate to="/reports/activity" replace />} />
                   <Route path="/reports/activity" element={<ReportsView activities={acts} members={members} currentUser={user} />} />
                   <Route path="/reports/kpi" element={canViewKpiReport ? <KpiReportView activities={acts} members={members} currentUser={user} /> : <Navigate to="/reports/activity" replace />} />

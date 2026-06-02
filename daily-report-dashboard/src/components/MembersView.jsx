@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { T, FONT, DISPLAY, MONO } from '../theme/tokens';
 import { ROLES, ROLE_OPTIONS, isAdmin, isMgr, hasKpiProfile } from '../constants/taxonomy';
 import { calcKPI } from '../utils/kpi';
@@ -240,12 +240,25 @@ function InviteModal({ open, onClose, members, onAdd }) {
   );
 }
 
-function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, onResetPassword, activities }) {
+function supervisorCandidatesFor(member, members) {
+  const role = String(member?.role || '');
+  const team = member?.team || ROLES[role]?.team;
+  const managerRoles = team === 'presales' ? ['mgr_ps', 'Head Presales'] : team === 'delivery' ? ['mgr_dl', 'Head Delivery'] : ['admin', 'Admin'];
+  return (members || []).filter((candidate) => (
+    candidate.id !== member.id
+    && candidate.status === 'active'
+    && managerRoles.includes(candidate.role)
+  ));
+}
+
+function MemberCard({ m, members, canManage, canSeeKPI, onToggle, onDelete, onResetPassword, onUpdateSupervisor, activities }) {
   const [confirm,setC]=useState(false),[delC,setD]=useState(false);
   const [deleting,setDeleting]=useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [supervisorOpen, setSupervisorOpen] = useState(false);
   const kpi = useMemo(()=>calcKPI(m,activities),[m,activities]);
   const isSusp = m.status==="suspended";
+  const supervisor = (members || []).find((candidate) => candidate.id === m.supervisorId) || null;
   return (
     <>
     <Card style={{ opacity:isSusp?.75:1,position:"relative",overflow:"hidden" }} glow={isSusp?T.amber:undefined}>
@@ -261,6 +274,18 @@ function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, onResetPasswo
           <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}><RoleBadge role={m.role} /></div>
         </div>
         {canManage&&!delC&&<button onClick={()=>setD(true)} style={{ width:24,height:24,borderRadius:5,border:`1px solid ${T.red}30`,background:T.redLo,color:T.red,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>🗑</button>}
+      </div>
+
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"8px 10px",background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,marginBottom:10 }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontSize:9,color:T.textMute,textTransform:"uppercase",letterSpacing:".07em",marginBottom:3 }}>Atasan Terkait</div>
+          <div style={{ fontSize:12,fontWeight:700,color:supervisor?T.textPri:T.textMute,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
+            {supervisor ? supervisor.name : 'Belum ditentukan'}
+          </div>
+        </div>
+        {canManage && (
+          <Btn v="ghost" sz="sm" onClick={()=>setSupervisorOpen(true)} style={{ flexShrink:0 }}>Ubah</Btn>
+        )}
       </div>
 
       {canSeeKPI && kpi && kpi.final!==null && (
@@ -324,7 +349,77 @@ function MemberCard({ m, canManage, canSeeKPI, onToggle, onDelete, onResetPasswo
       member={m}
       onSubmit={onResetPassword}
     />
+    <SupervisorModal
+      open={supervisorOpen}
+      onClose={()=>setSupervisorOpen(false)}
+      member={m}
+      members={members}
+      currentSupervisor={supervisor}
+      onSubmit={onUpdateSupervisor}
+    />
     </>
+  );
+}
+
+function SupervisorModal({ open, onClose, member, members, currentSupervisor, onSubmit }) {
+  const [supervisorId, setSupervisorId] = useState(member?.supervisorId || '');
+  const [busy, setBusy] = useState(false);
+  const candidates = useMemo(() => supervisorCandidatesFor(member, members), [member, members]);
+
+  useEffect(() => {
+    if (open) setSupervisorId(member?.supervisorId || '');
+  }, [member?.supervisorId, open]);
+
+  const close = () => {
+    if (busy) return;
+    setSupervisorId(member?.supervisorId || '');
+    onClose();
+  };
+
+  const submit = async () => {
+    try {
+      setBusy(true);
+      await onSubmit(member.id, supervisorId || null);
+      toast.success(`Atasan ${member.name} berhasil diperbarui`);
+      close();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Gagal mengubah atasan');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={close} width={460}>
+      <MHead title="Ubah Atasan Terkait" sub={`Pilih atasan langsung untuk ${member?.name || 'member'}`} onClose={close} />
+      <div style={{ display:'grid', gap:12 }}>
+        <div style={{ padding:12,border:`1px solid ${T.border}`,borderRadius:10,background:T.surfaceHi }}>
+          <div style={{ fontSize:10,color:T.textMute,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:4 }}>Atasan saat ini</div>
+          <div style={{ fontSize:13,fontWeight:800,color:currentSupervisor?T.textPri:T.textMute }}>{currentSupervisor?.name || 'Belum ditentukan'}</div>
+        </div>
+        <div>
+          <Lbl>Atasan Baru</Lbl>
+          <select
+            value={supervisorId || ''}
+            onChange={(event)=>setSupervisorId(event.target.value)}
+            style={{ width:'100%',background:T.surfaceHi,border:`1.5px solid ${T.border}`,borderRadius:8,padding:'9px 12px',color:supervisorId?T.textPri:T.textMute,fontSize:12,outline:'none',fontFamily:FONT }}
+          >
+            <option value="">-- Tidak ada / belum ditentukan --</option>
+            {candidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>{candidate.name} ({ROLES[candidate.role]?.label || candidate.role})</option>
+            ))}
+          </select>
+          <div style={{ fontSize:10,color:T.textMute,marginTop:5 }}>
+            Kandidat atasan diambil dari manager aktif pada team member tersebut.
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, paddingTop:8, borderTop:`1px solid ${T.border}` }}>
+          <Btn v="ghost" style={{ flex:1, justifyContent:'center' }} onClick={close} disabled={busy}>Batal</Btn>
+          <Btn v="teal" style={{ flex:1, justifyContent:'center' }} onClick={submit} disabled={busy}>
+            {busy ? 'Menyimpan...' : 'Simpan Atasan'}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -391,7 +486,7 @@ function kpiColor(score) {
   return T.red;
 }
 
-export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, onResetPassword, activities }) {
+export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, onResetPassword, onUpdateSupervisor, activities }) {
   const [teamF,setTF]=useState("all");
   const [inviteOpen,setInvite]=useState(false);
   const canManage = isAdmin(currentUser.role);
@@ -417,7 +512,7 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, o
           <div style={{ flex:1,height:1,background:T.border }} />
         </div>
         <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12 }}>
-          {list.map(m=><MemberCard key={m.id} m={m} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} onResetPassword={onResetPassword} activities={activities} />)}
+          {list.map(m=><MemberCard key={m.id} m={m} members={members} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} onResetPassword={onResetPassword} onUpdateSupervisor={onUpdateSupervisor} activities={activities} />)}
         </div>
       </div>
     );

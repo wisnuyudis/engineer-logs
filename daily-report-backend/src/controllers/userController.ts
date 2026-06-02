@@ -74,11 +74,37 @@ export const updateUser = async (req: Request<{ id: string }>, res: Response) =>
   try {
     const id = req.params.id;
     const { name, role, team, status } = req.body;
+    const hasSupervisorPatch = Object.prototype.hasOwnProperty.call(req.body || {}, 'supervisorId');
+    const supervisorId = hasSupervisorPatch && req.body.supervisorId ? String(req.body.supervisorId) : null;
+
+    if (hasSupervisorPatch && supervisorId === String(id)) {
+      return res.status(400).json({ error: 'Atasan tidak boleh user yang sama.' });
+    }
+
+    if (hasSupervisorPatch && supervisorId) {
+      const supervisor = await prisma.user.findUnique({
+        where: { id: supervisorId },
+        select: { id: true, status: true }
+      });
+
+      if (!supervisor) {
+        return res.status(404).json({ error: 'Atasan tidak ditemukan.' });
+      }
+      if (supervisor.status !== 'active') {
+        return res.status(400).json({ error: 'Atasan harus berstatus aktif.' });
+      }
+    }
     
     const user = await prisma.user.update({
       where: { id: String(id) },
-      data: { name, role, team, status },
-      select: { id: true, email: true, name: true, role: true, status: true }
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(role !== undefined ? { role } : {}),
+        ...(team !== undefined ? { team } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(hasSupervisorPatch ? { supervisorId } : {}),
+      },
+      select: { id: true, email: true, name: true, role: true, status: true, team: true, avatarUrl: true, supervisorId: true }
     });
 
     await writeAudit(req as any, {
