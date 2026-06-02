@@ -1,5 +1,5 @@
 export const ALLOWED_EMAIL_DOMAIN = '@sdt.co.id';
-export const ALLOWED_SMTP_FROM_DOMAINS = ['@sdt.co.id', '@gmail.com'];
+export const ALLOWED_SMTP_FROM_DOMAINS = ['@sdt.co.id', '@gmail.com', '@support.sdt.co.id'];
 
 export const normalizeEmail = (value: unknown) => String(value || '').trim().toLowerCase();
 
