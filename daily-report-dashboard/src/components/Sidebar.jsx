@@ -16,6 +16,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
     { id: "/", icon: "▦", label: "Dashboard" },
     { id: "/activities", icon: "◈", label: "Activity Log" },
     { id: "/members", icon: "◉", label: "Team Members" },
+    { id: "/docs", icon: "?", label: "User Guide" },
   ];
   const workspaceGroups = [
     {
