@@ -52,10 +52,14 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
       return responses.map((res, idx) => {
         const saved = (res.data?.items || []).filter((item) => item.hasScore);
         const average = avg(saved);
+        const flags = countNpsFlags(saved);
         return {
           quarter: quarters[idx],
           avgNps: formatAvg(average),
           total: saved.length,
+          promotor: flags.find((item) => item.key === 'promotor')?.count || 0,
+          passive: flags.find((item) => item.key === 'passive')?.count || 0,
+          detractors: flags.find((item) => item.key === 'detractors')?.count || 0,
         };
       });
     },
@@ -74,7 +78,6 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
     average: avg(savedItems),
   }), [savedItems]);
 
-  const flagCounts = useMemo(() => countNpsFlags(savedItems), [savedItems]);
   const selectedFlagCounts = useMemo(() => countNpsFlags(savedItems), [savedItems]);
   const flagTotal = selectedFlagCounts.reduce((sum, item) => sum + item.count, 0);
   const pieData = selectedFlagCounts
@@ -264,18 +267,19 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
         </Card>
 
         <Card p={18}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: T.textPri, marginBottom: 4 }}>Count by Flag</div>
-          <div style={{ fontSize: 11, color: T.textMute, marginBottom: 12 }}>Promotor, Passive, dan Detractors untuk quarter terpilih.</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: T.textPri, marginBottom: 4 }}>Trend Count by Flag</div>
+          <div style={{ fontSize: 11, color: T.textMute, marginBottom: 12 }}>Jumlah Promotor, Passive, dan Detractors per quarter.</div>
           <div className="nps-summary-chart">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={flagCounts} margin={{ top: 8, right: 8, left: -20, bottom: 2 }}>
+              <BarChart data={trendData || []} margin={{ top: 8, right: 8, left: -20, bottom: 2 }}>
                 <CartesianGrid stroke={T.border} strokeDasharray="3 3" />
-                <XAxis dataKey="label" stroke={T.textMute} tick={{ fill: T.textMute, fontSize: 10 }} />
+                <XAxis dataKey="quarter" stroke={T.textMute} tick={{ fill: T.textMute, fontSize: 11 }} />
                 <YAxis allowDecimals={false} stroke={T.textMute} tick={{ fill: T.textMute, fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPri }} />
-                <Bar dataKey="count" name="Count" radius={[6, 6, 0, 0]}>
-                  {flagCounts.map((entry) => <Cell key={entry.key} fill={entry.color} />)}
-                </Bar>
+                <Legend wrapperStyle={{ color: T.textMute, fontSize: 11 }} />
+                <Bar dataKey="promotor" name="Promotor" fill={T.green} radius={[5, 5, 0, 0]} />
+                <Bar dataKey="passive" name="Passive" fill={T.amber} radius={[5, 5, 0, 0]} />
+                <Bar dataKey="detractors" name="Detractors" fill={T.red} radius={[5, 5, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
