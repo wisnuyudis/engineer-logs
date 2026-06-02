@@ -164,6 +164,7 @@ export default function App() {
 
   const view = location.pathname;
   const pageTitle = TITLES[view] || TITLES["/"];
+  const isDocsPage = view === '/docs';
   const isLoading = loadingMembers || loadingActs || loadingTax;
   const hasPageFab = view === '/members';
   const canViewKpiReport = ['admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(String(user.role || '').toLowerCase());
@@ -176,20 +177,20 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
       <div style={{ display: "flex", minHeight: "100vh" }}>
         
-        <Sidebar user={user} isMobile={isMobile} mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} onLogout={() => {
+        {!isDocsPage && <Sidebar user={user} isMobile={isMobile} mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} onLogout={() => {
           api.post('/auth/logout').catch(() => null).finally(() => {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             queryClient.clear();
             setUser(null);
           });
-        }} />
+        }} />}
 
-        <main style={{ marginLeft: isMobile ? 0 : 252, flex: 1, padding: isMobile ? "16px 14px 24px" : "22px 26px", minWidth: 0 }}>
-          <div style={{ maxWidth: 1480, margin: "0 auto" }}>
+        <main style={{ marginLeft: isDocsPage || isMobile ? 0 : 252, flex: 1, padding: isMobile ? "16px 14px 24px" : "22px 26px", minWidth: 0 }}>
+          <div style={{ maxWidth: isDocsPage ? 1680 : 1480, margin: "0 auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, flexWrap:"wrap", marginBottom: 22 }}>
               <div style={{ display:"flex", alignItems:isMobile ? "flex-start" : "center", gap:12 }}>
-                {isMobile && (
+                {isMobile && !isDocsPage && (
                   <button
                     onClick={() => setMobileNavOpen(true)}
                     aria-label="Open menu"
@@ -206,6 +207,23 @@ export default function App() {
               </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  onClick={() => navigate('/docs')}
+                  style={{
+                    height: 34,
+                    padding: '0 12px',
+                    borderRadius: 10,
+                    border: `1px solid ${view === '/docs' ? T.indigo : T.border}`,
+                    background: view === '/docs' ? T.indigoLo : T.surfaceHi,
+                    color: view === '/docs' ? T.indigoHi : T.textSec,
+                    fontFamily: FONT,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Docs
+                </button>
                 <Avi av={user.avatar} name={user.name} team={user.team} sz={28} />
                 <RoleBadge role={user.role} />
               </div>

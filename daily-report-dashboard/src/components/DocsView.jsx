@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { T, FONT, MONO, DISPLAY } from '../theme/tokens';
 import { canManageKpi, canManageKpiNps, canViewKpiNps, isMgr, teamOf } from '../constants/taxonomy';
 import { Btn, Card, RoleBadge, Tag, TeamBadge } from './ui/Primitives';
@@ -66,19 +67,67 @@ const copy = {
       },
       {
         key: 'profile',
-        title: 'Hubungkan akun Jira',
+        title: 'Kelola profil dan keamanan akun',
         label: 'Profil',
         screen: 'profile',
-        summary: 'Akun Jira perlu dihubungkan agar aplikasi bisa membaca assignment, worklog, dan data KPI/NPS terkait.',
-        bullets: ['Buka Profile.', 'Klik connect Jira.', 'Login dan approve OAuth Atlassian.', 'Pastikan status Jira berubah menjadi connected.'],
+        summary: 'Profile dipakai untuk mengubah nama, avatar, password, serta melihat KPI personal jika role kamu punya profil KPI.',
+        bullets: ['Buka Profile dari kartu user di kanan bawah sidebar atau dari avatar/header.', 'Klik Edit untuk mengubah nama/avatar.', 'Gunakan panel Keamanan Akun untuk mengganti password.', 'Review KPI personal untuk melihat score, domain, dan aktivitas Jira/non-Jira.'],
+      },
+      {
+        key: 'jira',
+        title: 'Hubungkan akun Jira',
+        label: 'Integrasi Jira',
+        screen: 'jira',
+        summary: 'Akun Jira perlu dihubungkan agar aplikasi mengenali accountId, membaca assignment, menarik worklog, dan menampilkan data KPI/NPS terkait.',
+        bullets: ['Buka Profile lalu cari kartu Integrasi Jira.', 'Klik Hubungkan ke Jira.', 'Login ke Atlassian dan approve OAuth.', 'Setelah kembali ke Profile, pastikan status berubah menjadi Terhubung.', 'Jika gagal, cek callback URL production dan pastikan akun Jira user berada di site yang benar.'],
+      },
+      {
+        key: 'telegram',
+        title: 'Hubungkan Telegram Bot',
+        label: 'Integrasi Telegram',
+        screen: 'telegram',
+        summary: 'Telegram Bot dipakai untuk input log aktivitas harian tanpa membuka web. Bot menautkan akun lewat token sekali pakai dari halaman Profile.',
+        bullets: ['Buka Profile lalu cari kartu Integrasi Telegram Bot.', 'Klik Tautkan ke Telegram untuk membuat token 6 karakter.', 'Buka Telegram dan cari @sdt_elogs_bot.', 'Kirim perintah /link TOKEN, contoh /link A1B2C3.', 'Setelah tertaut, kirim /log untuk membuka wizard input aktivitas.', 'Aktivitas dari bot akan muncul di Activity Log dengan sumber Telegram Bot.'],
+      },
+      {
+        key: 'members',
+        title: 'Kelola Team Members',
+        label: 'Admin Member',
+        screen: 'members',
+        summary: 'Team Members dipakai admin/manager untuk melihat struktur team, mengirim invite, suspend/reactivate user, dan reset password.',
+        bullets: ['Admin bisa melihat seluruh member lintas team.', 'Manager melihat member sesuai scope team/supervisor.', 'Gunakan Invite untuk membuat akun baru.', 'Gunakan Suspend untuk menonaktifkan akses tanpa menghapus histori.', 'Gunakan reset password jika user tidak bisa login.'],
+      },
+      {
+        key: 'taxonomy',
+        title: 'Atur Master Activity',
+        label: 'Taxonomy',
+        screen: 'taxonomy',
+        summary: 'Master Activity menentukan kategori pekerjaan yang muncul di form web dan bot. Kategori Jira sync tetap ada tetapi tidak dipilih manual.',
+        bullets: ['Buka Master Activity dari Setting.', 'Aktifkan/nonaktifkan kategori sesuai kebutuhan operasional.', 'Pisahkan kategori manual app dan sinkron otomatis Jira.', 'Pastikan label mudah dipahami karena dipakai di report dan dashboard.'],
+      },
+      {
+        key: 'smtp',
+        title: 'Konfigurasi SMTP',
+        label: 'Email',
+        screen: 'smtp',
+        summary: 'SMTP dipakai untuk pengiriman email invite, aktivasi, dan reset password.',
+        bullets: ['Buka SMTP dari Setting.', 'Isi host, port, security, username, password, sender name, dan sender email.', 'Tes koneksi sebelum dipakai invite user.', 'Jika email tidak terkirim, cek credential, firewall, dan kebijakan provider email.'],
+      },
+      {
+        key: 'audit',
+        title: 'Review Audit Trail',
+        label: 'Audit',
+        screen: 'audit',
+        summary: 'Audit Trail mencatat aktivitas penting seperti login, profile update, Jira connect, Telegram link, perubahan KPI, dan update konfigurasi.',
+        bullets: ['Buka Audit Trail dari menu admin.', 'Filter berdasarkan modul, entity, user, atau tanggal.', 'Gunakan audit untuk investigasi perubahan data dan troubleshooting akses.', 'Data audit membantu memastikan perubahan bisa ditelusuri.'],
       },
       {
         key: 'settings',
-        title: 'Konfigurasi admin',
-        label: 'Admin',
+        title: 'Checklist konfigurasi production',
+        label: 'Production',
         screen: 'settings',
-        summary: 'Admin mengelola member, master activity, SMTP, audit trail, dan konfigurasi pendukung operasional.',
-        bullets: ['Tambah atau suspend member dari Team Members.', 'Atur taxonomy aktivitas di Master Activity.', 'Atur SMTP untuk email invite/reset.', 'Cek Audit Trail untuk perubahan penting.'],
+        summary: 'Sebelum dipakai user, pastikan konfigurasi production sudah sinkron antara frontend, backend, Atlassian, Jira webhook, SMTP, dan Telegram bot.',
+        bullets: ['FRONTEND_URL harus mengarah ke domain production.', 'VITE_API_URL harus sesuai routing API production.', 'ATLASSIAN_REDIRECT_URI harus sama persis dengan callback URL di Atlassian Developer.', 'JIRA_WEBHOOK_SECRET harus sama dengan konfigurasi webhook Jira.', 'TELEGRAM_BOT_TOKEN harus aktif jika fitur bot dipakai.'],
       },
     ],
     rolesIntro: 'Hak akses aktual tetap mengikuti role user yang login. Matrix ini merangkum fitur yang tersedia di navigasi.',
@@ -154,19 +203,67 @@ const copy = {
       },
       {
         key: 'profile',
-        title: 'Connect Jira account',
+        title: 'Manage profile and account security',
         label: 'Profile',
         screen: 'profile',
-        summary: 'A Jira account is required so the app can read assignments, worklogs, and related KPI/NPS data.',
-        bullets: ['Open Profile.', 'Click connect Jira.', 'Sign in and approve Atlassian OAuth.', 'Confirm that Jira status changes to connected.'],
+        summary: 'Profile is used to update name, avatar, password, and personal KPI when your role has a KPI profile.',
+        bullets: ['Open Profile from the user card or avatar/header.', 'Click Edit to update name/avatar.', 'Use Account Security to change password.', 'Review personal KPI to see scores, domains, and Jira/non-Jira activity.'],
+      },
+      {
+        key: 'jira',
+        title: 'Connect Jira account',
+        label: 'Jira integration',
+        screen: 'jira',
+        summary: 'Jira must be connected so the app can identify accountId, read assignments, pull worklogs, and show related KPI/NPS data.',
+        bullets: ['Open Profile and find Jira Integration.', 'Click Connect to Jira.', 'Sign in to Atlassian and approve OAuth.', 'After redirecting back to Profile, confirm the status is Connected.', 'If it fails, verify the production callback URL and the Jira site.'],
+      },
+      {
+        key: 'telegram',
+        title: 'Connect Telegram Bot',
+        label: 'Telegram integration',
+        screen: 'telegram',
+        summary: 'Telegram Bot lets users submit daily activity logs without opening the web app. The bot links accounts using a one-time token from Profile.',
+        bullets: ['Open Profile and find Telegram Bot Integration.', 'Click Link to Telegram to generate a 6-character token.', 'Open Telegram and search @sdt_elogs_bot.', 'Send /link TOKEN, for example /link A1B2C3.', 'After linked, send /log to open the activity wizard.', 'Bot activities appear in Activity Log with Telegram Bot source.'],
+      },
+      {
+        key: 'members',
+        title: 'Manage Team Members',
+        label: 'Member admin',
+        screen: 'members',
+        summary: 'Team Members is used by admins/managers to view team structure, invite users, suspend/reactivate users, and reset passwords.',
+        bullets: ['Admins can see all members across teams.', 'Managers see members based on team/supervisor scope.', 'Use Invite to create new accounts.', 'Use Suspend to disable access without deleting history.', 'Use password reset when a user cannot sign in.'],
+      },
+      {
+        key: 'taxonomy',
+        title: 'Configure Master Activity',
+        label: 'Taxonomy',
+        screen: 'taxonomy',
+        summary: 'Master Activity controls work categories in web forms and the bot. Jira sync categories exist but are not selected manually.',
+        bullets: ['Open Master Activity from Settings.', 'Enable/disable categories based on operational needs.', 'Keep manual app categories separate from Jira sync categories.', 'Use clear labels because they appear in reports and dashboards.'],
+      },
+      {
+        key: 'smtp',
+        title: 'Configure SMTP',
+        label: 'Email',
+        screen: 'smtp',
+        summary: 'SMTP is used for invite, activation, and password reset emails.',
+        bullets: ['Open SMTP from Settings.', 'Fill host, port, security, username, password, sender name, and sender email.', 'Test the connection before inviting users.', 'If email fails, check credentials, firewall, and provider policies.'],
+      },
+      {
+        key: 'audit',
+        title: 'Review Audit Trail',
+        label: 'Audit',
+        screen: 'audit',
+        summary: 'Audit Trail records important events such as login, profile update, Jira connect, Telegram link, KPI changes, and configuration updates.',
+        bullets: ['Open Audit Trail from admin menu.', 'Filter by module, entity, user, or date.', 'Use audit for data-change investigation and access troubleshooting.', 'Audit data keeps important changes traceable.'],
       },
       {
         key: 'settings',
-        title: 'Admin configuration',
-        label: 'Admin',
+        title: 'Production configuration checklist',
+        label: 'Production',
         screen: 'settings',
-        summary: 'Admins manage members, master activity, SMTP, audit trail, and operational configuration.',
-        bullets: ['Add or suspend members from Team Members.', 'Configure activity taxonomy in Master Activity.', 'Set SMTP for invite/reset emails.', 'Review Audit Trail for important changes.'],
+        summary: 'Before users work in production, make sure frontend, backend, Atlassian, Jira webhook, SMTP, and Telegram bot configuration are aligned.',
+        bullets: ['FRONTEND_URL must point to the production domain.', 'VITE_API_URL must match production API routing.', 'ATLASSIAN_REDIRECT_URI must exactly match the Atlassian Developer callback URL.', 'JIRA_WEBHOOK_SECRET must match Jira webhook configuration.', 'TELEGRAM_BOT_TOKEN must be active if the bot is used.'],
       },
     ],
     rolesIntro: 'Actual access still follows the logged-in user role. This matrix summarizes features available in navigation.',
@@ -199,6 +296,12 @@ function MiniScreenshot({ type, lang }) {
     kpi: 'KPI Scorecard',
     nps: 'KPI NPS',
     profile: 'Profile',
+    jira: 'Jira Integration',
+    telegram: 'Telegram Bot',
+    members: 'Team Members',
+    taxonomy: 'Master Activity',
+    smtp: 'SMTP Settings',
+    audit: 'Audit Trail',
     settings: 'Admin',
   }[type];
 
@@ -288,6 +391,91 @@ function MiniScreenshot({ type, lang }) {
             <div style={{ width: '84%', height: 44, borderRadius: 10, background: T.surfaceHi, marginTop: 12 }} />
           </div>
         </div>
+      </ScreenShell>
+    );
+  }
+
+  if (type === 'jira') {
+    return (
+      <ScreenShell title="Profile" active="Profile">
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, background: T.surface, padding: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ width: 24, height: 24, borderRadius: '50%', background: T.jiraLo, display: 'inline-block' }} />
+            <div style={{ width: 92, height: 11, borderRadius: 999, background: T.surfaceHi }} />
+            <span style={{ marginLeft: 'auto', width: 66, height: 16, borderRadius: 999, background: T.greenLo }} />
+          </div>
+          <MiniTable headers={['Display', 'accountId', 'cloudId']} rows={2} />
+          <div style={{ width: 120, height: 24, borderRadius: 8, background: T.indigo, marginTop: 10 }} />
+        </div>
+      </ScreenShell>
+    );
+  }
+
+  if (type === 'telegram') {
+    return (
+      <ScreenShell title="Profile" active="Profile">
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, background: T.surface, padding: 14, textAlign: 'center' }}>
+          <div style={{ width: 46, height: 46, borderRadius: '50%', background: T.indigoLo, margin: '0 auto 10px' }} />
+          <div style={{ fontSize: 7, color: T.textMute, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase' }}>Sync token</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: T.indigoHi, fontFamily: DISPLAY, letterSpacing: '.12em', margin: '6px 0' }}>A1B2C3</div>
+          <div style={{ display: 'inline-flex', padding: '7px 10px', borderRadius: 8, background: T.surfaceHi, color: T.textSec, fontSize: 9, fontFamily: MONO }}>/link A1B2C3</div>
+          <div style={{ display: 'grid', gap: 5, marginTop: 12 }}>
+            {['Open @sdt_elogs_bot', 'Send /link token', 'Use /log wizard'].map((item) => (
+              <div key={item} style={{ height: 18, borderRadius: 6, background: T.indigoLo, color: T.indigoHi, fontSize: 8, fontWeight: 800, display: 'grid', placeItems: 'center' }}>{item}</div>
+            ))}
+          </div>
+        </div>
+      </ScreenShell>
+    );
+  }
+
+  if (type === 'members') {
+    return (
+      <ScreenShell title="Team Members" active="Activity">
+        <MiniToolbar chips={['All', 'Delivery', 'Pre-Sales', 'Invite']} />
+        <MiniTable headers={['Name', 'Role', 'Team', 'Status', 'Action']} rows={4} />
+      </ScreenShell>
+    );
+  }
+
+  if (type === 'taxonomy') {
+    return (
+      <ScreenShell title="Master Activity" active="KPI">
+        <MiniToolbar chips={['Manual App', 'Telegram', 'Jira Sync', 'Active']} />
+        <div style={{ display: 'grid', gap: 7 }}>
+          {['Implementation', 'Preventive Maintenance', 'Meeting', 'Presales Follow Up'].map((item, idx) => (
+            <div key={item} style={{ display: 'grid', gridTemplateColumns: '1fr 62px 42px', gap: 8, alignItems: 'center', border: `1px solid ${T.border}`, borderRadius: 8, padding: 8, background: T.surface }}>
+              <span style={{ fontSize: 8, color: T.textSec, fontWeight: 800 }}>{item}</span>
+              <span style={{ height: 14, borderRadius: 999, background: idx < 2 ? T.jiraLo : T.indigoLo }} />
+              <span style={{ height: 14, borderRadius: 999, background: idx === 1 ? T.amberLo : T.greenLo }} />
+            </div>
+          ))}
+        </div>
+      </ScreenShell>
+    );
+  }
+
+  if (type === 'smtp') {
+    return (
+      <ScreenShell title="SMTP Settings" active="KPI">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8 }}>
+          <MiniInput label="Host" value="smtp.company.com" />
+          <MiniInput label="Port" value="587" />
+        </div>
+        <MiniInput label="Sender Email" value="no-reply@company.com" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+          <div style={{ height: 28, borderRadius: 8, background: T.teal }} />
+          <div style={{ height: 28, borderRadius: 8, background: T.surfaceHi, border: `1px solid ${T.border}` }} />
+        </div>
+      </ScreenShell>
+    );
+  }
+
+  if (type === 'audit') {
+    return (
+      <ScreenShell title="Audit Trail" active="KPI">
+        <MiniToolbar chips={['All', 'Jira', 'Telegram', 'KPI', 'Auth']} />
+        <MiniTable headers={['Time', 'User', 'Action', 'Entity']} rows={5} />
       </ScreenShell>
     );
   }
@@ -425,6 +613,7 @@ function Progress({ label, color }) {
 }
 
 export function DocsView({ currentUser }) {
+  const navigate = useNavigate();
   const [lang, setLang] = useState('id');
   const [active, setActive] = useState('start');
   const text = copy[lang];
@@ -444,6 +633,105 @@ export function DocsView({ currentUser }) {
 
   const featureSteps = text.steps.slice(1, 6);
   const adminSteps = text.steps.slice(6);
+  const references = lang === 'id'
+    ? [
+        {
+          title: 'Aturan data Activity Log',
+          items: [
+            'Aktivitas manual dibuat dari web atau Telegram dan tampil sebagai sumber App/Telegram.',
+            'Aktivitas Jira berasal dari sinkronisasi worklog dan tidak dipilih manual di form.',
+            'Durasi dipakai untuk dashboard jam kerja, report aktivitas, dan komposisi Jira vs non-Jira.',
+            'Status completed/progress membantu report operasional membaca pekerjaan yang sudah selesai.',
+          ],
+        },
+        {
+          title: 'Command Telegram yang perlu diketahui',
+          items: [
+            '/link TOKEN untuk menautkan akun web ke akun Telegram.',
+            '/log untuk membuka wizard input aktivitas harian.',
+            '/cancel atau tombol Batalkan input log untuk membatalkan wizard.',
+            'Aktivitas dari bot masuk ke Activity Log dan ikut report seperti input web.',
+          ],
+        },
+        {
+          title: 'NPS dan flag',
+          items: [
+            'NPS hanya menerima nilai 1 sampai 4.',
+            'Nilai 4 otomatis Promotor, nilai 3 Passive, nilai 1-2 Detractors.',
+            'Trend NPS Score adalah rata-rata nilai NPS per quarter dengan 2 digit desimal.',
+            'Trend Count by Flag menampilkan jumlah Promotor/Passive/Detractors per Q1-Q4.',
+            'Pie chart menampilkan persentase flag untuk quarter yang sedang dipilih.',
+          ],
+        },
+        {
+          title: 'Report dan export',
+          items: [
+            'Activity Report bisa difilter berdasarkan source Jira/non-Jira, member, team, dan periode.',
+            'KPI Report berfokus pada scorecard, final score, dan domain penilaian.',
+            'NPS Report menyertakan issue, project, related engineer, PM input, score, flag, dan komentar.',
+            'Executive Report dirancang untuk manager/head melihat ringkasan lintas team.',
+          ],
+        },
+        {
+          title: 'Checklist integrasi production',
+          items: [
+            'FRONTEND_URL mengarah ke domain web production.',
+            'VITE_API_URL benar saat build frontend.',
+            'ATLASSIAN_REDIRECT_URI sama persis dengan callback di Atlassian Developer.',
+            'Webhook Jira mengarah ke /api/jira/webhooks/worklog dan secret cocok.',
+            'TELEGRAM_BOT_TOKEN aktif dan bot bisa menerima /link serta /log.',
+          ],
+        },
+      ]
+    : [
+        {
+          title: 'Activity Log data rules',
+          items: [
+            'Manual activities are created from web or Telegram and appear as App/Telegram source.',
+            'Jira activities come from worklog sync and are not selected manually in forms.',
+            'Duration feeds work-hours dashboard, activity reports, and Jira vs non-Jira composition.',
+            'Completed/progress status helps operational reports distinguish finished work.',
+          ],
+        },
+        {
+          title: 'Telegram commands',
+          items: [
+            '/link TOKEN links a web account to a Telegram account.',
+            '/log opens the daily activity wizard.',
+            '/cancel or the cancel button stops the wizard.',
+            'Bot-submitted activities appear in Activity Log and reports like web entries.',
+          ],
+        },
+        {
+          title: 'NPS and flags',
+          items: [
+            'NPS accepts scores from 1 to 4 only.',
+            'Score 4 is Promotor, score 3 is Passive, score 1-2 is Detractors.',
+            'NPS Score Trend is the quarterly average with 2 decimal digits.',
+            'Flag Count Trend shows Promotor/Passive/Detractors counts across Q1-Q4.',
+            'Pie chart shows selected-quarter flag percentage.',
+          ],
+        },
+        {
+          title: 'Reports and exports',
+          items: [
+            'Activity Report can be filtered by Jira/non-Jira source, member, team, and period.',
+            'KPI Report focuses on scorecards, final scores, and scoring domains.',
+            'NPS Report includes issue, project, related engineer, PM input, score, flag, and comment.',
+            'Executive Report helps managers/heads review cross-team summary.',
+          ],
+        },
+        {
+          title: 'Production integration checklist',
+          items: [
+            'FRONTEND_URL points to the production web domain.',
+            'VITE_API_URL is correct when building frontend.',
+            'ATLASSIAN_REDIRECT_URI exactly matches Atlassian Developer callback.',
+            'Jira webhook points to /api/jira/webhooks/worklog and the secret matches.',
+            'TELEGRAM_BOT_TOKEN is active and the bot accepts /link and /log.',
+          ],
+        },
+      ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -515,6 +803,9 @@ export function DocsView({ currentUser }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, background: T.surfaceHi, border: `1px solid ${T.border}`, borderRadius: 10, padding: 4 }}>
+            <button onClick={() => navigate('/')} style={{ border: `1px solid ${T.border}`, borderRadius: 8, padding: '8px 12px', background: T.surface, color: T.textSec, cursor: 'pointer', fontFamily: FONT, fontSize: 12, fontWeight: 800 }}>
+              {lang === 'id' ? 'Kembali ke App' : 'Back to App'}
+            </button>
             {['id', 'en'].map((item) => (
               <button key={item} onClick={() => setLang(item)} style={{ border: 'none', borderRadius: 8, padding: '8px 12px', background: lang === item ? T.indigo : 'transparent', color: lang === item ? '#fff' : T.textSec, cursor: 'pointer', fontFamily: FONT, fontSize: 12, fontWeight: 800 }}>
                 {item.toUpperCase()}
@@ -528,7 +819,14 @@ export function DocsView({ currentUser }) {
         <Card p={12} style={{ overflow: 'hidden' }}>
           <div className="docs-nav">
             {anchors.map(([key, number]) => (
-              <button key={key} onClick={() => setActive(key)} style={{ width: '100%', border: `1px solid ${active === key ? T.indigo : T.border}`, borderRadius: 10, background: active === key ? T.indigoLo : 'transparent', color: active === key ? T.indigoHi : T.textSec, padding: '10px 12px', textAlign: 'left', cursor: 'pointer', fontFamily: FONT, fontWeight: 800, fontSize: 12 }}>
+              <button
+                key={key}
+                onClick={() => {
+                  setActive(key);
+                  document.getElementById(`docs-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                style={{ width: '100%', border: `1px solid ${active === key ? T.indigo : T.border}`, borderRadius: 10, background: active === key ? T.indigoLo : 'transparent', color: active === key ? T.indigoHi : T.textSec, padding: '10px 12px', textAlign: 'left', cursor: 'pointer', fontFamily: FONT, fontWeight: 800, fontSize: 12 }}
+              >
                 <span style={{ color: T.textMute, fontFamily: MONO, marginRight: 8 }}>{number}</span>
                 {text.sections[key]}
               </button>
@@ -537,8 +835,8 @@ export function DocsView({ currentUser }) {
         </Card>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {active === 'start' && (
-            <>
+          <section id="docs-start" style={{ scrollMarginTop: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <SectionHead number="01" title={text.sections.start} />
               <GuideStep step={text.steps[0]} lang={lang} index={1} />
               <Card p={18}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: T.textPri, marginBottom: 12 }}>{lang === 'id' ? 'Akses kamu saat ini' : 'Your current access'}</div>
@@ -551,14 +849,28 @@ export function DocsView({ currentUser }) {
                   ))}
                 </div>
               </Card>
-            </>
-          )}
+          </section>
 
-          {active === 'features' && featureSteps.map((step, idx) => <GuideStep key={step.key} step={step} lang={lang} index={idx + 2} />)}
+          <section id="docs-features" style={{ scrollMarginTop: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <SectionHead number="02" title={text.sections.features} />
+            {featureSteps.map((step, idx) => <GuideStep key={step.key} step={step} lang={lang} index={idx + 2} />)}
+          </section>
 
-          {active === 'admin' && adminSteps.map((step, idx) => <GuideStep key={step.key} step={step} lang={lang} index={idx + 7} />)}
+          <section id="docs-admin" style={{ scrollMarginTop: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <SectionHead number="03" title={text.sections.admin} />
+            {adminSteps.map((step, idx) => <GuideStep key={step.key} step={step} lang={lang} index={idx + 7} />)}
+            <Card p={18}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: T.textPri, marginBottom: 12 }}>
+                {lang === 'id' ? 'Referensi detail operasional' : 'Operational detail reference'}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12 }}>
+                {references.map((reference) => <DetailCard key={reference.title} reference={reference} />)}
+              </div>
+            </Card>
+          </section>
 
-          {active === 'roles' && (
+          <section id="docs-roles" style={{ scrollMarginTop: 18 }}>
+            <SectionHead number="04" title={text.sections.roles} />
             <Card p={18}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
                 <div>
@@ -587,7 +899,7 @@ export function DocsView({ currentUser }) {
                 </table>
               </div>
             </Card>
-          )}
+          </section>
         </div>
       </div>
     </div>
@@ -612,5 +924,26 @@ function GuideStep({ step, lang, index }) {
         <MiniScreenshot type={step.screen} lang={lang} />
       </div>
     </Card>
+  );
+}
+
+function SectionHead({ number, title }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 2px' }}>
+      <span style={{ fontFamily: MONO, fontSize: 12, color: T.indigoHi, fontWeight: 800 }}>{number}</span>
+      <div style={{ height: 1, width: 28, background: T.border }} />
+      <h2 style={{ margin: 0, fontSize: 20, color: T.textPri, fontFamily: DISPLAY, fontWeight: 800 }}>{title}</h2>
+    </div>
+  );
+}
+
+function DetailCard({ reference }) {
+  return (
+    <div style={{ border: `1px solid ${T.border}`, borderRadius: 12, background: T.surfaceHi, padding: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: T.textPri, marginBottom: 9 }}>{reference.title}</div>
+      <ul style={{ margin: 0, paddingLeft: 18, color: T.textSec, fontSize: 12, lineHeight: 1.65 }}>
+        {reference.items.map((item) => <li key={item}>{item}</li>)}
+      </ul>
+    </div>
   );
 }
