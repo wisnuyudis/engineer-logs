@@ -164,6 +164,14 @@ const npsScopeLabel = (scope) => {
   return scope || '-';
 };
 
+const npsFlagLabel = (score) => {
+  const value = Number(score);
+  if (value === 4) return 'Promotor';
+  if (value === 3) return 'Passive';
+  if (value === 1 || value === 2) return 'Detractors';
+  return '-';
+};
+
 export function exportNpsCSV({ items, year, quarter }) {
   const headers = [
     'Quarter',
@@ -178,6 +186,7 @@ export function exportNpsCSV({ items, year, quarter }) {
     'PM Input',
     'Done At',
     'NPS',
+    'Flag',
     'Komentar',
     'Updated At',
   ];
@@ -202,6 +211,7 @@ export function exportNpsCSV({ items, year, quarter }) {
       item.assignedPmDisplayName || '',
       item.resolutionDate || '',
       item.score ?? '',
+      item.npsFlagLabel || npsFlagLabel(item.score),
       item.comment || '',
       item.updatedAt || '',
     ].map(esc).join(','));
@@ -239,7 +249,7 @@ export function exportNpsPDF({ items, year, quarter, actor, canSeeAll }) {
 
   autoTable(doc, {
     startY: y,
-    head: [['Scope', 'Issue', 'Project', 'Summary', 'Related Engineer', 'PM Input', 'Done At', 'NPS', 'Komentar']],
+    head: [['Scope', 'Issue', 'Project', 'Summary', 'Related Engineer', 'PM Input', 'Done At', 'NPS', 'Flag', 'Komentar']],
     body: items.map((item) => [
       npsScopeLabel(item.scope),
       item.jiraIssueKey || '-',
@@ -249,6 +259,7 @@ export function exportNpsPDF({ items, year, quarter, actor, canSeeAll }) {
       item.assignedPmDisplayName || '-',
       item.resolutionDate ? new Date(item.resolutionDate).toLocaleString('id-ID') : '-',
       item.score ?? '-',
+      item.npsFlagLabel || npsFlagLabel(item.score),
       item.comment || '-',
     ]),
     styles: { fontSize: 7, cellPadding: 2, valign: 'top' },
@@ -263,7 +274,8 @@ export function exportNpsPDF({ items, year, quarter, actor, canSeeAll }) {
       5: { cellWidth: 30 },
       6: { cellWidth: 28 },
       7: { cellWidth: 12, halign: 'center' },
-      8: { cellWidth: 48 },
+      8: { cellWidth: 22 },
+      9: { cellWidth: 34 },
     },
   });
 

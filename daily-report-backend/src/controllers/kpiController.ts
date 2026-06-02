@@ -27,6 +27,13 @@ const canManageKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head deli
 const canSeeAllKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery'].includes(normalizeRole(role));
 const canViewRelatedKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery', 'pm', 'se', 'delivery'].includes(normalizeRole(role));
 
+const resolveNpsFlag = (score?: number | null) => {
+  if (score === 4) return { npsFlag: 'promotor', npsFlagLabel: 'Promotor' };
+  if (score === 3) return { npsFlag: 'passive', npsFlagLabel: 'Passive' };
+  if (score === 1 || score === 2) return { npsFlag: 'detractors', npsFlagLabel: 'Detractors' };
+  return { npsFlag: null, npsFlagLabel: null };
+};
+
 const getQuarterDateRange = (year: number, quarter: string) => {
   switch (quarter) {
     case 'Q1': return { startDate: `${year}-01-01`, endDate: `${year}-03-31` };
@@ -524,13 +531,15 @@ export const getKpiNpsEntries = async (req: AuthRequest, res: Response) => {
       perspective,
       items: candidates.map((candidate) => {
         const entry = entryMap.get(`${candidate.scope}:${candidate.jiraIssueKey}`);
+        const score = entry?.score ?? null;
         return {
           ...candidate,
-          score: entry?.score ?? null,
+          score,
           comment: entry?.comment || '',
           enteredById: entry?.enteredById || null,
           updatedAt: entry?.updatedAt || null,
-          hasScore: entry?.score !== null && entry?.score !== undefined,
+          hasScore: score !== null && score !== undefined,
+          ...resolveNpsFlag(score),
         };
       }),
     });
@@ -622,7 +631,10 @@ export const upsertKpiNpsEntry = async (req: AuthRequest, res: Response) => {
       metadata: { year, quarter, scope, jiraIssueKey },
     });
 
-    res.json(entry);
+    res.json({
+      ...entry,
+      ...resolveNpsFlag(entry.score),
+    });
   } catch (error: any) {
     req.log?.error(error, 'Failed to save KPI NPS entry');
     res.status(400).json({ error: error?.message || 'Failed to save KPI NPS entry' });

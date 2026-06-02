@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { T, FONT, MONO, DISPLAY } from '../theme/tokens';
 import { buildQuarterLabel, currentQuarter } from '../utils/kpiManual';
+import { npsFlag } from '../utils/nps';
 import { Btn, Card, Lbl, Tag } from './ui/Primitives';
 import api from '../lib/api';
 
@@ -112,6 +113,8 @@ export function KpiNpsView({ currentUser }) {
     onSuccess: () => {
       toast.success('NPS berhasil disimpan.');
       queryClient.invalidateQueries({ queryKey: ['kpi-nps', year, quarter] });
+      queryClient.invalidateQueries({ queryKey: ['kpi-nps-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['kpi-nps-trend'] });
       queryClient.invalidateQueries({ queryKey: ['kpi-scorecard'] });
     },
     onError: (mutationError) => {
@@ -296,6 +299,7 @@ export function KpiNpsView({ currentUser }) {
                   const meta = scopeMeta[item.scope] || scopeMeta.impl_project;
                   const key = `${item.scope}:${item.jiraIssueKey}`;
                   const draft = drafts[key] || { score: String(item.score ?? 3), comment: item.comment || '' };
+                  const draftFlag = npsFlag(draft.score);
                   return (
                     <tr key={key} className={item.hasScore ? 'kpi-nps-row-filled' : 'kpi-nps-row-missing'}>
                       <td>
@@ -331,6 +335,9 @@ export function KpiNpsView({ currentUser }) {
                       </td>
                       <td>
                         <ScoreSelect value={draft.score} onChange={(score) => updateDraft(item, { score })} />
+                        <div style={{ marginTop: 8 }}>
+                          <Tag color={draftFlag.color} lo={draftFlag.lo}>{draftFlag.label}</Tag>
+                        </div>
                       </td>
                       <td>
                         <textarea

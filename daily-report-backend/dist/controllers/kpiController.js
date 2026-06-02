@@ -11,6 +11,15 @@ const normalizeRole = (role) => String(role || '').trim().toLowerCase();
 const canManageKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery', 'pm'].includes(normalizeRole(role));
 const canSeeAllKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery'].includes(normalizeRole(role));
 const canViewRelatedKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery', 'pm', 'se', 'delivery'].includes(normalizeRole(role));
+const resolveNpsFlag = (score) => {
+    if (score === 4)
+        return { npsFlag: 'promotor', npsFlagLabel: 'Promotor' };
+    if (score === 3)
+        return { npsFlag: 'passive', npsFlagLabel: 'Passive' };
+    if (score === 1 || score === 2)
+        return { npsFlag: 'detractors', npsFlagLabel: 'Detractors' };
+    return { npsFlag: null, npsFlagLabel: null };
+};
 const getQuarterDateRange = (year, quarter) => {
     switch (quarter) {
         case 'Q1': return { startDate: `${year}-01-01`, endDate: `${year}-03-31` };
@@ -450,13 +459,15 @@ const getKpiNpsEntries = async (req, res) => {
             perspective,
             items: candidates.map((candidate) => {
                 const entry = entryMap.get(`${candidate.scope}:${candidate.jiraIssueKey}`);
+                const score = entry?.score ?? null;
                 return {
                     ...candidate,
-                    score: entry?.score ?? null,
+                    score,
                     comment: entry?.comment || '',
                     enteredById: entry?.enteredById || null,
                     updatedAt: entry?.updatedAt || null,
-                    hasScore: entry?.score !== null && entry?.score !== undefined,
+                    hasScore: score !== null && score !== undefined,
+                    ...resolveNpsFlag(score),
                 };
             }),
         });
@@ -543,7 +554,10 @@ const upsertKpiNpsEntry = async (req, res) => {
             after: entry,
             metadata: { year, quarter, scope, jiraIssueKey },
         });
-        res.json(entry);
+        res.json({
+            ...entry,
+            ...resolveNpsFlag(entry.score),
+        });
     }
     catch (error) {
         req.log?.error(error, 'Failed to save KPI NPS entry');

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { T, FONT, MONO, DISPLAY } from '../../theme/tokens';
 import { buildQuarterLabel, currentQuarter } from '../../utils/kpiManual';
 import { exportNpsCSV, exportNpsPDF } from '../../utils/exports';
+import { countNpsFlags, npsFlag } from '../../utils/nps';
 import { Btn, Card, Lbl, Tag } from '../ui/Primitives';
 import api from '../../lib/api';
 
@@ -25,6 +27,8 @@ const avg = (items) => {
   return scores.reduce((sum, score) => sum + score, 0) / scores.length;
 };
 
+const formatAvg = (value) => (value === null || value === undefined ? null : Number(value.toFixed(2)));
+
 export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [quarter, setQuarter] = useState(currentQuarter());
@@ -35,6 +39,25 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
     queryFn: async () => {
       const res = await api.get('/kpi/nps', { params: { year, quarter, perspective: 'related' } });
       return res.data;
+    },
+  });
+
+  const { data: trendData } = useQuery({
+    queryKey: ['kpi-nps-trend', year],
+    queryFn: async () => {
+      const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+      const responses = await Promise.all(
+        quarters.map((q) => api.get('/kpi/nps', { params: { year, quarter: q, perspective: 'related' } }))
+      );
+      return responses.map((res, idx) => {
+        const saved = (res.data?.items || []).filter((item) => item.hasScore);
+        const average = avg(saved);
+        return {
+          quarter: quarters[idx],
+          avgNps: formatAvg(average),
+          total: saved.length,
+        };
+      });
     },
   });
 
@@ -50,6 +73,16 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
     pm_record: savedItems.filter((item) => item.scope === 'pm_record').length,
     average: avg(savedItems),
   }), [savedItems]);
+
+  const flagCounts = useMemo(() => countNpsFlags(savedItems), [savedItems]);
+  const selectedFlagCounts = useMemo(() => countNpsFlags(savedItems), [savedItems]);
+  const flagTotal = selectedFlagCounts.reduce((sum, item) => sum + item.count, 0);
+  const pieData = selectedFlagCounts
+    .filter((item) => item.count > 0)
+    .map((item) => ({
+      ...item,
+      percentage: flagTotal ? Number(((item.count / flagTotal) * 100).toFixed(2)) : 0,
+    }));
 
   const handleExport = (format) => {
     const payload = { items, year, quarter, actor: currentUser, canSeeAll: data?.canSeeAll };
@@ -95,8 +128,26 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
           border-bottom:1px solid ${T.border};
           vertical-align:top;
         }
+        .nps-summary-chart-grid {
+          display:grid;
+          grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr);
+          gap:14px;
+          align-items:stretch;
+        }
+        .nps-summary-chart {
+          height:260px;
+        }
+        .nps-summary-flag-list {
+          display:flex;
+          flex-direction:column;
+          gap:8px;
+          margin-top:8px;
+        }
         @media (max-width: 780px) {
           .nps-summary-toolbar {
+            grid-template-columns:1fr;
+          }
+          .nps-summary-chart-grid {
             grid-template-columns:1fr;
           }
         }
@@ -184,6 +235,94 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
         ))}
       </div>
 
+      <div className="nps-summary-chart-grid">
+        <Card p={18}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: T.textPri }}>Trend NPS Score</div>
+              <div style={{ fontSize: 11, color: T.textMute, marginTop: 4 }}>Avg nilai NPS per quarter, 2 digit desimal.</div>
+            </div>
+            <Tag color={T.green} lo={T.greenLo}>{year}</Tag>
+          </div>
+          <div className="nps-summary-chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData || []} margin={{ top: 8, right: 12, left: -20, bottom: 2 }}>
+                <CartesianGrid stroke={T.border} strokeDasharray="3 3" />
+                <XAxis dataKey="quarter" stroke={T.textMute} tick={{ fill: T.textMute, fontSize: 11 }} />
+                <YAxis domain={[1, 4]} stroke={T.textMute} tick={{ fill: T.textMute, fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPri }}
+                  formatter={(value, name, props) => [
+                    value === null ? '-' : Number(value).toFixed(2),
+                    `${name === 'avgNps' ? 'Avg NPS' : name} (${props?.payload?.total || 0} input)`,
+                  ]}
+                />
+                <Line type="monotone" dataKey="avgNps" name="Avg NPS" stroke={T.green} strokeWidth={3} dot={{ r: 4, fill: T.green }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card p={18}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: T.textPri, marginBottom: 4 }}>Count by Flag</div>
+          <div style={{ fontSize: 11, color: T.textMute, marginBottom: 12 }}>Promotor, Passive, dan Detractors untuk quarter terpilih.</div>
+          <div className="nps-summary-chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={flagCounts} margin={{ top: 8, right: 8, left: -20, bottom: 2 }}>
+                <CartesianGrid stroke={T.border} strokeDasharray="3 3" />
+                <XAxis dataKey="label" stroke={T.textMute} tick={{ fill: T.textMute, fontSize: 10 }} />
+                <YAxis allowDecimals={false} stroke={T.textMute} tick={{ fill: T.textMute, fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPri }} />
+                <Bar dataKey="count" name="Count" radius={[6, 6, 0, 0]}>
+                  {flagCounts.map((entry) => <Cell key={entry.key} fill={entry.color} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      <Card p={18}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 18, alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: T.textPri }}>Persentase Flag {buildQuarterLabel(year, quarter)}</div>
+            <div style={{ fontSize: 11, color: T.textMute, marginTop: 4 }}>
+              Berdasarkan seluruh data tersimpan pada quarter terpilih.
+            </div>
+            <div className="nps-summary-flag-list">
+              {selectedFlagCounts.map((item) => (
+                <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', fontSize: 12 }}>
+                  <Tag color={item.color} lo={item.lo}>{item.label}</Tag>
+                  <span style={{ color: T.textPri, fontFamily: MONO, fontWeight: 800 }}>
+                    {item.count} · {flagTotal ? ((item.count / flagTotal) * 100).toFixed(2) : '0.00'}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="nps-summary-chart">
+            {pieData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} dataKey="count" nameKey="label" innerRadius={54} outerRadius={92} paddingAngle={2}>
+                    {pieData.map((entry) => <Cell key={entry.key} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textPri }}
+                    formatter={(value, name, props) => [`${value} (${props?.payload?.percentage?.toFixed(2)}%)`, name]}
+                  />
+                  <Legend wrapperStyle={{ color: T.textMute, fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: T.textMute, fontSize: 12 }}>
+                Belum ada data flag untuk filter ini.
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
       <Card p={18}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
           <div>
@@ -216,6 +355,7 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
                   <th>PM Input</th>
                   <th>Done At</th>
                   <th>NPS</th>
+                  <th>Flag</th>
                   <th>Komentar</th>
                   <th>Updated</th>
                 </tr>
@@ -223,6 +363,7 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
               <tbody>
                 {items.map((item) => {
                   const meta = scopeMeta[item.scope] || scopeMeta.impl_project;
+                  const flag = npsFlag(item.score);
                   return (
                     <tr key={`${item.scope}:${item.jiraIssueKey}`}>
                       <td>
@@ -247,6 +388,7 @@ export function KpiNpsSummaryPanel({ currentUser, reportMode = false }) {
                       <td>{item.assignedPmDisplayName || '-'}</td>
                       <td>{formatDateTime(item.resolutionDate)}</td>
                       <td><Tag color={T.green} lo={T.greenLo}>NPS {item.score}</Tag></td>
+                      <td><Tag color={flag.color} lo={flag.lo}>{flag.label}</Tag></td>
                       <td style={{ minWidth: 220, color: item.comment ? T.textPri : T.textMute }}>{item.comment || '-'}</td>
                       <td>{formatDateTime(item.updatedAt)}</td>
                     </tr>
