@@ -45,7 +45,7 @@ const issueSession = async (req, res, user, auditAction = 'auth.login') => {
             tokenHash: (0, authTokens_1.hashToken)(refreshToken),
             userAgent: req.headers['user-agent'] || null,
             ipAddress: req.ip || null,
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            expiresAt: new Date(Date.now() + authTokens_1.SESSION_TIMEOUT_MS),
         },
     });
     const cookie = (0, authTokens_1.createRefreshTokenCookie)(refreshToken);
@@ -246,7 +246,7 @@ const refreshToken = async (req, res) => {
                 tokenHash: (0, authTokens_1.hashToken)(nextRefreshToken),
                 userAgent: req.headers['user-agent'] || null,
                 ipAddress: req.ip || null,
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                expiresAt: new Date(Date.now() + authTokens_1.SESSION_TIMEOUT_MS),
             },
         });
         const cookie = (0, authTokens_1.createRefreshTokenCookie)(nextRefreshToken);

@@ -25,6 +25,10 @@ import React from 'react';
 import api from './lib/api';
 import { canViewKpiNps, isMgr } from './constants/taxonomy';
 
+const SESSION_TIMEOUT_MS = 60 * 60 * 1000;
+const LAST_ACTIVITY_KEY = 'last_activity_at';
+const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+
 export default function App() {
   const [user, setUser] = useState(() => {
     try {
@@ -53,6 +57,14 @@ export default function App() {
     localStorage.setItem('user', JSON.stringify(nextUser));
   };
 
+  const clearAuthSession = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    queryClient.clear();
+    setUser(null);
+  };
+
   useEffect(() => {
     localStorage.setItem('theme', theme);
   }, [theme]);
@@ -77,6 +89,54 @@ export default function App() {
     window.addEventListener('auth:updated', handleAuthUpdated);
     return () => window.removeEventListener('auth:updated', handleAuthUpdated);
   }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    if (!localStorage.getItem(LAST_ACTIVITY_KEY)) {
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+    }
+
+    let timerId;
+    let lastWriteAt = 0;
+
+    const logoutIdleUser = () => {
+      api.post('/auth/logout').catch(() => null).finally(() => {
+        clearAuthSession();
+        navigate('/');
+      });
+    };
+
+    const scheduleIdleCheck = () => {
+      window.clearTimeout(timerId);
+      const lastActivityAt = Number(localStorage.getItem(LAST_ACTIVITY_KEY) || Date.now());
+      const remainingMs = Math.max(0, SESSION_TIMEOUT_MS - (Date.now() - lastActivityAt));
+      timerId = window.setTimeout(() => {
+        const latestActivityAt = Number(localStorage.getItem(LAST_ACTIVITY_KEY) || 0);
+        if (Date.now() - latestActivityAt >= SESSION_TIMEOUT_MS) {
+          logoutIdleUser();
+          return;
+        }
+        scheduleIdleCheck();
+      }, remainingMs + 250);
+    };
+
+    const markActivity = () => {
+      const now = Date.now();
+      if (now - lastWriteAt < 30000) return;
+      lastWriteAt = now;
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+      scheduleIdleCheck();
+    };
+
+    ACTIVITY_EVENTS.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
+    scheduleIdleCheck();
+
+    return () => {
+      window.clearTimeout(timerId);
+      ACTIVITY_EVENTS.forEach((eventName) => window.removeEventListener(eventName, markActivity));
+    };
+  }, [user, navigate, queryClient]);
 
   const { data: members = [], isLoading: loadingMembers } = useQuery({
     queryKey: ['members'],
@@ -185,10 +245,7 @@ export default function App() {
         
         {!isDocsPage && <Sidebar user={user} isMobile={isMobile} mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} onLogout={() => {
           api.post('/auth/logout').catch(() => null).finally(() => {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            queryClient.clear();
-            setUser(null);
+            clearAuthSession();
           });
         }} />}
 

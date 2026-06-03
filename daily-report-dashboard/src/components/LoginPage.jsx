@@ -6,6 +6,8 @@ import { Card, Inp, PwInp, Btn, Divider, Avi, RoleBadge } from './ui/Primitives'
 
 import api from '../lib/api';
 
+const LAST_ACTIVITY_KEY = 'last_activity_at';
+
 export function LoginPage({ onLogin }) {
   const [email,setEmail]=useState("");
   const [pw,setPw]=useState("");
@@ -30,6 +32,7 @@ export function LoginPage({ onLogin }) {
   const completeLogin = (data) => {
     localStorage.setItem('token', data.accessToken || data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
+    localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:updated', { detail: { user: data.user, token: data.accessToken || data.token } }));
     }

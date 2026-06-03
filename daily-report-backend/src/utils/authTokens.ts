@@ -11,8 +11,9 @@ const requireSecret = (name: 'JWT_SECRET' | 'JWT_REFRESH_SECRET', fallback?: str
 const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
 const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
 const ACCESS_EXPIRES_IN = '15m';
-const REFRESH_EXPIRES_IN = '30d';
+const REFRESH_EXPIRES_IN = '1h';
 const MFA_CHALLENGE_EXPIRES_IN = '10m';
+export const SESSION_TIMEOUT_MS = 60 * 60 * 1000;
 
 export type JwtUserPayload = {
   userId: string;
@@ -58,7 +59,7 @@ export const createRefreshTokenCookie = (token: string) => ({
   sameSite: 'lax' as const,
   secure: process.env.NODE_ENV === 'production',
   path: '/api/auth',
-  maxAge: 30 * 24 * 60 * 60 * 1000,
+  maxAge: SESSION_TIMEOUT_MS,
   value: token,
 });
 

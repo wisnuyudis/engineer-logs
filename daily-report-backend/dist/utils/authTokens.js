@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.makeJti = exports.parseCookie = exports.createRefreshTokenCookie = exports.hashToken = exports.verifyMfaChallengeToken = exports.verifyRefreshToken = exports.verifyAccessToken = exports.signMfaChallengeToken = exports.signRefreshToken = exports.signAccessToken = void 0;
+exports.makeJti = exports.parseCookie = exports.createRefreshTokenCookie = exports.hashToken = exports.verifyMfaChallengeToken = exports.verifyRefreshToken = exports.verifyAccessToken = exports.signMfaChallengeToken = exports.signRefreshToken = exports.signAccessToken = exports.SESSION_TIMEOUT_MS = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const requireSecret = (name, fallback) => {
@@ -17,8 +17,9 @@ const requireSecret = (name, fallback) => {
 const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
 const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
 const ACCESS_EXPIRES_IN = '15m';
-const REFRESH_EXPIRES_IN = '30d';
+const REFRESH_EXPIRES_IN = '1h';
 const MFA_CHALLENGE_EXPIRES_IN = '10m';
+exports.SESSION_TIMEOUT_MS = 60 * 60 * 1000;
 const signAccessToken = (payload) => jsonwebtoken_1.default.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });
 exports.signAccessToken = signAccessToken;
 const signRefreshToken = (payload) => jsonwebtoken_1.default.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });
@@ -38,7 +39,7 @@ const createRefreshTokenCookie = (token) => ({
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/api/auth',
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: exports.SESSION_TIMEOUT_MS,
     value: token,
 });
 exports.createRefreshTokenCookie = createRefreshTokenCookie;

@@ -8,6 +8,7 @@ import {
   hashToken,
   makeJti,
   parseCookie,
+  SESSION_TIMEOUT_MS,
   signAccessToken,
   signRefreshToken,
   signMfaChallengeToken,
@@ -58,7 +59,7 @@ const issueSession = async (req: Request, res: Response, user: any, auditAction 
       tokenHash: hashToken(refreshToken),
       userAgent: req.headers['user-agent'] || null,
       ipAddress: req.ip || null,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + SESSION_TIMEOUT_MS),
     },
   });
 
@@ -278,7 +279,7 @@ export const refreshToken = async (req: Request, res: Response) => {
         tokenHash: hashToken(nextRefreshToken),
         userAgent: req.headers['user-agent'] || null,
         ipAddress: req.ip || null,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + SESSION_TIMEOUT_MS),
       },
     });
 

@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+const LAST_ACTIVITY_KEY = 'last_activity_at';
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
   timeout: 15000,
@@ -74,6 +76,7 @@ api.interceptors.response.use(
       } catch {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        localStorage.removeItem(LAST_ACTIVITY_KEY);
         if (typeof window !== 'undefined') {
           window.location.href = '/';
         }
@@ -84,6 +87,7 @@ api.interceptors.response.use(
       if (typeof window !== 'undefined' && localStorage.getItem('token')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        localStorage.removeItem(LAST_ACTIVITY_KEY);
         window.location.href = '/';
       }
     }
