@@ -48,6 +48,7 @@ const flattenJiraComment = (node: any): string => {
 };
 
 const normalizeSummary = (value: string | null | undefined) => String(value || '').trim().toLowerCase();
+const isBastSummary = (value: string | null | undefined) => normalizeSummary(value).includes('bast');
 const isProjectPrefix = (projectName: string | null, prefix: string) => String(projectName || '').toUpperCase().startsWith(prefix);
 
 let jiraFieldNameMapCache: Record<string, string> | null = null;
@@ -589,6 +590,18 @@ const addRelatedEngineer = (
   map.set(accountId, displayName || accountId);
 };
 
+const setBastAssigneeForParent = (
+  map: Map<string, { accountId: string | null; displayName: string | null }>,
+  parentKey: string | null | undefined,
+  issue: Pick<JiraSearchIssue, 'assigneeAccountId' | 'assigneeDisplayName'>
+) => {
+  if (!parentKey || map.has(parentKey)) return;
+  map.set(parentKey, {
+    accountId: issue.assigneeAccountId,
+    displayName: issue.assigneeDisplayName,
+  });
+};
+
 export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) => {
   const baseUrl = (process.env.JIRA_BASE_URL || '').replace(/\/+$/, '');
   const doneInPeriod = [
@@ -626,6 +639,10 @@ export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) 
     );
     for (const task of childTasks) {
       if (!task.parentKey) continue;
+      if (isBastSummary(task.summary)) {
+        setBastAssigneeForParent(bastAssigneesByParent, task.parentKey, task);
+        continue;
+      }
       const relatedMap = relatedEngineersByImplEpic.get(task.parentKey) || new Map<string, string>();
       addRelatedEngineer(relatedMap, task.assigneeAccountId, task.assigneeDisplayName);
       relatedEngineersByImplEpic.set(task.parentKey, relatedMap);
@@ -642,40 +659,19 @@ export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) 
         const epicKey = epicByTaskKey.get(subtask.parentKey);
         if (!epicKey) continue;
         const relatedMap = relatedEngineersByImplEpic.get(epicKey) || new Map<string, string>();
-        if (!normalizeSummary(subtask.summary).includes('bast')) {
+        if (!isBastSummary(subtask.summary)) {
           addRelatedEngineer(relatedMap, subtask.assigneeAccountId, subtask.assigneeDisplayName);
         }
         relatedEngineersByImplEpic.set(epicKey, relatedMap);
       }
 
-      const bastIssues = subtasks.filter((issue) => normalizeSummary(issue.summary).includes('bast'));
-      if (!bastIssues.length) {
-        bastIssues.push(...await searchJiraIssues({
-        jql: `parent in (${taskKeys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
-        fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
-        }));
-      }
+      const bastIssues = subtasks.filter((issue) => isBastSummary(issue.summary));
       for (const bast of bastIssues) {
         if (!bast.parentKey) continue;
         const epicKey = epicByTaskKey.get(bast.parentKey);
         if (!epicKey || bastAssigneesByParent.has(epicKey)) continue;
-        bastAssigneesByParent.set(epicKey, {
-          accountId: bast.assigneeAccountId,
-          displayName: bast.assigneeDisplayName,
-        });
+        setBastAssigneeForParent(bastAssigneesByParent, epicKey, bast);
       }
-    }
-
-    const directBastIssues = await searchJiraIssues({
-      jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
-      fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
-    });
-    for (const bast of directBastIssues) {
-      if (!bast.parentKey || bastAssigneesByParent.has(bast.parentKey)) continue;
-      bastAssigneesByParent.set(bast.parentKey, {
-        accountId: bast.assigneeAccountId,
-        displayName: bast.assigneeDisplayName,
-      });
     }
   }
 
@@ -710,19 +706,27 @@ export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) 
     && normalizeSummary(issue.issueTypeName) !== 'bug'
   ));
   const bastAssigneesByOpTask = new Map<string, { accountId: string | null; displayName: string | null }>();
+  const bastAssigneesByPmTask = new Map<string, { accountId: string | null; displayName: string | null }>();
 
   for (const keys of chunk(opIssues.map((issue) => issue.key), 50)) {
     if (!keys.length) continue;
-    const bastIssues = await searchJiraIssues({
-      jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) AND summary ~ "BAST" ORDER BY updated DESC`,
+    const childIssues = await searchJiraIssues({
+      jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) ORDER BY updated DESC`,
       fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
     });
-    for (const bast of bastIssues) {
-      if (!bast.parentKey || bastAssigneesByOpTask.has(bast.parentKey)) continue;
-      bastAssigneesByOpTask.set(bast.parentKey, {
-        accountId: bast.assigneeAccountId,
-        displayName: bast.assigneeDisplayName,
-      });
+    for (const bast of childIssues.filter((issue) => isBastSummary(issue.summary))) {
+      setBastAssigneeForParent(bastAssigneesByOpTask, bast.parentKey, bast);
+    }
+  }
+
+  for (const keys of chunk(pmIssues.map((issue) => issue.key), 50)) {
+    if (!keys.length) continue;
+    const childIssues = await searchJiraIssues({
+      jql: `parent in (${keys.map((key) => `"${key}"`).join(',')}) ORDER BY updated DESC`,
+      fields: ['summary', 'issuetype', 'project', 'status', 'parent', 'assignee', 'updated'],
+    });
+    for (const bast of childIssues.filter((issue) => isBastSummary(issue.summary))) {
+      setBastAssigneeForParent(bastAssigneesByPmTask, bast.parentKey, bast);
     }
   }
 
@@ -747,22 +751,25 @@ export const fetchKpiNpsCandidates = async (startDate: string, endDate: string) 
     };
   });
 
-  const pmCandidates = pmIssues.map<KpiNpsJiraCandidate>((issue) => ({
-    scope: 'pm_record',
-    jiraIssueId: issue.id,
-    jiraIssueKey: issue.key,
-    issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
-    projectKey: issue.projectKey,
-    projectName: issue.projectName,
-    summary: issue.summary,
-    issueTypeName: issue.issueTypeName,
-    statusName: issue.statusName,
-    resolutionDate: issue.resolutionDate,
-    assignedPmAccountId: issue.assigneeAccountId,
-    assignedPmDisplayName: issue.assigneeDisplayName,
-    relatedEngineerAccountIds: issue.assigneeAccountId ? [issue.assigneeAccountId] : [],
-    relatedEngineerDisplayNames: issue.assigneeDisplayName ? [issue.assigneeDisplayName] : [],
-  }));
+  const pmCandidates = pmIssues.map<KpiNpsJiraCandidate>((issue) => {
+    const bastAssignee = bastAssigneesByPmTask.get(issue.key);
+    return {
+      scope: 'pm_record',
+      jiraIssueId: issue.id,
+      jiraIssueKey: issue.key,
+      issueUrl: baseUrl ? `${baseUrl}/browse/${issue.key}` : issue.key,
+      projectKey: issue.projectKey,
+      projectName: issue.projectName,
+      summary: issue.summary,
+      issueTypeName: issue.issueTypeName,
+      statusName: issue.statusName,
+      resolutionDate: issue.resolutionDate,
+      assignedPmAccountId: bastAssignee?.accountId || issue.assigneeAccountId,
+      assignedPmDisplayName: bastAssignee?.displayName || issue.assigneeDisplayName,
+      relatedEngineerAccountIds: issue.assigneeAccountId ? [issue.assigneeAccountId] : [],
+      relatedEngineerDisplayNames: issue.assigneeDisplayName ? [issue.assigneeDisplayName] : [],
+    };
+  });
 
   return [...implCandidates, ...opCandidates, ...pmCandidates];
 };
