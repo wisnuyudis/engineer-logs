@@ -9,7 +9,7 @@ const auditTrail_1 = require("../utils/auditTrail");
 const prisma = new client_1.PrismaClient();
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
 const canManageKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery', 'pm'].includes(normalizeRole(role));
-const canSeeAllKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery'].includes(normalizeRole(role));
+const canSeeAllKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery', 'pm'].includes(normalizeRole(role));
 const canViewRelatedKpiNps = (role) => ['admin', 'mgr_dl', 'head delivery', 'pm', 'se', 'delivery'].includes(normalizeRole(role));
 const resolveNpsFlag = (score) => {
     if (score === 4)

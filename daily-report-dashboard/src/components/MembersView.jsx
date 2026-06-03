@@ -48,7 +48,6 @@ function InviteModal({ open, onClose, members, onAdd }) {
         ...form, 
         avatar:av, 
         team:t,
-        position:"", 
         dept:t==="presales"?"Pre-Sales":"Delivery",
         status:"invited", 
         joinDate:new Date().toISOString().split("T")[0] 
@@ -84,7 +83,6 @@ function InviteModal({ open, onClose, members, onAdd }) {
         ...form, 
         avatar:av, 
         team:t,
-        position:"", 
         dept:t==="presales"?"Pre-Sales":"Delivery",
         status:"active", 
         joinDate:new Date().toISOString().split("T")[0] 
@@ -251,11 +249,12 @@ function supervisorCandidatesFor(member, members) {
   ));
 }
 
-function MemberCard({ m, members, canManage, canSeeKPI, onToggle, onDelete, onResetPassword, onUpdateSupervisor, activities }) {
+function MemberCard({ m, members, canManage, canSeeKPI, onToggle, onDelete, onResetPassword, onUpdateSupervisor, onUpdateRole, activities }) {
   const [confirm,setC]=useState(false),[delC,setD]=useState(false);
   const [deleting,setDeleting]=useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [supervisorOpen, setSupervisorOpen] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
   const kpi = useMemo(()=>calcKPI(m,activities),[m,activities]);
   const isSusp = m.status==="suspended";
   const supervisor = (members || []).find((candidate) => candidate.id === m.supervisorId) || null;
@@ -271,9 +270,21 @@ function MemberCard({ m, members, canManage, canSeeKPI, onToggle, onDelete, onRe
         <div style={{ flex:1,minWidth:0 }}>
           <div style={{ fontSize:13,fontWeight:700,color:isSusp?T.textMute:T.textPri }}>{m.name}</div>
           <div style={{ fontSize:11,color:T.textMute,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{m.email}</div>
-          <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}><RoleBadge role={m.role} /></div>
+          <div style={{ display:"flex",gap:4,flexWrap:"wrap",alignItems:"center" }}><RoleBadge role={m.role} /></div>
         </div>
         {canManage&&!delC&&<button onClick={()=>setD(true)} style={{ width:24,height:24,borderRadius:5,border:`1px solid ${T.red}30`,background:T.redLo,color:T.red,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>🗑</button>}
+      </div>
+
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"8px 10px",background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,marginBottom:10 }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontSize:9,color:T.textMute,textTransform:"uppercase",letterSpacing:".07em",marginBottom:3 }}>Role / Posisi</div>
+          <div style={{ fontSize:12,fontWeight:700,color:T.textPri,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>
+            {ROLES[m.role]?.label || m.role || 'Belum ditentukan'}
+          </div>
+        </div>
+        {canManage && (
+          <Btn v="ghost" sz="sm" onClick={()=>setRoleOpen(true)} style={{ flexShrink:0 }}>Ubah</Btn>
+        )}
       </div>
 
       <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"8px 10px",background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,marginBottom:10 }}>
@@ -357,7 +368,79 @@ function MemberCard({ m, members, canManage, canSeeKPI, onToggle, onDelete, onRe
       currentSupervisor={supervisor}
       onSubmit={onUpdateSupervisor}
     />
+    <RoleModal
+      open={roleOpen}
+      onClose={()=>setRoleOpen(false)}
+      member={m}
+      onSubmit={onUpdateRole}
+    />
     </>
+  );
+}
+
+function RoleModal({ open, onClose, member, onSubmit }) {
+  const [role, setRole] = useState(member?.role || 'delivery');
+  const [busy, setBusy] = useState(false);
+  const selectedRole = ROLES[role] || ROLES.delivery;
+  const currentTeam = member?.team || ROLES[member?.role]?.team || 'delivery';
+
+  useEffect(() => {
+    if (open) setRole(member?.role || 'delivery');
+  }, [member?.role, open]);
+
+  const close = () => {
+    if (busy) return;
+    setRole(member?.role || 'delivery');
+    onClose();
+  };
+
+  const submit = async () => {
+    try {
+      setBusy(true);
+      const nextTeam = selectedRole?.team || 'delivery';
+      await onSubmit(member.id, role, nextTeam, nextTeam !== currentTeam);
+      toast.success(`Role ${member.name} berhasil diperbarui`);
+      close();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Gagal mengubah role');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={close} width={460}>
+      <MHead title="Ubah Role" sub={`Atur role akses untuk ${member?.name || 'member'}`} onClose={close} />
+      <div style={{ display:'grid', gap:12 }}>
+        <div>
+          <Lbl>Role Baru</Lbl>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
+            {ROLE_OPTIONS.map(({ value, label }) => {
+              const meta = ROLES[value];
+              const active = role === value;
+              return (
+                <button
+                  key={value}
+                  onClick={() => setRole(value)}
+                  style={{ padding:"8px 10px",borderRadius:8,cursor:"pointer",textAlign:"left",fontFamily:FONT,border:`1.5px solid ${active?meta.color+"60":T.border}`,background:active?meta.lo:T.surfaceHi,transition:"all .15s" }}
+                >
+                  <div style={{ fontSize:11,fontWeight:700,color:active?meta.color:T.textPri }}>{label}</div>
+                  <div style={{ fontSize:10,color:T.textMute,marginTop:1 }}>{meta.team==="all"?"All Teams":meta.team==="presales"?"Pre-Sales":"Delivery"}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{ fontSize:11, color:T.textMute, lineHeight:1.5 }}>
+          Role menentukan akses user dan team. Jika role pindah team, atasan langsung akan dikosongkan dan bisa dipilih ulang.
+        </div>
+        <div style={{ display:'flex', gap:8, paddingTop:8, borderTop:`1px solid ${T.border}` }}>
+          <Btn v="ghost" style={{ flex:1, justifyContent:'center' }} onClick={close} disabled={busy}>Batal</Btn>
+          <Btn v="teal" style={{ flex:1, justifyContent:'center' }} onClick={submit} disabled={busy}>
+            {busy ? 'Menyimpan...' : 'Simpan Role'}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -486,7 +569,7 @@ function kpiColor(score) {
   return T.red;
 }
 
-export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, onResetPassword, onUpdateSupervisor, activities }) {
+export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, onResetPassword, onUpdateSupervisor, onUpdateRole, activities }) {
   const [teamF,setTF]=useState("all");
   const [inviteOpen,setInvite]=useState(false);
   const canManage = isAdmin(currentUser.role);
@@ -496,8 +579,8 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, o
     : members.filter(m=>m.supervisorId===currentUser.id||m.id===currentUser.id||["admin","mgr_dl","mgr_ps"].includes(m.role));
   const filtered  = teamF==="all"?visBase:visBase.filter(m=>m.team===teamF);
 
-  const pmMembers      = filtered.filter(m=>m.role==="pm");
-  const dlSEMembers    = filtered.filter(m=>m.team==="delivery" && m.role!=="pm" && m.role!=="mgr_dl");
+  const pmMembers      = filtered.filter(m=>String(m.role || '').toLowerCase()==="pm");
+  const dlSEMembers    = filtered.filter(m=>m.team==="delivery" && String(m.role || '').toLowerCase()!=="pm" && m.role!=="mgr_dl");
   const dlMgrMembers   = filtered.filter(m=>m.role==="mgr_dl");
   const psMembers      = filtered.filter(m=>m.team==="presales" && m.role!=="mgr_ps");
   const psMgrMembers   = filtered.filter(m=>m.role==="mgr_ps");
@@ -512,7 +595,7 @@ export function MembersView({ currentUser, members, onToggle, onDelete, onAdd, o
           <div style={{ flex:1,height:1,background:T.border }} />
         </div>
         <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12 }}>
-          {list.map(m=><MemberCard key={m.id} m={m} members={members} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} onResetPassword={onResetPassword} onUpdateSupervisor={onUpdateSupervisor} activities={activities} />)}
+          {list.map(m=><MemberCard key={m.id} m={m} members={members} canManage={canManage} canSeeKPI={isMgr(currentUser.role) && hasKpiProfile(m.role)} onToggle={onToggle} onDelete={onDelete} onResetPassword={onResetPassword} onUpdateSupervisor={onUpdateSupervisor} onUpdateRole={onUpdateRole} activities={activities} />)}
         </div>
       </div>
     );

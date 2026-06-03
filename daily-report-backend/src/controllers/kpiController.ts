@@ -24,7 +24,7 @@ const prisma = new PrismaClient();
 
 const normalizeRole = (role?: string | null) => String(role || '').trim().toLowerCase();
 const canManageKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery', 'pm'].includes(normalizeRole(role));
-const canSeeAllKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery'].includes(normalizeRole(role));
+const canSeeAllKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery', 'pm'].includes(normalizeRole(role));
 const canViewRelatedKpiNps = (role?: string | null) => ['admin', 'mgr_dl', 'head delivery', 'pm', 'se', 'delivery'].includes(normalizeRole(role));
 
 const resolveNpsFlag = (score?: number | null) => {
