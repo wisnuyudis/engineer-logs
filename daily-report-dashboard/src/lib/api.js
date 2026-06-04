@@ -83,7 +83,8 @@ api.interceptors.response.use(
       }
     }
 
-    if (status === 403 || status === 401) {
+    // A 403 is an authorization denial, not an invalid login session.
+    if (status === 401) {
       if (typeof window !== 'undefined' && localStorage.getItem('token')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');

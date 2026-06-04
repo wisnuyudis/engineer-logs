@@ -25,7 +25,7 @@ import React from 'react';
 import api from './lib/api';
 import { canViewKpiNps, isMgr } from './constants/taxonomy';
 
-const SESSION_TIMEOUT_MS = 60 * 60 * 1000;
+const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const LAST_ACTIVITY_KEY = 'last_activity_at';
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
 

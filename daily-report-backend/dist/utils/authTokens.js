@@ -17,9 +17,9 @@ const requireSecret = (name, fallback) => {
 const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
 const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
 const ACCESS_EXPIRES_IN = '15m';
-const REFRESH_EXPIRES_IN = '1h';
+const REFRESH_EXPIRES_IN = '1d';
 const MFA_CHALLENGE_EXPIRES_IN = '10m';
-exports.SESSION_TIMEOUT_MS = 60 * 60 * 1000;
+exports.SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const signAccessToken = (payload) => jsonwebtoken_1.default.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });
 exports.signAccessToken = signAccessToken;
 const signRefreshToken = (payload) => jsonwebtoken_1.default.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });
