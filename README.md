@@ -124,6 +124,9 @@ Requirement operasional:
 - backend harus punya URL HTTPS publik untuk callback OAuth dan webhook
 - service account Jira harus punya akses baca ke project yang dipakai
 - user perlu menyimpan `jiraAccountId` untuk mapping assignee
+- webhook Jira harus memakai event `worklog_created`, `worklog_updated`, dan `worklog_deleted`
+- URL webhook production bisa memakai `https://logs.sdt.co.id/api/jira/webhooks/worklog` jika body dikirim, atau fallback variable: `https://logs.sdt.co.id/api/jira/webhooks/worklog?event={webhookEvent}&issueKey={issue.key}&issueId={issue.id}&worklogId={worklog.id}`
+- jika `JIRA_WEBHOOK_SECRET` aktif tetapi Jira tidak mengirim `X-Hub-Signature`, tambahkan `&secret=<JIRA_WEBHOOK_SECRET>` ke URL fallback
 
 ## Telegram Bot
 

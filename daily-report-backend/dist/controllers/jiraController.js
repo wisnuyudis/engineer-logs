@@ -30,6 +30,48 @@ const createFrontendRedirect = (status, message) => {
         url.searchParams.set('message', message);
     return url.toString();
 };
+const firstValue = (value) => Array.isArray(value) ? value[0] : value;
+const headerValue = (req, name) => {
+    const value = req.headers[name.toLowerCase()];
+    return typeof value === 'string' ? value : '';
+};
+const queryValue = (req, name) => {
+    const value = firstValue(req.query?.[name]);
+    return typeof value === 'string' ? value.trim() : '';
+};
+const timingSafeStringEqual = (a, b) => {
+    const aBuf = Buffer.from(a);
+    const bBuf = Buffer.from(b);
+    return aBuf.length === bBuf.length && crypto_1.default.timingSafeEqual(aBuf, bBuf);
+};
+const validateJiraWebhookSecret = (req) => {
+    const expectedSecret = process.env.JIRA_WEBHOOK_SECRET;
+    if (!expectedSecret)
+        return true;
+    const signatureHeader = headerValue(req, 'x-hub-signature');
+    if (signatureHeader) {
+        const [methodRaw, signature] = signatureHeader.split('=');
+        const method = String(methodRaw || '').toLowerCase();
+        if (!method || !signature)
+            return false;
+        try {
+            const digest = crypto_1.default
+                .createHmac(method, expectedSecret)
+                .update(req.rawBody || '')
+                .digest('hex');
+            return timingSafeStringEqual(signatureHeader, `${method}=${digest}`);
+        }
+        catch {
+            return false;
+        }
+    }
+    const providedSecret = headerValue(req, 'x-jira-webhook-secret')
+        || headerValue(req, 'authorization').replace(/^Bearer\s+/i, '')
+        || queryValue(req, 'secret')
+        || queryValue(req, 'token')
+        || queryValue(req, 'jiraWebhookSecret');
+    return timingSafeStringEqual(providedSecret, expectedSecret);
+};
 const pickCloudResource = (resources) => {
     const configuredCloudId = process.env.JIRA_CLOUD_ID;
     if (configuredCloudId) {
@@ -216,30 +258,24 @@ const disconnectJira = async (req, res) => {
 exports.disconnectJira = disconnectJira;
 const handleJiraWorklogWebhook = async (req, res) => {
     try {
-        const expectedSecret = process.env.JIRA_WEBHOOK_SECRET;
-        if (expectedSecret) {
-            const signatureHeader = req.headers['x-hub-signature'];
-            const providedSecret = req.headers['x-jira-webhook-secret'] || req.headers['authorization'];
-            const normalized = typeof providedSecret === 'string' ? providedSecret.replace(/^Bearer\s+/i, '') : '';
-            if (typeof signatureHeader === 'string') {
-                const digest = crypto_1.default
-                    .createHmac('sha256', expectedSecret)
-                    .update(req.rawBody || '')
-                    .digest('hex');
-                const expectedSignature = `sha256=${digest}`;
-                const isValid = signatureHeader.length === expectedSignature.length
-                    && crypto_1.default.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expectedSignature));
-                if (!isValid) {
-                    return res.status(401).json({ error: 'Invalid Jira webhook signature' });
-                }
-            }
-            else if (normalized !== expectedSecret) {
-                return res.status(401).json({ error: 'Invalid Jira webhook secret' });
-            }
+        if (!validateJiraWebhookSecret(req)) {
+            return res.status(401).json({ error: 'Invalid Jira webhook secret' });
         }
-        const eventName = String(req.body?.webhookEvent || req.body?.event || '');
-        const issueKey = req.body?.issue?.key || req.body?.issueKey || req.body?.worklog?.issueId;
-        const worklogId = req.body?.worklog?.id || req.body?.worklogId;
+        const eventName = String(req.body?.webhookEvent
+            || req.body?.event
+            || queryValue(req, 'event')
+            || queryValue(req, 'webhookEvent')
+            || '');
+        const issueKey = req.body?.issue?.key
+            || req.body?.issue?.id
+            || req.body?.issueKey
+            || req.body?.issueId
+            || req.body?.worklog?.issueId
+            || queryValue(req, 'issueKey')
+            || queryValue(req, 'issueId');
+        const worklogId = req.body?.worklog?.id
+            || req.body?.worklogId
+            || queryValue(req, 'worklogId');
         if (!eventName || !worklogId) {
             return res.status(400).json({ error: 'Webhook payload tidak memiliki event/worklogId yang cukup' });
         }
