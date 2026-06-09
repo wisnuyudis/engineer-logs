@@ -72,6 +72,17 @@ const validateJiraWebhookSecret = (req) => {
         || queryValue(req, 'jiraWebhookSecret');
     return timingSafeStringEqual(providedSecret, expectedSecret);
 };
+const buildWebhookAudit = (req, overrides = {}) => ({
+    webhookIdentifier: headerValue(req, 'x-atlassian-webhook-identifier') || null,
+    webhookRetry: headerValue(req, 'x-atlassian-webhook-retry') || null,
+    webhookFlow: headerValue(req, 'x-atlassian-webhook-flow') || null,
+    signaturePresent: Boolean(headerValue(req, 'x-hub-signature')),
+    event: req.body?.webhookEvent || req.body?.event || queryValue(req, 'event') || queryValue(req, 'webhookEvent') || null,
+    issueKey: req.body?.issue?.key || req.body?.issueKey || queryValue(req, 'issueKey') || null,
+    issueId: req.body?.issue?.id || req.body?.issueId || req.body?.worklog?.issueId || queryValue(req, 'issueId') || null,
+    worklogId: req.body?.worklog?.id || req.body?.worklogId || queryValue(req, 'worklogId') || null,
+    ...overrides,
+});
 const pickCloudResource = (resources) => {
     const configuredCloudId = process.env.JIRA_CLOUD_ID;
     if (configuredCloudId) {
@@ -259,6 +270,13 @@ exports.disconnectJira = disconnectJira;
 const handleJiraWorklogWebhook = async (req, res) => {
     try {
         if (!validateJiraWebhookSecret(req)) {
+            await (0, auditTrail_1.writeAuditSystem)({
+                action: 'jira.webhook.rejected',
+                entityType: 'jira_webhook',
+                metadata: buildWebhookAudit(req, { reason: 'invalid_secret' }),
+                ipAddress: req.ip || null,
+                userAgent: req.headers['user-agent'] || null,
+            });
             return res.status(401).json({ error: 'Invalid Jira webhook secret' });
         }
         const eventName = String(req.body?.webhookEvent
@@ -277,19 +295,58 @@ const handleJiraWorklogWebhook = async (req, res) => {
             || req.body?.worklogId
             || queryValue(req, 'worklogId');
         if (!eventName || !worklogId) {
+            await (0, auditTrail_1.writeAuditSystem)({
+                action: 'jira.webhook.rejected',
+                entityType: 'jira_webhook',
+                entityId: worklogId ? String(worklogId) : null,
+                metadata: buildWebhookAudit(req, { reason: 'missing_event_or_worklog_id' }),
+                ipAddress: req.ip || null,
+                userAgent: req.headers['user-agent'] || null,
+            });
             return res.status(400).json({ error: 'Webhook payload tidak memiliki event/worklogId yang cukup' });
         }
         if (eventName.includes('deleted')) {
             await (0, jiraSyncService_1.deleteSyncedJiraWorklog)(String(worklogId));
+            await (0, auditTrail_1.writeAuditSystem)({
+                action: 'jira.webhook.deleted',
+                entityType: 'jira_webhook',
+                entityId: String(worklogId),
+                metadata: buildWebhookAudit(req),
+                ipAddress: req.ip || null,
+                userAgent: req.headers['user-agent'] || null,
+            });
             return res.json({ ok: true, action: 'deleted' });
         }
         if (!issueKey) {
+            await (0, auditTrail_1.writeAuditSystem)({
+                action: 'jira.webhook.rejected',
+                entityType: 'jira_webhook',
+                entityId: String(worklogId),
+                metadata: buildWebhookAudit(req, { reason: 'missing_issue_key_or_id' }),
+                ipAddress: req.ip || null,
+                userAgent: req.headers['user-agent'] || null,
+            });
             return res.status(400).json({ error: 'Webhook payload tidak memiliki issue key/id' });
         }
         const activity = await (0, jiraSyncService_1.syncJiraWorklogToActivity)(String(issueKey), String(worklogId));
+        await (0, auditTrail_1.writeAuditSystem)({
+            action: 'jira.webhook.synced',
+            entityType: 'jira_webhook',
+            entityId: String(worklogId),
+            metadata: buildWebhookAudit(req, { activityId: activity.id }),
+            ipAddress: req.ip || null,
+            userAgent: req.headers['user-agent'] || null,
+        });
         res.json({ ok: true, action: 'upserted', activityId: activity.id });
     }
     catch (error) {
+        await (0, auditTrail_1.writeAuditSystem)({
+            action: 'jira.webhook.failed',
+            entityType: 'jira_webhook',
+            metadata: buildWebhookAudit(req, { error: error.message || 'Gagal memproses webhook Jira' }),
+            ipAddress: req.ip || null,
+            userAgent: req.headers['user-agent'] || null,
+        });
         res.status(500).json({ error: error.message || 'Gagal memproses webhook Jira' });
     }
 };
