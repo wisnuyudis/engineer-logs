@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchUpcomingJiraScheduleByAssignee = exports.fetchKpiNpsCandidates = exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
+exports.fetchUpcomingJiraScheduleByAssignee = exports.fetchKpiNpsCandidates = exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklogsByIds = exports.fetchDeletedJiraWorklogChanges = exports.fetchUpdatedJiraWorklogChanges = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
 const jiraFetch = async (pathname, options = {}) => {
     const baseUrl = process.env.JIRA_BASE_URL;
     const email = process.env.JIRA_USER_EMAIL;
@@ -256,6 +256,51 @@ const fetchJiraWorklog = async (issueKeyOrId, worklogId) => {
     };
 };
 exports.fetchJiraWorklog = fetchJiraWorklog;
+const fetchJiraWorklogChanges = async (pathname, since, maxPages = 5) => {
+    const values = [];
+    let until = since;
+    let nextPath = `${pathname}?since=${encodeURIComponent(String(since))}`;
+    for (let page = 0; page < maxPages; page += 1) {
+        const res = await jiraFetch(nextPath);
+        if (!res.ok) {
+            throw new Error(`Gagal mengambil perubahan worklog Jira. Status: ${res.status}`);
+        }
+        const data = await res.json();
+        values.push(...(Array.isArray(data.values) ? data.values : []).map((item) => ({
+            worklogId: String(item.worklogId),
+            updatedTime: Number(item.updatedTime || 0),
+        })));
+        if (Number.isFinite(Number(data.until)))
+            until = Number(data.until);
+        if (data.lastPage !== false || !data.nextPage)
+            break;
+        const nextUrl = new URL(String(data.nextPage));
+        nextPath = `${nextUrl.pathname}${nextUrl.search}`;
+    }
+    return { values, until };
+};
+const fetchUpdatedJiraWorklogChanges = (since) => fetchJiraWorklogChanges('/rest/api/3/worklog/updated', since);
+exports.fetchUpdatedJiraWorklogChanges = fetchUpdatedJiraWorklogChanges;
+const fetchDeletedJiraWorklogChanges = (since) => fetchJiraWorklogChanges('/rest/api/3/worklog/deleted', since);
+exports.fetchDeletedJiraWorklogChanges = fetchDeletedJiraWorklogChanges;
+const fetchJiraWorklogsByIds = async (ids) => {
+    if (!ids.length)
+        return [];
+    const res = await jiraFetch('/rest/api/3/worklog/list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ids.map((id) => Number(id)).filter(Number.isFinite) }),
+    });
+    if (!res.ok) {
+        throw new Error(`Gagal mengambil daftar worklog Jira. Status: ${res.status}`);
+    }
+    const data = await res.json();
+    return (Array.isArray(data) ? data : []).map((worklog) => ({
+        id: String(worklog.id),
+        issueId: worklog.issueId ? String(worklog.issueId) : null,
+    }));
+};
+exports.fetchJiraWorklogsByIds = fetchJiraWorklogsByIds;
 const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, endDate) => {
     const fieldMap = await loadJiraFieldNameMap();
     const actualStartField = fieldMap['actual start'] || fieldMap['actual start date'] || fieldMap['start date'];

@@ -262,6 +262,66 @@ export const fetchJiraWorklog = async (issueKeyOrId: string, worklogId: string) 
   };
 };
 
+type JiraWorklogChange = {
+  worklogId: string;
+  updatedTime: number;
+};
+
+const fetchJiraWorklogChanges = async (
+  pathname: string,
+  since: number,
+  maxPages = 5
+): Promise<{ values: JiraWorklogChange[]; until: number }> => {
+  const values: JiraWorklogChange[] = [];
+  let until = since;
+  let nextPath = `${pathname}?since=${encodeURIComponent(String(since))}`;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const res = await jiraFetch(nextPath);
+    if (!res.ok) {
+      throw new Error(`Gagal mengambil perubahan worklog Jira. Status: ${res.status}`);
+    }
+
+    const data: any = await res.json();
+    values.push(...(Array.isArray(data.values) ? data.values : []).map((item: any) => ({
+      worklogId: String(item.worklogId),
+      updatedTime: Number(item.updatedTime || 0),
+    })));
+    if (Number.isFinite(Number(data.until))) until = Number(data.until);
+
+    if (data.lastPage !== false || !data.nextPage) break;
+    const nextUrl = new URL(String(data.nextPage));
+    nextPath = `${nextUrl.pathname}${nextUrl.search}`;
+  }
+
+  return { values, until };
+};
+
+export const fetchUpdatedJiraWorklogChanges = (since: number) =>
+  fetchJiraWorklogChanges('/rest/api/3/worklog/updated', since);
+
+export const fetchDeletedJiraWorklogChanges = (since: number) =>
+  fetchJiraWorklogChanges('/rest/api/3/worklog/deleted', since);
+
+export const fetchJiraWorklogsByIds = async (ids: string[]) => {
+  if (!ids.length) return [];
+  const res = await jiraFetch('/rest/api/3/worklog/list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: ids.map((id) => Number(id)).filter(Number.isFinite) }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Gagal mengambil daftar worklog Jira. Status: ${res.status}`);
+  }
+
+  const data: any = await res.json();
+  return (Array.isArray(data) ? data : []).map((worklog) => ({
+    id: String(worklog.id),
+    issueId: worklog.issueId ? String(worklog.issueId) : null,
+  }));
+};
+
 export const fetchCompletedJiraTasksForQuarter = async (
   assigneeAccountId: string,
   startDate: string,
