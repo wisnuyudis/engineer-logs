@@ -11,6 +11,14 @@ const toDateParts = (isoString: string | null) => {
     };
   }
 
+  const jiraDateTime = isoString.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+  if (jiraDateTime) {
+    return {
+      date: jiraDateTime[1],
+      startTime: `${jiraDateTime[2]}:${jiraDateTime[3]}`,
+    };
+  }
+
   const date = new Date(isoString);
   const hh = String(date.getHours()).padStart(2, '0');
   const mm = String(date.getMinutes()).padStart(2, '0');
