@@ -187,6 +187,7 @@ JIRA_WEBHOOK_SECRET=
 JIRA_WORKLOG_POLL_ENABLED=true
 JIRA_WORKLOG_POLL_INTERVAL_MS=300000
 JIRA_WORKLOG_POLL_LOOKBACK_HOURS=168
+AUDIT_RETENTION_DAYS=7
 ```
 
 SMTP dapat diatur dari menu aplikasi, tetapi environment tetap dapat dipakai untuk konfigurasi awal jika service membutuhkan fallback.

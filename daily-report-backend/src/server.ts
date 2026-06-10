@@ -2,6 +2,7 @@ import 'dotenv/config';
 import app from './app';
 import { startBot } from './bot/telegramBot';
 import { startJiraWorklogPoller } from './services/jiraWorklogPoller';
+import { startAuditRetentionJob } from './utils/auditTrail';
 
 const PORT = process.env.PORT || 4000;
 
@@ -10,6 +11,7 @@ const startServer = () => {
     console.log(`🚀 Server ready at http://localhost:${PORT}`);
     startBot();
     startJiraWorklogPoller();
+    startAuditRetentionJob();
   });
 };
 

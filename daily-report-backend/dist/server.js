@@ -7,12 +7,14 @@ require("dotenv/config");
 const app_1 = __importDefault(require("./app"));
 const telegramBot_1 = require("./bot/telegramBot");
 const jiraWorklogPoller_1 = require("./services/jiraWorklogPoller");
+const auditTrail_1 = require("./utils/auditTrail");
 const PORT = process.env.PORT || 4000;
 const startServer = () => {
     app_1.default.listen(PORT, () => {
         console.log(`🚀 Server ready at http://localhost:${PORT}`);
         (0, telegramBot_1.startBot)();
         (0, jiraWorklogPoller_1.startJiraWorklogPoller)();
+        (0, auditTrail_1.startAuditRetentionJob)();
     });
 };
 startServer();
