@@ -12,6 +12,19 @@ const hoursBetween = (start, end) => {
     return diff / 36e5;
 };
 const ticketMetric = (value) => Number((Number(value || 0) || 0).toFixed(2));
+const ticketNumber = (key) => {
+    const match = String(key || '').match(/(\d+)$/);
+    return match ? Number(match[1]) : 0;
+};
+const isLaterTicketState = (candidate, current) => {
+    if (!current)
+        return true;
+    const candidateTime = candidate.createdAt ? new Date(candidate.createdAt).getTime() : 0;
+    const currentTime = current.createdAt ? new Date(current.createdAt).getTime() : 0;
+    if (candidateTime !== currentTime)
+        return candidateTime > currentTime;
+    return ticketNumber(candidate.key) > ticketNumber(current.key);
+};
 const classifyTicket = (issue) => {
     const type = String(issue.issueTypeName || '').toLowerCase();
     if (type.includes('change'))
@@ -154,6 +167,7 @@ const getExecutiveReport = async (req, res) => {
                 remainingTickets: 0,
                 totalChangeTickets: 0,
                 changeTicketUsed: 0,
+                _latestChangeTicketState: null,
                 _resolutionSum: 0,
                 _resolutionCount: 0,
             };
@@ -162,9 +176,15 @@ const getExecutiveReport = async (req, res) => {
                 row.problem += 1;
             if (type === 'change') {
                 row.change += 1;
-                row.totalChangeTickets += ticketMetric(issue.totalTicket);
-                row.remainingTickets += ticketMetric(issue.remainingTicket);
                 row.changeTicketUsed += ticketMetric(issue.ticketUsed);
+                if (isLaterTicketState(issue, row._latestChangeTicketState)) {
+                    row._latestChangeTicketState = {
+                        key: issue.key,
+                        createdAt: issue.createdAt,
+                        totalTicket: ticketMetric(issue.totalTicket),
+                        remainingTicket: ticketMetric(issue.remainingTicket),
+                    };
+                }
             }
             if (resolutionHours !== null) {
                 row._resolutionSum += resolutionHours;
@@ -194,16 +214,13 @@ const getExecutiveReport = async (req, res) => {
             totalResolutionHours: Number(row._resolutionSum.toFixed(2)),
             ticketsPerMonth: Number((row.totalTickets / monthCount).toFixed(2)),
             problemPct: row.totalTickets ? Number(((row.problem / row.totalTickets) * 100).toFixed(1)) : 0,
-            totalChangeTickets: Number(row.totalChangeTickets.toFixed(2)),
-            remainingTickets: Number(row.remainingTickets.toFixed(2)),
+            totalChangeTickets: Number((row._latestChangeTicketState?.totalTicket || 0).toFixed(2)),
+            remainingTickets: Number((row._latestChangeTicketState?.remainingTicket || 0).toFixed(2)),
+            latestChangeTicketKey: row._latestChangeTicketState?.key || null,
             changeTicketUsed: Number(row.changeTicketUsed.toFixed(2)),
         })).sort((a, b) => b.totalTickets - a.totalTickets);
-        const totalChangeTickets = ticketMetric(issues
-            .filter((issue) => classifyTicket(issue) === 'change')
-            .reduce((sum, issue) => sum + Number(issue.totalTicket || 0), 0));
-        const remainingTickets = ticketMetric(issues
-            .filter((issue) => classifyTicket(issue) === 'change')
-            .reduce((sum, issue) => sum + Number(issue.remainingTicket || 0), 0));
+        const totalChangeTickets = ticketMetric(customerRows.reduce((sum, row) => sum + Number(row.totalChangeTickets || 0), 0));
+        const remainingTickets = ticketMetric(customerRows.reduce((sum, row) => sum + Number(row.remainingTickets || 0), 0));
         const changeTicketUsed = ticketMetric(issues
             .filter((issue) => classifyTicket(issue) === 'change')
             .reduce((sum, issue) => sum + Number(issue.ticketUsed || 0), 0));

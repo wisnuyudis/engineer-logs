@@ -233,8 +233,8 @@ export function ExecutiveReportView() {
     y = drawPdfSection(doc, 'Ringkasan Tiket per Customer', y);
     autoTable(doc, {
       startY: y,
-      head: [['Customer', 'Ticket Used', 'Remaining', 'Problem', 'Change', 'Total Ticket', 'Avg Resolution', 'Tiket / Month', '% Problem']],
-      body: customerRows.map((row) => [row.customer, fmtTicket(row.changeTicketUsed), fmtTicket(row.remainingTickets), row.problem, row.change, fmtTicket(row.totalChangeTickets), fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
+      head: [['Customer', 'Ticket Used', 'Remaining', 'Last Change', 'Problem', 'Change', 'Total Ticket', 'Avg Resolution', 'Tiket / Month', '% Problem']],
+      body: customerRows.map((row) => [row.customer, fmtTicket(row.changeTicketUsed), fmtTicket(row.remainingTickets), row.latestChangeTicketKey || '-', row.problem, row.change, fmtTicket(row.totalChangeTickets), fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
       styles: { fontSize: 7, cellPadding: 1.6 },
@@ -438,7 +438,7 @@ export function ExecutiveReportView() {
           <table style={{ width:'100%',minWidth:860,borderCollapse:'collapse',fontSize:12 }}>
             <thead>
               <tr style={{ background:T.surfaceHi }}>
-                {['Customer','Ticket Used','Remaining Ticket','Problem','Change','Total Ticket','Avg Resolution','Tiket / Month','% Problem'].map((head) => (
+                {['Customer','Ticket Used','Remaining Ticket','Last Change','Problem','Change','Total Ticket','Avg Resolution','Tiket / Month','% Problem'].map((head) => (
                   <th key={head} style={{ padding:'10px 12px',textAlign:'left',fontSize:10,color:T.textMute,textTransform:'uppercase',letterSpacing:'.06em' }}>{head}</th>
                 ))}
               </tr>
@@ -449,6 +449,7 @@ export function ExecutiveReportView() {
                   <td style={{ padding:'10px 12px',fontWeight:800,color:T.textPri }}>{row.customer}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.jira }}>{fmtTicket(row.changeTicketUsed)}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.amber }}>{fmtTicket(row.remainingTickets)}</td>
+                  <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.textSec }}>{row.latestChangeTicketKey || '-'}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.red }}>{row.problem}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.teal }}>{row.change}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.teal }}>{fmtTicket(row.totalChangeTickets)}</td>
@@ -458,7 +459,7 @@ export function ExecutiveReportView() {
                 </tr>
               ))}
               {!isFetching && (data?.customerRows || []).length === 0 && (
-                <tr><td colSpan={9} style={{ padding:28,textAlign:'center',color:T.textMute }}>Tidak ada ticket SUP pada periode ini.</td></tr>
+                <tr><td colSpan={10} style={{ padding:28,textAlign:'center',color:T.textMute }}>Tidak ada ticket SUP pada periode ini.</td></tr>
               )}
             </tbody>
           </table>
