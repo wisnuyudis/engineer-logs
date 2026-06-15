@@ -18,10 +18,41 @@ const quarterRange = (year, quarter) => {
   return ranges[quarter] || ranges.Q1;
 };
 
-const fmtHour = (value) => value === null || value === undefined ? 'N/A' : `${Number(value).toFixed(1)}h`;
+const fmtHour = (value) => {
+  if (value === null || value === undefined) return 'N/A';
+  const totalMinutes = Math.round(Number(value || 0) * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours && minutes) return `${hours} jam ${minutes} menit`;
+  if (hours) return `${hours} jam`;
+  return `${minutes} menit`;
+};
+const fmtDateTime = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 const fmtTicket = (value) => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 const fmtPeriod = (period) => `${period?.startDate || '-'} s/d ${period?.endDate || '-'}`;
 const safeName = (value) => String(value || 'report').replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+const customerLabel = (row) => row?.customer || '-';
+
+const summarizeRows = (rows = []) => ({
+  ticketUsed: rows.reduce((sum, row) => sum + Number(row.changeTicketUsed || 0), 0),
+  remainingTickets: rows.reduce((sum, row) => sum + Number(row.remainingTickets || 0), 0),
+  totalChangeTickets: rows.reduce((sum, row) => sum + Number(row.totalChangeTickets || 0), 0),
+  totalTickets: rows.reduce((sum, row) => sum + Number(row.totalTickets || 0), 0),
+  problem: rows.reduce((sum, row) => sum + Number(row.problem || 0), 0),
+  change: rows.reduce((sum, row) => sum + Number(row.change || 0), 0),
+  customers: rows.length,
+});
 
 const addPdfFooter = (doc) => {
   const pageCount = doc.internal.getNumberOfPages();
@@ -204,6 +235,7 @@ export function ExecutiveReportView() {
           return acc;
         }, {})).sort((a, b) => b.count - a.count)
       : (data.topTopics || []);
+    const rowSummary = summarizeRows(customerRows);
     const title = selectedCustomer ? `Executive Report - ${selectedCustomer}` : 'Executive Summary - SUP Problem & Change';
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -221,20 +253,20 @@ export function ExecutiveReportView() {
     y += 8;
 
     y = drawPdfCards(doc, [
-      { label: 'Ticket Used', value: fmtTicket(issues.reduce((sum, issue) => sum + (issue.type === 'change' ? Number(issue.ticketUsed || 0) : 0), 0)), color: '#4f46e5' },
-      { label: 'Remaining', value: fmtTicket(issues.reduce((sum, issue) => sum + (issue.type === 'change' ? Number(issue.remainingTicket || 0) : 0), 0)), color: '#f59e0b' },
-      { label: 'Problem', value: issues.filter((issue) => issue.type === 'problem').length, color: '#ef4444' },
-      { label: 'Change', value: issues.filter((issue) => issue.type === 'change').length, color: '#14b8a6' },
+      { label: 'Ticket Used', value: fmtTicket(rowSummary.ticketUsed), color: '#4f46e5' },
+      { label: 'Remaining', value: fmtTicket(rowSummary.remainingTickets), color: '#f59e0b' },
+      { label: 'Problem', value: rowSummary.problem, color: '#ef4444' },
+      { label: 'Change', value: rowSummary.change, color: '#14b8a6' },
     ], y);
 
     y = drawPdfBarChart(doc, 'Tren Tiket per Bulan', trendRows.map((row) => ({ label: row.month, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 8, labelWidth: 34 });
-    y = drawPdfBarChart(doc, 'Problem vs Change per Customer', customerChartRows.map((row) => ({ label: row.customer, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 10, labelWidth: 52 });
+    y = drawPdfBarChart(doc, 'Problem vs Change per Customer / Product', customerChartRows.map((row) => ({ label: row.customer, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 10, labelWidth: 52 });
 
-    y = drawPdfSection(doc, 'Ringkasan Tiket per Customer', y);
+    y = drawPdfSection(doc, 'Ringkasan Tiket per Customer / Product', y);
     autoTable(doc, {
       startY: y,
-      head: [['Customer', 'Ticket Used', 'Remaining', 'Last Change', 'Problem', 'Change', 'Total Ticket', 'Avg Resolution', 'Tiket / Month', '% Problem']],
-      body: customerRows.map((row) => [row.customer, fmtTicket(row.changeTicketUsed), fmtTicket(row.remainingTickets), row.latestChangeTicketKey || '-', row.problem, row.change, fmtTicket(row.totalChangeTickets), fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
+      head: [['Customer / Product', 'Ticket Used', 'Remaining', 'Last Change', 'Problem', 'Change', 'Total Ticket', 'Avg Resolution', 'Tiket / Month', '% Problem']],
+      body: customerRows.map((row) => [customerLabel(row), fmtTicket(row.changeTicketUsed), fmtTicket(row.remainingTickets), row.latestChangeTicketKey || '-', row.problem, row.change, fmtTicket(row.totalChangeTickets), fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
       styles: { fontSize: 7, cellPadding: 1.6 },
@@ -242,12 +274,12 @@ export function ExecutiveReportView() {
     });
     y = (doc.lastAutoTable?.finalY || y) + 10;
 
-    y = drawPdfSection(doc, 'Kategori Solusi per Customer', y);
+    y = drawPdfSection(doc, 'Kategori Solusi per Customer / Product', y);
     autoTable(doc, {
       startY: y,
-      head: [['Customer', 'Pecahan Kategori', 'Total']],
+      head: [['Customer / Product', 'Pecahan Kategori', 'Total']],
       body: solutionRows.map((row) => [
-        row.customer,
+        customerLabel(row),
         row.categories.map((item) => `${item.category}: ${item.count}`).join(', '),
         row.total,
       ]),
@@ -277,24 +309,24 @@ export function ExecutiveReportView() {
     y = drawPdfSection(doc, 'Detail SUP', y);
     autoTable(doc, {
       startY: y,
-      head: [['Issue', 'Customer', 'Type', 'Topic', 'Status', 'Created', 'Actual At', 'Actual End', 'Resolution', 'Ticket Used']],
+      head: [['Issue', 'Customer', 'Type', 'Topic', 'Status', 'Created At', 'Actual At', 'Actual End', 'Resolution', 'Ticket Used']],
       body: issues.map((issue) => [
         issue.key,
         issue.customer,
         issue.type,
         selectedCustomer ? (issue.summary || '-') : (issue.ticketTopic || '-'),
         issue.status || '-',
-        issue.createdAt ? issue.createdAt.slice(0, 10) : '-',
-        issue.actualStartDate ? issue.actualStartDate.slice(0, 10) : '-',
-        issue.actualEndDate ? issue.actualEndDate.slice(0, 10) : '-',
+        fmtDateTime(issue.createdAt),
+        fmtDateTime(issue.actualStartDate),
+        fmtDateTime(issue.actualEndDate),
         fmtHour(issue.resolutionHours),
         issue.type === 'change' ? fmtTicket(issue.ticketUsed) : '-',
       ]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
-      styles: { fontSize: 6.4, cellPadding: 1.4, overflow: 'linebreak' },
+      styles: { fontSize: 6, cellPadding: 1.25, overflow: 'linebreak' },
       margin: { left: margin, right: margin },
-      columnStyles: { 0: { cellWidth: 16 }, 1: { cellWidth: 22 }, 2: { cellWidth: 13 }, 3: { cellWidth: 40 }, 4: { cellWidth: 16 }, 5: { cellWidth: 16 }, 6: { cellWidth: 16 }, 7: { cellWidth: 16 }, 8: { cellWidth: 13 }, 9: { cellWidth: 13 } },
+      columnStyles: { 0: { cellWidth: 16 }, 1: { cellWidth: 22 }, 2: { cellWidth: 13 }, 3: { cellWidth: 36 }, 4: { cellWidth: 16 }, 5: { cellWidth: 20 }, 6: { cellWidth: 20 }, 7: { cellWidth: 20 }, 8: { cellWidth: 15 }, 9: { cellWidth: 13 } },
     });
 
     addPdfFooter(doc);
@@ -307,7 +339,7 @@ export function ExecutiveReportView() {
         <div style={{ display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:12,flexWrap:'wrap' }}>
           <div>
             <div style={{ fontSize:11,fontWeight:800,color:T.textSec,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:4 }}>Executive Report</div>
-            <div style={{ fontSize:18,fontWeight:900,color:T.textPri,fontFamily:DISPLAY }}>SUP Problem & Change Usage by Customer</div>
+            <div style={{ fontSize:18,fontWeight:900,color:T.textPri,fontFamily:DISPLAY }}>SUP Problem & Change Usage by Customer / Product</div>
             <div style={{ fontSize:12,color:T.textMute,marginTop:3 }}>Data ditarik langsung dari Jira ticketing `SUP-*` untuk periode terpilih.</div>
           </div>
           <div style={{ display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' }}>
@@ -344,27 +376,33 @@ export function ExecutiveReportView() {
             </>
           )}
           <div>
-            <Lbl>Report by Customer</Lbl>
+            <Lbl>Report by Customer / Product</Lbl>
             <select value={reportCustomer} onChange={(event) => setReportCustomer(event.target.value)} style={{ width:'100%',padding:'9px 10px',borderRadius:8,border:`1.5px solid ${T.border}`,background:T.surfaceHi,color:T.textPri }}>
               <option value="">Pilih customer...</option>
-              {(data?.customerRows || []).map((row) => <option key={row.customer} value={row.customer}>{row.customer}</option>)}
+              {(data?.customerRows || []).map((row) => <option key={row.customer} value={row.customer}>{customerLabel(row)}</option>)}
             </select>
           </div>
-          <Btn v="ghost" onClick={() => generateExecutivePdf('customer')} disabled={!data || isFetching || !reportCustomer}>Generate Customer SUP</Btn>
+          <Btn v="ghost" onClick={() => generateExecutivePdf('customer')} disabled={!data || isFetching || !reportCustomer}>Generate Customer/Product SUP</Btn>
         </div>
       </Card>
 
       {error && <Card p={16}><div style={{ color:T.red,fontSize:13 }}>{error?.response?.data?.error || 'Gagal memuat executive report'}</div></Card>}
 
+      {(() => {
+        const selectedRows = reportCustomer
+          ? (data?.customerRows || []).filter((row) => row.customer === reportCustomer)
+          : (data?.customerRows || []);
+        const summary = summarizeRows(selectedRows);
+        return (
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:12 }}>
         {[
-          ['Total Tiket', data?.totals?.totalTickets || 0, T.indigoHi],
-          ['Total Ticket Used', fmtTicket(data?.totals?.totalTicketUsed || 0), T.jira],
-          ['Remaining Ticket', fmtTicket(data?.totals?.remainingTickets || 0), T.amber],
-          ['Problem / CM', data?.totals?.problem || 0, T.red],
-          ['Change / Enhancement', data?.totals?.change || 0, T.teal],
-          ['Change Ticket Use', fmtTicket(data?.totals?.changeTicketUsed || 0), T.teal],
-          ['Customer', data?.totals?.customers || 0, T.amber],
+          ['Total Tiket', summary.totalTickets, T.indigoHi],
+          ['Total Ticket Used', fmtTicket(summary.ticketUsed), T.jira],
+          ['Remaining Ticket', fmtTicket(summary.remainingTickets), T.amber],
+          ['Problem / CM', summary.problem, T.red],
+          ['Change / Enhancement', summary.change, T.teal],
+          ['Change Ticket Use', fmtTicket(summary.ticketUsed), T.teal],
+          ['Customer / Product', summary.customers, T.amber],
         ].map(([label, value, color]) => (
           <Card key={label} p={15} glow={color}>
             <div style={{ fontSize:10,color:T.textMute,textTransform:'uppercase',letterSpacing:'.07em',fontWeight:800 }}>{label}</div>
@@ -372,6 +410,8 @@ export function ExecutiveReportView() {
           </Card>
         ))}
       </div>
+        );
+      })()}
 
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:14 }}>
         <Card p={18}>
@@ -403,7 +443,7 @@ export function ExecutiveReportView() {
           </ResponsiveContainer>
         </Card>
         <Card p={18}>
-          <div style={{ fontSize:12,fontWeight:800,color:T.textPri,marginBottom:12 }}>Problem vs Change per Customer</div>
+          <div style={{ fontSize:12,fontWeight:800,color:T.textPri,marginBottom:12 }}>Problem vs Change per Customer / Product</div>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={customerTypeChart} layout="vertical" margin={{ left: 28, right: 28, top: 4, bottom: 4 }}>
               <defs>
@@ -433,12 +473,12 @@ export function ExecutiveReportView() {
       </div>
 
       <Card p={0} style={{ overflow:'hidden' }}>
-        <div style={{ padding:'13px 16px',borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:800,color:T.textPri }}>Ringkasan Tiket per Customer</div>
+        <div style={{ padding:'13px 16px',borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:800,color:T.textPri }}>Ringkasan Tiket per Customer / Product</div>
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%',minWidth:860,borderCollapse:'collapse',fontSize:12 }}>
             <thead>
               <tr style={{ background:T.surfaceHi }}>
-                {['Customer','Ticket Used','Remaining Ticket','Last Change','Problem','Change','Total Ticket','Avg Resolution','Tiket / Month','% Problem'].map((head) => (
+                {['Customer / Product','Ticket Used','Remaining Ticket','Last Change','Problem','Change','Total Ticket','Avg Resolution','Tiket / Month','% Problem'].map((head) => (
                   <th key={head} style={{ padding:'10px 12px',textAlign:'left',fontSize:10,color:T.textMute,textTransform:'uppercase',letterSpacing:'.06em' }}>{head}</th>
                 ))}
               </tr>
@@ -446,7 +486,7 @@ export function ExecutiveReportView() {
             <tbody>
               {(data?.customerRows || []).map((row) => (
                 <tr key={row.customer} style={{ borderTop:`1px solid ${T.border}` }}>
-                  <td style={{ padding:'10px 12px',fontWeight:800,color:T.textPri }}>{row.customer}</td>
+                  <td style={{ padding:'10px 12px',fontWeight:800,color:T.textPri }}>{customerLabel(row)}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.jira }}>{fmtTicket(row.changeTicketUsed)}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.amber }}>{fmtTicket(row.remainingTickets)}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.textSec }}>{row.latestChangeTicketKey || '-'}</td>
@@ -468,12 +508,12 @@ export function ExecutiveReportView() {
 
       <div style={{ display:'grid',gridTemplateColumns:'minmax(0,1.35fr) minmax(280px,.65fr)',gap:14 }}>
         <Card p={0} style={{ overflow:'hidden' }}>
-          <div style={{ padding:'13px 16px',borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:800,color:T.textPri }}>Kategori Solusi per Customer</div>
+          <div style={{ padding:'13px 16px',borderBottom:`1px solid ${T.border}`,fontSize:12,fontWeight:800,color:T.textPri }}>Kategori Solusi per Customer / Product</div>
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%',minWidth:680,borderCollapse:'collapse',fontSize:12 }}>
               <thead>
                 <tr style={{ background:T.surfaceHi }}>
-                  {['Customer','Pecahan Kategori','Total'].map((head) => (
+                  {['Customer / Product','Pecahan Kategori','Total'].map((head) => (
                     <th key={head} style={{ padding:'10px 12px',textAlign:'left',fontSize:10,color:T.textMute,textTransform:'uppercase',letterSpacing:'.06em' }}>{head}</th>
                   ))}
                 </tr>
@@ -481,7 +521,7 @@ export function ExecutiveReportView() {
               <tbody>
                 {solutionCategoryRows.map((row) => (
                   <tr key={row.customer} style={{ borderTop:`1px solid ${T.border}` }}>
-                    <td style={{ padding:'10px 12px',fontWeight:800,color:T.textPri,whiteSpace:'nowrap' }}>{row.customer}</td>
+                    <td style={{ padding:'10px 12px',fontWeight:800,color:T.textPri,whiteSpace:'nowrap' }}>{customerLabel(row)}</td>
                     <td style={{ padding:'10px 12px' }}>
                       <div style={{ display:'flex',gap:6,flexWrap:'wrap' }}>
                         {row.categories.map((item) => <Tag key={`${row.customer}-${item.category}`} color={item.category === 'Other' ? T.textMute : T.indigoHi} lo={item.category === 'Other' ? T.surfaceHi : T.indigoLo}>{item.category}: {item.count}</Tag>)}

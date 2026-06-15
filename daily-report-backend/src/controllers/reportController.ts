@@ -67,17 +67,19 @@ const normalizeCustomer = (rawCustomer: string) => {
   return rawCustomer;
 };
 
-const inferCustomer = (issue: JiraSearchIssue) => {
-  if (issue.customerName) return normalizeCustomer(issue.customerName);
+const inferCustomerIdentity = (issue: JiraSearchIssue) => {
+  if (issue.customerName) return issue.customerName.trim() || 'Unknown Customer';
   const summary = String(issue.summary || '');
   const bracket = summary.match(/\[(.*?)\]/);
-  if (bracket?.[1] && !/system|problem|change/i.test(bracket[1])) return normalizeCustomer(bracket[1].trim());
+  if (bracket?.[1] && !/system|problem|change/i.test(bracket[1])) return bracket[1].trim();
   const dashParts = summary.split(/\s[-–—]\s/).map((part) => part.trim()).filter(Boolean);
-  if (dashParts.length >= 2 && dashParts[0].length <= 60) return normalizeCustomer(dashParts[0]);
+  if (dashParts.length >= 2 && dashParts[0].length <= 60) return dashParts[0];
   const mapped = normalizeCustomer(summary);
   if (mapped !== summary) return mapped;
   return 'Unknown Customer';
 };
+
+const inferCustomer = (issue: JiraSearchIssue) => normalizeCustomer(inferCustomerIdentity(issue));
 
 const issueText = (issue: JiraSearchIssue) => (
   `${issue.summary || ''} ${issue.comments.map((comment) => comment.bodyText).join(' ')}`
@@ -165,7 +167,8 @@ export const getExecutiveReport = async (req: AuthRequest, res: Response) => {
     const solutionByCustomer = new Map<string, Map<string, number>>();
 
     for (const issue of issues) {
-      const customer = inferCustomer(issue);
+      const customer = inferCustomerIdentity(issue);
+      const customerGroup = inferCustomer(issue);
       const type = classifyTicket(issue);
       const key = monthKey(issue.createdAt);
       const resolutionHours = hoursBetween(issue.actualStartDate, issue.actualEndDate);
@@ -173,6 +176,7 @@ export const getExecutiveReport = async (req: AuthRequest, res: Response) => {
 
       const row = customers.get(customer) || {
         customer,
+        customerGroup,
         totalTickets: 0,
         problem: 0,
         change: 0,
@@ -207,7 +211,7 @@ export const getExecutiveReport = async (req: AuthRequest, res: Response) => {
       customers.set(customer, row);
 
       const monthlyKey = `${key}__${customer}`;
-      const monthRow = monthly.get(monthlyKey) || { month: key, customer, problem: 0, change: 0, total: 0 };
+      const monthRow = monthly.get(monthlyKey) || { month: key, customer, customerGroup, problem: 0, change: 0, total: 0 };
       monthRow.total += 1;
       if (type === 'problem') monthRow.problem += 1;
       if (type === 'change') monthRow.change += 1;
@@ -221,6 +225,7 @@ export const getExecutiveReport = async (req: AuthRequest, res: Response) => {
     const monthCount = Math.max(1, new Set(Array.from(monthly.values()).map((row) => row.month)).size);
     const customerRows = Array.from(customers.values()).map((row) => ({
       customer: row.customer,
+      customerGroup: row.customerGroup,
       totalTickets: row.totalTickets,
       problem: row.problem,
       change: row.change,
@@ -259,13 +264,15 @@ export const getExecutiveReport = async (req: AuthRequest, res: Response) => {
       customerRows,
       solutionCategories: Array.from(solutionByCustomer.entries()).map(([customer, counts]) => ({
         customer,
+        customerGroup: normalizeCustomer(customer),
         categories: Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([category, count]) => ({ category, count })),
       })),
       topTopics: topTopics(issues),
       issues: issues.map((issue) => ({
         key: issue.key,
         summary: issue.summary,
-        customer: inferCustomer(issue),
+        customer: inferCustomerIdentity(issue),
+        customerGroup: inferCustomer(issue),
         type: classifyTicket(issue),
         workTopic: classifyWorkTopic(issue),
         ticketTopic: classifySpecificTicketTopic(issue),

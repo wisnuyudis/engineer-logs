@@ -62,21 +62,22 @@ const normalizeCustomer = (rawCustomer) => {
     }
     return rawCustomer;
 };
-const inferCustomer = (issue) => {
+const inferCustomerIdentity = (issue) => {
     if (issue.customerName)
-        return normalizeCustomer(issue.customerName);
+        return issue.customerName.trim() || 'Unknown Customer';
     const summary = String(issue.summary || '');
     const bracket = summary.match(/\[(.*?)\]/);
     if (bracket?.[1] && !/system|problem|change/i.test(bracket[1]))
-        return normalizeCustomer(bracket[1].trim());
+        return bracket[1].trim();
     const dashParts = summary.split(/\s[-–—]\s/).map((part) => part.trim()).filter(Boolean);
     if (dashParts.length >= 2 && dashParts[0].length <= 60)
-        return normalizeCustomer(dashParts[0]);
+        return dashParts[0];
     const mapped = normalizeCustomer(summary);
     if (mapped !== summary)
         return mapped;
     return 'Unknown Customer';
 };
+const inferCustomer = (issue) => normalizeCustomer(inferCustomerIdentity(issue));
 const issueText = (issue) => (`${issue.summary || ''} ${issue.comments.map((comment) => comment.bodyText).join(' ')}`);
 const classifyWorkTopic = (issue) => {
     const text = normalizeText(issueText(issue));
@@ -151,13 +152,15 @@ const getExecutiveReport = async (req, res) => {
         const monthly = new Map();
         const solutionByCustomer = new Map();
         for (const issue of issues) {
-            const customer = inferCustomer(issue);
+            const customer = inferCustomerIdentity(issue);
+            const customerGroup = inferCustomer(issue);
             const type = classifyTicket(issue);
             const key = monthKey(issue.createdAt);
             const resolutionHours = hoursBetween(issue.actualStartDate, issue.actualEndDate);
             const solutionCategory = inferSolutionCategory(issue);
             const row = customers.get(customer) || {
                 customer,
+                customerGroup,
                 totalTickets: 0,
                 problem: 0,
                 change: 0,
@@ -192,7 +195,7 @@ const getExecutiveReport = async (req, res) => {
             }
             customers.set(customer, row);
             const monthlyKey = `${key}__${customer}`;
-            const monthRow = monthly.get(monthlyKey) || { month: key, customer, problem: 0, change: 0, total: 0 };
+            const monthRow = monthly.get(monthlyKey) || { month: key, customer, customerGroup, problem: 0, change: 0, total: 0 };
             monthRow.total += 1;
             if (type === 'problem')
                 monthRow.problem += 1;
@@ -206,6 +209,7 @@ const getExecutiveReport = async (req, res) => {
         const monthCount = Math.max(1, new Set(Array.from(monthly.values()).map((row) => row.month)).size);
         const customerRows = Array.from(customers.values()).map((row) => ({
             customer: row.customer,
+            customerGroup: row.customerGroup,
             totalTickets: row.totalTickets,
             problem: row.problem,
             change: row.change,
@@ -240,13 +244,15 @@ const getExecutiveReport = async (req, res) => {
             customerRows,
             solutionCategories: Array.from(solutionByCustomer.entries()).map(([customer, counts]) => ({
                 customer,
+                customerGroup: normalizeCustomer(customer),
                 categories: Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([category, count]) => ({ category, count })),
             })),
             topTopics: topTopics(issues),
             issues: issues.map((issue) => ({
                 key: issue.key,
                 summary: issue.summary,
-                customer: inferCustomer(issue),
+                customer: inferCustomerIdentity(issue),
+                customerGroup: inferCustomer(issue),
                 type: classifyTicket(issue),
                 workTopic: classifyWorkTopic(issue),
                 ticketTopic: classifySpecificTicketTopic(issue),
