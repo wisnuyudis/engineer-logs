@@ -152,15 +152,14 @@ const getExecutiveReport = async (req, res) => {
         const monthly = new Map();
         const solutionByCustomer = new Map();
         for (const issue of issues) {
-            const customer = inferCustomerIdentity(issue);
-            const customerGroup = inferCustomer(issue);
+            const customerIdentity = inferCustomerIdentity(issue);
+            const customer = inferCustomer(issue);
             const type = classifyTicket(issue);
             const key = monthKey(issue.createdAt);
             const resolutionHours = hoursBetween(issue.actualStartDate, issue.actualEndDate);
             const solutionCategory = inferSolutionCategory(issue);
             const row = customers.get(customer) || {
                 customer,
-                customerGroup,
                 totalTickets: 0,
                 problem: 0,
                 change: 0,
@@ -171,6 +170,8 @@ const getExecutiveReport = async (req, res) => {
                 totalChangeTickets: 0,
                 changeTicketUsed: 0,
                 _latestChangeTicketState: null,
+                _identityStates: new Map(),
+                _identityTicketUsed: new Map(),
                 _resolutionSum: 0,
                 _resolutionCount: 0,
             };
@@ -180,6 +181,18 @@ const getExecutiveReport = async (req, res) => {
             if (type === 'change') {
                 row.change += 1;
                 row.changeTicketUsed += ticketMetric(issue.ticketUsed);
+                row._identityTicketUsed.set(customerIdentity, ticketMetric((row._identityTicketUsed.get(customerIdentity) || 0) + ticketMetric(issue.ticketUsed)));
+                const currentIdentityState = row._identityStates.get(customerIdentity);
+                if (isLaterTicketState(issue, currentIdentityState)) {
+                    row._identityStates.set(customerIdentity, {
+                        identity: customerIdentity,
+                        key: issue.key,
+                        createdAt: issue.createdAt,
+                        ticketUsed: ticketMetric(issue.ticketUsed),
+                        totalTicket: ticketMetric(issue.totalTicket),
+                        remainingTicket: ticketMetric(issue.remainingTicket),
+                    });
+                }
                 if (isLaterTicketState(issue, row._latestChangeTicketState)) {
                     row._latestChangeTicketState = {
                         key: issue.key,
@@ -195,7 +208,7 @@ const getExecutiveReport = async (req, res) => {
             }
             customers.set(customer, row);
             const monthlyKey = `${key}__${customer}`;
-            const monthRow = monthly.get(monthlyKey) || { month: key, customer, customerGroup, problem: 0, change: 0, total: 0 };
+            const monthRow = monthly.get(monthlyKey) || { month: key, customer, problem: 0, change: 0, total: 0 };
             monthRow.total += 1;
             if (type === 'problem')
                 monthRow.problem += 1;
@@ -207,22 +220,34 @@ const getExecutiveReport = async (req, res) => {
             solutionByCustomer.set(customer, solutionCounts);
         }
         const monthCount = Math.max(1, new Set(Array.from(monthly.values()).map((row) => row.month)).size);
-        const customerRows = Array.from(customers.values()).map((row) => ({
-            customer: row.customer,
-            customerGroup: row.customerGroup,
-            totalTickets: row.totalTickets,
-            problem: row.problem,
-            change: row.change,
-            avgResolutionHours: row._resolutionCount ? Number((row._resolutionSum / row.totalTickets).toFixed(2)) : null,
-            resolvedTicketCount: row._resolutionCount,
-            totalResolutionHours: Number(row._resolutionSum.toFixed(2)),
-            ticketsPerMonth: Number((row.totalTickets / monthCount).toFixed(2)),
-            problemPct: row.totalTickets ? Number(((row.problem / row.totalTickets) * 100).toFixed(1)) : 0,
-            totalChangeTickets: Number((row._latestChangeTicketState?.totalTicket || 0).toFixed(2)),
-            remainingTickets: Number((row._latestChangeTicketState?.remainingTicket || 0).toFixed(2)),
-            latestChangeTicketKey: row._latestChangeTicketState?.key || null,
-            changeTicketUsed: Number(row.changeTicketUsed.toFixed(2)),
-        })).sort((a, b) => b.totalTickets - a.totalTickets);
+        const customerRows = Array.from(customers.values()).map((row) => {
+            const ticketIdentities = Array.from(row._identityStates.values())
+                .sort((a, b) => a.identity.localeCompare(b.identity))
+                .map((state) => ({
+                identity: state.identity,
+                latestChangeTicketKey: state.key,
+                ticketUsed: ticketMetric(row._identityTicketUsed.get(state.identity) || 0),
+                latestTicketUsed: state.ticketUsed,
+                totalTicket: state.totalTicket,
+                remainingTicket: state.remainingTicket,
+            }));
+            return {
+                customer: row.customer,
+                totalTickets: row.totalTickets,
+                problem: row.problem,
+                change: row.change,
+                avgResolutionHours: row._resolutionCount ? Number((row._resolutionSum / row.totalTickets).toFixed(2)) : null,
+                resolvedTicketCount: row._resolutionCount,
+                totalResolutionHours: Number(row._resolutionSum.toFixed(2)),
+                ticketsPerMonth: Number((row.totalTickets / monthCount).toFixed(2)),
+                problemPct: row.totalTickets ? Number(((row.problem / row.totalTickets) * 100).toFixed(1)) : 0,
+                totalChangeTickets: ticketMetric(ticketIdentities.reduce((sum, item) => sum + Number(item.totalTicket || 0), 0)),
+                remainingTickets: ticketMetric(ticketIdentities.reduce((sum, item) => sum + Number(item.remainingTicket || 0), 0)),
+                latestChangeTicketKey: row._latestChangeTicketState?.key || null,
+                changeTicketUsed: Number(row.changeTicketUsed.toFixed(2)),
+                ticketIdentities,
+            };
+        }).sort((a, b) => b.totalTickets - a.totalTickets);
         const totalChangeTickets = ticketMetric(customerRows.reduce((sum, row) => sum + Number(row.totalChangeTickets || 0), 0));
         const remainingTickets = ticketMetric(customerRows.reduce((sum, row) => sum + Number(row.remainingTickets || 0), 0));
         const changeTicketUsed = ticketMetric(issues
@@ -244,15 +269,14 @@ const getExecutiveReport = async (req, res) => {
             customerRows,
             solutionCategories: Array.from(solutionByCustomer.entries()).map(([customer, counts]) => ({
                 customer,
-                customerGroup: normalizeCustomer(customer),
                 categories: Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([category, count]) => ({ category, count })),
             })),
             topTopics: topTopics(issues),
             issues: issues.map((issue) => ({
                 key: issue.key,
                 summary: issue.summary,
-                customer: inferCustomerIdentity(issue),
-                customerGroup: inferCustomer(issue),
+                customer: inferCustomer(issue),
+                customerIdentity: inferCustomerIdentity(issue),
                 type: classifyTicket(issue),
                 workTopic: classifyWorkTopic(issue),
                 ticketTopic: classifySpecificTicketTopic(issue),
