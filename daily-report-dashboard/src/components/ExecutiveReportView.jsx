@@ -19,6 +19,7 @@ const quarterRange = (year, quarter) => {
 };
 
 const fmtHour = (value) => value === null || value === undefined ? 'N/A' : `${Number(value).toFixed(1)}h`;
+const fmtTicket = (value) => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 const fmtPeriod = (period) => `${period?.startDate || '-'} s/d ${period?.endDate || '-'}`;
 const safeName = (value) => String(value || 'report').replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
 
@@ -90,7 +91,7 @@ const drawPdfBarChart = (doc, title, rows, keys, y, options = {}) => {
   const visibleRows = rows.slice(0, options.limit || 12);
 
   y = ensurePdfSpace(doc, y, Math.max(18, visibleRows.length * rowHeight + 12));
-  visibleRows.forEach((row, index) => {
+  visibleRows.forEach((row) => {
     if (y + rowHeight > bottomLimit) {
       doc.addPage();
       y = margin;
@@ -220,10 +221,10 @@ export function ExecutiveReportView() {
     y += 8;
 
     y = drawPdfCards(doc, [
-      { label: 'Total Tiket', value: issues.length, color: '#4f46e5' },
+      { label: 'Ticket Used', value: fmtTicket(issues.reduce((sum, issue) => sum + (issue.type === 'change' ? Number(issue.ticketUsed || 0) : 0), 0)), color: '#4f46e5' },
+      { label: 'Remaining', value: fmtTicket(issues.reduce((sum, issue) => sum + (issue.type === 'change' ? Number(issue.remainingTicket || 0) : 0), 0)), color: '#f59e0b' },
       { label: 'Problem', value: issues.filter((issue) => issue.type === 'problem').length, color: '#ef4444' },
       { label: 'Change', value: issues.filter((issue) => issue.type === 'change').length, color: '#14b8a6' },
-      { label: 'Customer', value: selectedCustomer ? 1 : (data.totals?.customers || 0), color: '#f59e0b' },
     ], y);
 
     y = drawPdfBarChart(doc, 'Tren Tiket per Bulan', trendRows.map((row) => ({ label: row.month, problem: row.problem, change: row.change })), ['problem', 'change'], y, { limit: 8, labelWidth: 34 });
@@ -232,8 +233,8 @@ export function ExecutiveReportView() {
     y = drawPdfSection(doc, 'Ringkasan Tiket per Customer', y);
     autoTable(doc, {
       startY: y,
-      head: [['Customer', 'Total', 'Problem', 'Change', 'Avg Resolution', 'Tiket / Month', '% Problem']],
-      body: customerRows.map((row) => [row.customer, row.totalTickets, row.problem, row.change, fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
+      head: [['Customer', 'Ticket Used', 'Remaining', 'Problem', 'Change', 'Total Ticket', 'Avg Resolution', 'Tiket / Month', '% Problem']],
+      body: customerRows.map((row) => [row.customer, fmtTicket(row.changeTicketUsed), fmtTicket(row.remainingTickets), row.problem, row.change, fmtTicket(row.totalChangeTickets), fmtHour(row.avgResolutionHours), row.ticketsPerMonth, `${row.problemPct}%`]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
       styles: { fontSize: 7, cellPadding: 1.6 },
@@ -276,7 +277,7 @@ export function ExecutiveReportView() {
     y = drawPdfSection(doc, 'Detail SUP', y);
     autoTable(doc, {
       startY: y,
-      head: [['Issue', 'Customer', 'Type', 'Topic', 'Status', 'Created', 'Actual At', 'Actual End', 'Resolution']],
+      head: [['Issue', 'Customer', 'Type', 'Topic', 'Status', 'Created', 'Actual At', 'Actual End', 'Resolution', 'Ticket Used']],
       body: issues.map((issue) => [
         issue.key,
         issue.customer,
@@ -287,12 +288,13 @@ export function ExecutiveReportView() {
         issue.actualStartDate ? issue.actualStartDate.slice(0, 10) : '-',
         issue.actualEndDate ? issue.actualEndDate.slice(0, 10) : '-',
         fmtHour(issue.resolutionHours),
+        issue.type === 'change' ? fmtTicket(issue.ticketUsed) : '-',
       ]),
       theme: 'grid',
       headStyles: { fillColor: [238, 242, 247], textColor: [71, 85, 105], fontStyle: 'bold' },
       styles: { fontSize: 6.4, cellPadding: 1.4, overflow: 'linebreak' },
       margin: { left: margin, right: margin },
-      columnStyles: { 0: { cellWidth: 16 }, 1: { cellWidth: 22 }, 2: { cellWidth: 13 }, 3: { cellWidth: 48 }, 4: { cellWidth: 18 }, 5: { cellWidth: 17 }, 6: { cellWidth: 17 }, 7: { cellWidth: 17 }, 8: { cellWidth: 15 } },
+      columnStyles: { 0: { cellWidth: 16 }, 1: { cellWidth: 22 }, 2: { cellWidth: 13 }, 3: { cellWidth: 40 }, 4: { cellWidth: 16 }, 5: { cellWidth: 16 }, 6: { cellWidth: 16 }, 7: { cellWidth: 16 }, 8: { cellWidth: 13 }, 9: { cellWidth: 13 } },
     });
 
     addPdfFooter(doc);
@@ -357,8 +359,11 @@ export function ExecutiveReportView() {
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:12 }}>
         {[
           ['Total Tiket', data?.totals?.totalTickets || 0, T.indigoHi],
+          ['Total Ticket Used', fmtTicket(data?.totals?.totalTicketUsed || 0), T.jira],
+          ['Remaining Ticket', fmtTicket(data?.totals?.remainingTickets || 0), T.amber],
           ['Problem / CM', data?.totals?.problem || 0, T.red],
           ['Change / Enhancement', data?.totals?.change || 0, T.teal],
+          ['Change Ticket Use', fmtTicket(data?.totals?.changeTicketUsed || 0), T.teal],
           ['Customer', data?.totals?.customers || 0, T.amber],
         ].map(([label, value, color]) => (
           <Card key={label} p={15} glow={color}>
@@ -433,7 +438,7 @@ export function ExecutiveReportView() {
           <table style={{ width:'100%',minWidth:860,borderCollapse:'collapse',fontSize:12 }}>
             <thead>
               <tr style={{ background:T.surfaceHi }}>
-                {['Customer','Total Tiket','Problem','Change','Avg Resolution','Tiket / Month','% Problem'].map((head) => (
+                {['Customer','Ticket Used','Remaining Ticket','Problem','Change','Total Ticket','Avg Resolution','Tiket / Month','% Problem'].map((head) => (
                   <th key={head} style={{ padding:'10px 12px',textAlign:'left',fontSize:10,color:T.textMute,textTransform:'uppercase',letterSpacing:'.06em' }}>{head}</th>
                 ))}
               </tr>
@@ -442,16 +447,18 @@ export function ExecutiveReportView() {
               {(data?.customerRows || []).map((row) => (
                 <tr key={row.customer} style={{ borderTop:`1px solid ${T.border}` }}>
                   <td style={{ padding:'10px 12px',fontWeight:800,color:T.textPri }}>{row.customer}</td>
-                  <td style={{ padding:'10px 12px',fontFamily:MONO }}>{row.totalTickets}</td>
+                  <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.jira }}>{fmtTicket(row.changeTicketUsed)}</td>
+                  <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.amber }}>{fmtTicket(row.remainingTickets)}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.red }}>{row.problem}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.teal }}>{row.change}</td>
+                  <td style={{ padding:'10px 12px',fontFamily:MONO,color:T.teal }}>{fmtTicket(row.totalChangeTickets)}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO }}>{fmtHour(row.avgResolutionHours)}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO }}>{row.ticketsPerMonth}</td>
                   <td style={{ padding:'10px 12px',fontFamily:MONO }}>{row.problemPct}%</td>
                 </tr>
               ))}
               {!isFetching && (data?.customerRows || []).length === 0 && (
-                <tr><td colSpan={7} style={{ padding:28,textAlign:'center',color:T.textMute }}>Tidak ada ticket SUP pada periode ini.</td></tr>
+                <tr><td colSpan={9} style={{ padding:28,textAlign:'center',color:T.textMute }}>Tidak ada ticket SUP pada periode ini.</td></tr>
               )}
             </tbody>
           </table>

@@ -76,6 +76,7 @@ const extractFieldValue = (fields: Record<string, any> | undefined, fieldKey: st
   const value = fields[fieldKey];
   if (!value) return null;
   if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
   if (typeof value?.value === 'string') return value.value;
   if (typeof value?.name === 'string') return value.name;
   if (Array.isArray(value)) {
@@ -465,6 +466,9 @@ export type JiraSearchIssue = {
   statusCategoryName: string | null;
   priorityName: string | null;
   customerName: string | null;
+  ticketUsed: number;
+  totalTicket: number;
+  remainingTicket: number;
   timeSpentSeconds: number;
   comments: Array<{ id: string; createdAt: string | null; bodyText: string }>;
   linkedIssues: Array<{
@@ -518,6 +522,9 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
     fieldMap['organizations'],
     fieldMap['client'],
     fieldMap['account'],
+    fieldMap['ticket used'],
+    fieldMap['total ticket'],
+    fieldMap['remaining ticket'],
   ].filter(Boolean);
   const queryFields = Array.from(new Set([...fields, 'issuelinks', ...additionalFields]));
 
@@ -597,6 +604,9 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
           'Client',
           'Account',
         ]),
+        ticketUsed: Number(extractNamedFieldValueByMap(issue.fields, fieldMap, ['Ticket Used']) || 0),
+        totalTicket: Number(extractNamedFieldValueByMap(issue.fields, fieldMap, ['Total Ticket']) || 0),
+        remainingTicket: Number(extractNamedFieldValueByMap(issue.fields, fieldMap, ['Remaining Ticket']) || 0),
         timeSpentSeconds: Number(issue.fields?.timespent || 0),
         comments: Array.isArray(issue.fields?.comment?.comments)
           ? issue.fields.comment.comments.map((comment: any) => ({

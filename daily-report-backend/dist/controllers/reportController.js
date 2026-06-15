@@ -11,6 +11,7 @@ const hoursBetween = (start, end) => {
         return null;
     return diff / 36e5;
 };
+const ticketMetric = (value) => Number((Number(value || 0) || 0).toFixed(2));
 const classifyTicket = (issue) => {
     const type = String(issue.issueTypeName || '').toLowerCase();
     if (type.includes('change'))
@@ -150,14 +151,21 @@ const getExecutiveReport = async (req, res) => {
                 avgResolutionHours: null,
                 ticketsPerMonth: 0,
                 problemPct: 0,
+                remainingTickets: 0,
+                totalChangeTickets: 0,
+                changeTicketUsed: 0,
                 _resolutionSum: 0,
                 _resolutionCount: 0,
             };
             row.totalTickets += 1;
             if (type === 'problem')
                 row.problem += 1;
-            if (type === 'change')
+            if (type === 'change') {
                 row.change += 1;
+                row.totalChangeTickets += ticketMetric(issue.totalTicket);
+                row.remainingTickets += ticketMetric(issue.remainingTicket);
+                row.changeTicketUsed += ticketMetric(issue.ticketUsed);
+            }
             if (resolutionHours !== null) {
                 row._resolutionSum += resolutionHours;
                 row._resolutionCount += 1;
@@ -186,13 +194,29 @@ const getExecutiveReport = async (req, res) => {
             totalResolutionHours: Number(row._resolutionSum.toFixed(2)),
             ticketsPerMonth: Number((row.totalTickets / monthCount).toFixed(2)),
             problemPct: row.totalTickets ? Number(((row.problem / row.totalTickets) * 100).toFixed(1)) : 0,
+            totalChangeTickets: Number(row.totalChangeTickets.toFixed(2)),
+            remainingTickets: Number(row.remainingTickets.toFixed(2)),
+            changeTicketUsed: Number(row.changeTicketUsed.toFixed(2)),
         })).sort((a, b) => b.totalTickets - a.totalTickets);
+        const totalChangeTickets = ticketMetric(issues
+            .filter((issue) => classifyTicket(issue) === 'change')
+            .reduce((sum, issue) => sum + Number(issue.totalTicket || 0), 0));
+        const remainingTickets = ticketMetric(issues
+            .filter((issue) => classifyTicket(issue) === 'change')
+            .reduce((sum, issue) => sum + Number(issue.remainingTicket || 0), 0));
+        const changeTicketUsed = ticketMetric(issues
+            .filter((issue) => classifyTicket(issue) === 'change')
+            .reduce((sum, issue) => sum + Number(issue.ticketUsed || 0), 0));
         res.json({
             period: { startDate, endDate },
             totals: {
                 totalTickets: issues.length,
+                totalTicketUsed: changeTicketUsed,
+                totalChangeTickets,
+                remainingTickets,
                 problem: issues.filter((issue) => classifyTicket(issue) === 'problem').length,
                 change: issues.filter((issue) => classifyTicket(issue) === 'change').length,
+                changeTicketUsed,
                 customers: customerRows.length,
             },
             monthlyTrend: Array.from(monthly.values()).sort((a, b) => `${a.month}${a.customer}`.localeCompare(`${b.month}${b.customer}`)),
@@ -210,12 +234,17 @@ const getExecutiveReport = async (req, res) => {
                 workTopic: classifyWorkTopic(issue),
                 ticketTopic: classifySpecificTicketTopic(issue),
                 status: issue.statusName,
+                statusCategoryKey: issue.statusCategoryKey,
                 createdAt: issue.createdAt,
                 actualStartDate: issue.actualStartDate,
                 actualEndDate: issue.actualEndDate,
                 resolutionDate: issue.resolutionDate,
                 resolutionHours: hoursBetween(issue.actualStartDate, issue.actualEndDate),
                 priority: issue.priorityName,
+                timeSpentSeconds: issue.timeSpentSeconds,
+                ticketUsed: issue.ticketUsed,
+                totalTicket: issue.totalTicket,
+                remainingTicket: issue.remainingTicket,
             })),
         });
     }

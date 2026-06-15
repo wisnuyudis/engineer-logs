@@ -74,6 +74,8 @@ const extractFieldValue = (fields, fieldKey) => {
         return null;
     if (typeof value === 'string')
         return value;
+    if (typeof value === 'number' || typeof value === 'boolean')
+        return value;
     if (typeof value?.value === 'string')
         return value.value;
     if (typeof value?.name === 'string')
@@ -421,6 +423,9 @@ const searchJiraIssues = async ({ jql, fields }) => {
         fieldMap['organizations'],
         fieldMap['client'],
         fieldMap['account'],
+        fieldMap['ticket used'],
+        fieldMap['total ticket'],
+        fieldMap['remaining ticket'],
     ].filter(Boolean);
     const queryFields = Array.from(new Set([...fields, 'issuelinks', ...additionalFields]));
     while (true) {
@@ -498,6 +503,9 @@ const searchJiraIssues = async ({ jql, fields }) => {
                     'Client',
                     'Account',
                 ]),
+                ticketUsed: Number(extractNamedFieldValueByMap(issue.fields, fieldMap, ['Ticket Used']) || 0),
+                totalTicket: Number(extractNamedFieldValueByMap(issue.fields, fieldMap, ['Total Ticket']) || 0),
+                remainingTicket: Number(extractNamedFieldValueByMap(issue.fields, fieldMap, ['Remaining Ticket']) || 0),
                 timeSpentSeconds: Number(issue.fields?.timespent || 0),
                 comments: Array.isArray(issue.fields?.comment?.comments)
                     ? issue.fields.comment.comments.map((comment) => ({
