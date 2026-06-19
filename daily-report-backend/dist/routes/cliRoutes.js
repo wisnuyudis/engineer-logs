@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const cliAuthMiddleware_1 = require("../middlewares/cliAuthMiddleware");
+const cliController_1 = require("../controllers/cliController");
+const router = (0, express_1.Router)();
+router.post('/generate-link', authMiddleware_1.authenticateToken, cliController_1.generateCliLinkToken);
+router.get('/status', authMiddleware_1.authenticateToken, cliController_1.getCliStatus);
+router.post('/auth', cliController_1.exchangeCliLinkToken);
+router.use(cliAuthMiddleware_1.authenticateCliRequest);
+router.get('/me', cliController_1.getCliMe);
+router.get('/categories', cliController_1.getCliCategories);
+router.get('/activities', cliController_1.getCliActivities);
+router.post('/activities', cliController_1.createCliActivity);
+exports.default = router;

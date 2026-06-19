@@ -354,7 +354,7 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
                   <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:14 }}>
                     <Detail label="User" value={a.user} />
                     <Detail label="Kategori" value={def.label || a.actKey} />
-                    <Detail label="Sumber" value={isSynced ? 'Sinkron Jira' : a.source === 'telegram' ? 'Telegram Bot' : 'Manual App'} />
+                    <Detail label="Sumber" value={isSynced ? 'Sinkron Jira' : a.source === 'telegram' ? 'Telegram Bot' : a.source === 'cli' ? 'CLI' : 'Manual App'} />
                     <Detail label="Topik / Judul" value={a.topic} />
                     <Detail label="Ticket ID" value={a.ticketId} mono />
                     <Detail label="Ticket Title" value={a.ticketTitle} />

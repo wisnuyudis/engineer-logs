@@ -113,7 +113,7 @@ const buildLatestActivityMessage = async (userId, userName) => {
     const activities = await prisma.activity.findMany({
         where: {
             userId,
-            source: { in: ['app', 'telegram'] },
+            source: { in: ['app', 'telegram', 'cli'] },
         },
         orderBy: { createdAt: 'desc' },
         take: 5,
@@ -127,7 +127,7 @@ const buildLatestActivityMessage = async (userId, userName) => {
         },
     });
     if (!activities.length) {
-        return "Belum ada activity manual/app yang tercatat.";
+        return "Belum ada activity manual/app/cli yang tercatat.";
     }
     return [
         `<b>5 Activity Terakhir</b>`,

@@ -86,7 +86,7 @@ const getActivities = async (req, res) => {
             whereClause.source = 'jira';
         }
         else if (sourceGroup === 'manual') {
-            whereClause.source = { in: ['app', 'telegram'] };
+            whereClause.source = { in: ['app', 'telegram', 'cli'] };
         }
         else if (source && source !== 'all') {
             whereClause.source = source;

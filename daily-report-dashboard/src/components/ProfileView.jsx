@@ -149,6 +149,7 @@ export function ProfileView({ user, activities, onUpdate }) {
           </Card>
           <JiraIntegrator />
           <TelegramIntegrator />
+          <CliIntegrator />
         </div>
       </div>
     </div>
@@ -305,6 +306,68 @@ function TelegramIntegrator() {
             <Btn v="primary" onClick={generateLink} disabled={busy}>{busy ? "Memproses..." : "Tautkan ke Telegram →"}</Btn>
           )}
         </>
+      )}
+    </Card>
+  );
+}
+
+function CliIntegrator() {
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const { data: status, refetch } = useQuery({
+    queryKey: ['cliStatus'],
+    queryFn: async () => {
+      const { data } = await api.get('/cli/status');
+      return data;
+    }
+  });
+
+  const generateLink = async () => {
+    setBusy(true); setErr("");
+    try {
+      const { data } = await api.post('/cli/generate-link');
+      setToken(data.token);
+      refetch();
+    } catch (e) {
+      setErr(e.response?.data?.error || "Gagal membuat token CLI");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isLinked = status?.isLinked;
+  const rawApiRoot = String(api.defaults.baseURL || `${window.location.origin}/api`).replace(/\/api\/?$/, '');
+  const apiRoot = rawApiRoot.startsWith('http') ? rawApiRoot : `${window.location.origin}${rawApiRoot}`;
+  const command = token ? `elog auth --base-url ${apiRoot} --token ${token}` : "";
+
+  return (
+    <Card p={22} style={{ marginTop: 14 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+        <div style={{ width:28, height:28, borderRadius:"50%", background:T.surfaceHi, color:T.teal, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, fontFamily:"monospace", fontWeight:800 }}>$</div>
+        <div style={{ fontSize:15, fontWeight:700, color:T.textPri }}>EngineerLog CLI</div>
+        {isLinked && <div style={{ marginLeft:"auto", fontSize:11, color:T.green, background:T.greenLo, padding:"4px 10px", borderRadius:20, fontWeight:700 }}>✓ Terhubung</div>}
+      </div>
+
+      <p style={{ fontSize:12, color:T.textMute, margin:"0 0 16px", lineHeight:1.5 }}>
+        Sambungkan binary CLI agar bisa menambah dan mengambil activity log dari terminal dengan request bertanda tangan RSA-2048.
+      </p>
+
+      {err && <div style={{ background:T.redLo, color:T.red, fontSize:12, padding:"8px 12px", borderRadius:8, marginBottom:10 }}>{err}</div>}
+
+      {isLinked && !token ? (
+        <div style={{ background:T.surfaceHi, border:`1px solid ${T.border}`, borderRadius:8, padding:14, fontSize:13 }}>
+          <div style={{ color:T.textPri, fontWeight:700, marginBottom:4 }}>CLI sudah tertaut.</div>
+          <div style={{ color:T.textMute, fontFamily:"monospace", fontSize:11, overflow:"hidden", textOverflow:"ellipsis" }}>{status?.fingerprint || "Key fingerprint tidak tersedia"}</div>
+        </div>
+      ) : token ? (
+        <div style={{ background:T.surfaceHi, border:`1px solid ${T.border}`, borderRadius:8, padding:14 }}>
+          <div style={{ fontSize:11, color:T.teal, fontWeight:700, marginBottom:8 }}>JALANKAN DI TERMINAL</div>
+          <div style={{ fontSize:12, color:T.textPri, fontFamily:"monospace", lineHeight:1.5, wordBreak:"break-all", background:T.bg, border:`1px solid ${T.border}`, borderRadius:7, padding:10 }}>{command}</div>
+        </div>
+      ) : (
+        <Btn v="primary" onClick={generateLink} disabled={busy}>{busy ? "Memproses..." : "Generate Token CLI →"}</Btn>
       )}
     </Card>
   );

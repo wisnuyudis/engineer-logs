@@ -105,7 +105,7 @@ export const getActivities = async (req: AuthRequest, res: Response) => {
     if (sourceGroup === 'synced') {
       whereClause.source = 'jira';
     } else if (sourceGroup === 'manual') {
-      whereClause.source = { in: ['app', 'telegram'] };
+      whereClause.source = { in: ['app', 'telegram', 'cli'] };
     } else if (source && source !== 'all') {
       whereClause.source = source;
     }

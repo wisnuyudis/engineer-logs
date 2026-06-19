@@ -12,6 +12,7 @@ const activationRoutes_1 = __importDefault(require("./routes/activationRoutes"))
 const activityRoutes_1 = __importDefault(require("./routes/activityRoutes"));
 const dashboardRoutes_1 = __importDefault(require("./routes/dashboardRoutes"));
 const telegramRoutes_1 = __importDefault(require("./routes/telegramRoutes"));
+const cliRoutes_1 = __importDefault(require("./routes/cliRoutes"));
 const taxonomyRoutes_1 = __importDefault(require("./routes/taxonomyRoutes"));
 const jiraRoutes_1 = __importDefault(require("./routes/jiraRoutes"));
 const kpiRoutes_1 = __importDefault(require("./routes/kpiRoutes"));
@@ -74,6 +75,7 @@ app.use('/api/activate', activationRoutes_1.default);
 app.use('/api/activities', activityRoutes_1.default);
 app.use('/api/dashboard', dashboardRoutes_1.default);
 app.use('/api/telegram', telegramRoutes_1.default);
+app.use('/api/cli', cliRoutes_1.default);
 app.use('/api/taxonomy', taxonomyRoutes_1.default);
 app.use('/api/jira', jiraRoutes_1.default);
 app.use('/api/kpi', kpiRoutes_1.default);

@@ -140,6 +140,45 @@ Fitur bot:
 - `/status ISSUEKEY` untuk cek cepat status Jira
 - reminder otomatis untuk due H-3, H-1, dan overdue
 
+## CLI Activity Log
+
+Repo ini punya project binary CLI terpisah di `engineerlog-cli/`. CLI tidak mengakses database langsung. Pairing awal mirip Telegram: user membuat token dari web profile, lalu CLI menukar token itu dengan public key RSA-2048. Setelah linked, setiap request CLI ditandatangani dengan RSA-SHA256, memakai timestamp dan nonce anti-replay. Jalur transport production tetap wajib HTTPS; HTTP hanya diizinkan untuk localhost.
+
+Build:
+
+```bash
+cd engineerlog-cli
+cargo build --release
+```
+
+Pairing:
+
+```bash
+# Dari dashboard, generate CLI link token di profile.
+./target/release/elog auth --base-url https://logs.sdt.co.id --token TOKEN_DARI_WEB
+```
+
+Pemakaian:
+
+```bash
+# Tambah activity log
+elog add --act learning --topic "CISSP Module 4" --dur 90m --note "Review access control"
+
+# Tambah activity presales dengan info prospect
+elog add --act demo --topic "Demo HRMS" --dur 1j30m --pr "PT Contoh" --lead LEAD-123 --value 100000000
+
+# Retrieve activity terakhir
+elog list --limit 5
+
+# Lihat kategori yang tersedia untuk user linked
+elog categories
+
+# Cek akun yang sedang linked
+elog whoami
+```
+
+Activity dari CLI disimpan dengan `source = cli`, tetap masuk filter manual di Activity Log, dan ikut muncul di command Telegram `/log_terakhir`.
+
 ## Security Dan Compliance
 
 - JWT access token pendek + refresh token cookie.
@@ -245,6 +284,7 @@ docker compose down
 
 - `daily-report-backend/` - Express API, Telegram bot, Jira integration, Prisma schema
 - `daily-report-dashboard/` - React dashboard
+- `engineerlog-cli/` - Rust binary CLI untuk input dan retrieve activity log
 - `database_erd.md` - ERD dan detail schema database
 - `kpi/` - dokumen referensi KPI
 - `security-sast-report.json` - hasil security review internal
