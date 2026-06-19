@@ -31,6 +31,12 @@ enum Commands {
         base_url: String,
         #[arg(long)]
         token: String,
+        /// PEM CA certificate to trust for this EngineerLog server.
+        #[arg(long)]
+        ca_cert: Option<PathBuf>,
+        /// Disable TLS certificate verification. Use only as a temporary diagnostic workaround.
+        #[arg(long)]
+        insecure_skip_tls_verify: bool,
     },
     /// Show the linked account.
     Whoami,
@@ -93,6 +99,10 @@ struct Config {
     base_url: String,
     key_id: String,
     private_key_pem: String,
+    #[serde(default)]
+    ca_cert_path: Option<String>,
+    #[serde(default)]
+    insecure_skip_tls_verify: bool,
     user: LinkedUser,
 }
 
@@ -114,7 +124,12 @@ struct AuthResponse {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Auth { base_url, token } => auth(base_url, token),
+        Commands::Auth {
+            base_url,
+            token,
+            ca_cert,
+            insecure_skip_tls_verify,
+        } => auth(base_url, token, ca_cert, insecure_skip_tls_verify),
         Commands::Whoami => whoami(),
         Commands::Add {
             act,
@@ -204,15 +219,43 @@ fn normalize_base_url(raw: &str) -> Result<String> {
     Ok(value)
 }
 
-fn auth(base_url: String, token: String) -> Result<()> {
+fn build_client(ca_cert_path: Option<&str>, insecure_skip_tls_verify: bool) -> Result<Client> {
+    let mut builder = Client::builder();
+    if let Some(path) = ca_cert_path {
+        let cert_bytes =
+            fs::read(path).with_context(|| format!("Gagal membaca CA cert: {}", path))?;
+        let cert = reqwest::Certificate::from_pem(&cert_bytes)
+            .with_context(|| format!("CA cert bukan PEM valid: {}", path))?;
+        builder = builder.add_root_certificate(cert);
+    }
+    if insecure_skip_tls_verify {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+    Ok(builder.build()?)
+}
+
+fn auth(
+    base_url: String,
+    token: String,
+    ca_cert: Option<PathBuf>,
+    insecure_skip_tls_verify: bool,
+) -> Result<()> {
     let base_url = normalize_base_url(&base_url)?;
+    if ca_cert.is_some() && insecure_skip_tls_verify {
+        bail!("Pilih salah satu: --ca-cert atau --insecure-skip-tls-verify.");
+    }
+    if insecure_skip_tls_verify {
+        eprintln!("WARNING: TLS certificate verification disabled for this CLI profile.");
+    }
+
     let mut rng = OsRng;
     let private_key = RsaPrivateKey::new(&mut rng, 2048)?;
     let public_key = RsaPublicKey::from(&private_key);
     let private_key_pem = private_key.to_pkcs8_pem(LineEnding::LF)?.to_string();
     let public_key_pem = public_key.to_public_key_pem(LineEnding::LF)?;
 
-    let client = Client::new();
+    let ca_cert_path = ca_cert.map(|path| path.to_string_lossy().to_string());
+    let client = build_client(ca_cert_path.as_deref(), insecure_skip_tls_verify)?;
     let url = format!("{}/api/cli/auth", base_url);
     let response = client
         .post(url)
@@ -233,6 +276,8 @@ fn auth(base_url: String, token: String) -> Result<()> {
         base_url,
         key_id: auth_response.key_id.clone(),
         private_key_pem,
+        ca_cert_path,
+        insecure_skip_tls_verify,
         user: auth_response.user,
     })?;
 
@@ -250,7 +295,10 @@ fn signed_request(
     path_and_query: &str,
     body: Option<String>,
 ) -> Result<RequestBuilder> {
-    let client = Client::new();
+    let client = build_client(
+        config.ca_cert_path.as_deref(),
+        config.insecure_skip_tls_verify,
+    )?;
     let url = format!("{}{}", config.base_url, path_and_query);
     let timestamp = Utc::now().timestamp_millis().to_string();
     let nonce = Uuid::new_v4().to_string();
