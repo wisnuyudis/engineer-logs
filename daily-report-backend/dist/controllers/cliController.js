@@ -20,14 +20,6 @@ const toPositiveInt = (value, fallback, min = 1, max = 100) => {
         return fallback;
     return Math.min(max, Math.max(min, Math.floor(parsed)));
 };
-const validatePublicKey = (publicKeyPem) => {
-    const key = crypto_1.default.createPublicKey(publicKeyPem);
-    const details = key.asymmetricKeyDetails;
-    if (key.asymmetricKeyType !== 'rsa' || details?.modulusLength !== 2048) {
-        throw new Error('Public key harus RSA-2048.');
-    }
-    return key.export({ type: 'spki', format: 'pem' }).toString();
-};
 const canUseCategory = (category, user) => {
     if (!category.isActive)
         return false;
@@ -70,11 +62,10 @@ const getCliStatus = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({
             where: { id: req.user?.userId },
-            select: { cliKeyFingerprint: true, cliLinkedAt: true },
+            select: { cliTokenHash: true, cliLinkedAt: true },
         });
         return res.json({
-            isLinked: !!user?.cliKeyFingerprint,
-            fingerprint: user?.cliKeyFingerprint || null,
+            isLinked: !!user?.cliTokenHash,
             linkedAt: user?.cliLinkedAt || null,
         });
     }
@@ -86,11 +77,9 @@ exports.getCliStatus = getCliStatus;
 const exchangeCliLinkToken = async (req, res) => {
     try {
         const token = String(req.body?.token || '').trim().toUpperCase();
-        const publicKeyPemInput = String(req.body?.publicKeyPem || '').trim();
-        if (!token || !publicKeyPemInput) {
-            return res.status(400).json({ error: 'token dan publicKeyPem wajib diisi' });
+        if (!token) {
+            return res.status(400).json({ error: 'token wajib diisi' });
         }
-        const publicKeyPem = validatePublicKey(publicKeyPemInput);
         const setting = await prisma.setting.findFirst({
             where: { value: token, key: { startsWith: 'clihost_' } },
         });
@@ -98,12 +87,12 @@ const exchangeCliLinkToken = async (req, res) => {
             return res.status(400).json({ error: 'Token CLI tidak valid atau sudah digunakan' });
         }
         const userId = setting.key.replace('clihost_', '');
-        const fingerprint = (0, cliAuthMiddleware_1.publicKeyFingerprint)(publicKeyPem);
+        const cliToken = `elog_${crypto_1.default.randomBytes(32).toString('base64url')}`;
+        const tokenPreview = `${cliToken.slice(0, 10)}...${cliToken.slice(-6)}`;
         const user = await prisma.user.update({
             where: { id: userId },
             data: {
-                cliPublicKeyPem: publicKeyPem,
-                cliKeyFingerprint: fingerprint,
+                cliTokenHash: (0, cliAuthMiddleware_1.hashCliToken)(cliToken),
                 cliLinkedAt: new Date(),
             },
             select: { id: true, email: true, name: true, role: true, team: true },
@@ -114,11 +103,11 @@ const exchangeCliLinkToken = async (req, res) => {
             action: 'cli.link',
             entityType: 'cli_link',
             entityId: userId,
-            after: { fingerprint },
+            after: { tokenIssued: true, tokenPreview },
             userAgent: req.headers['user-agent'] ? String(req.headers['user-agent']) : 'engineerlog-cli',
             ipAddress: req.ip,
         });
-        return res.json({ keyId: fingerprint, user });
+        return res.json({ cliToken, user });
     }
     catch (error) {
         const message = error instanceof Error ? error.message : 'Gagal menghubungkan CLI';

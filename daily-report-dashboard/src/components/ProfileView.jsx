@@ -351,7 +351,7 @@ function CliIntegrator() {
       </div>
 
       <p style={{ fontSize:12, color:T.textMute, margin:"0 0 16px", lineHeight:1.5 }}>
-        Sambungkan binary CLI agar bisa menambah dan mengambil activity log dari terminal dengan request bertanda tangan RSA-2048.
+        Sambungkan binary CLI agar bisa menambah dan mengambil activity log dari terminal dengan token akses pribadi.
       </p>
 
       {err && <div style={{ background:T.redLo, color:T.red, fontSize:12, padding:"8px 12px", borderRadius:8, marginBottom:10 }}>{err}</div>}
@@ -359,7 +359,7 @@ function CliIntegrator() {
       {isLinked && !token ? (
         <div style={{ background:T.surfaceHi, border:`1px solid ${T.border}`, borderRadius:8, padding:14, fontSize:13 }}>
           <div style={{ color:T.textPri, fontWeight:700, marginBottom:4 }}>CLI sudah tertaut.</div>
-          <div style={{ color:T.textMute, fontFamily:"monospace", fontSize:11, overflow:"hidden", textOverflow:"ellipsis" }}>{status?.fingerprint || "Key fingerprint tidak tersedia"}</div>
+          <div style={{ color:T.textMute, fontSize:12 }}>Token CLI aktif. Generate ulang token jika perangkat perlu ditautkan ulang.</div>
         </div>
       ) : token ? (
         <div style={{ background:T.surfaceHi, border:`1px solid ${T.border}`, borderRadius:8, padding:14 }}>

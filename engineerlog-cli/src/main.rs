@@ -1,20 +1,10 @@
 use anyhow::{anyhow, bail, Context, Result};
-use base64::{engine::general_purpose, Engine as _};
-use chrono::Utc;
 use clap::{Parser, Subcommand};
-use rand::rngs::OsRng;
-use reqwest::blocking::{Client, RequestBuilder};
-use reqwest::header::{HeaderMap, HeaderValue};
-use rsa::pkcs1v15::SigningKey;
-use rsa::pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey, LineEnding};
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use signature::{SignatureEncoding, Signer};
 use std::fs;
 use std::path::PathBuf;
-use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(name = "elog", version, about = "EngineerLog command line client")]
@@ -97,8 +87,7 @@ enum Commands {
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
     base_url: String,
-    key_id: String,
-    private_key_pem: String,
+    api_token: String,
     #[serde(default)]
     ca_cert_path: Option<String>,
     #[serde(default)]
@@ -116,8 +105,8 @@ struct LinkedUser {
 
 #[derive(Debug, Deserialize)]
 struct AuthResponse {
-    #[serde(rename = "keyId")]
-    key_id: String,
+    #[serde(rename = "cliToken")]
+    cli_token: String,
     user: LinkedUser,
 }
 
@@ -248,12 +237,6 @@ fn auth(
         eprintln!("WARNING: TLS certificate verification disabled for this CLI profile.");
     }
 
-    let mut rng = OsRng;
-    let private_key = RsaPrivateKey::new(&mut rng, 2048)?;
-    let public_key = RsaPublicKey::from(&private_key);
-    let private_key_pem = private_key.to_pkcs8_pem(LineEnding::LF)?.to_string();
-    let public_key_pem = public_key.to_public_key_pem(LineEnding::LF)?;
-
     let ca_cert_path = ca_cert.map(|path| path.to_string_lossy().to_string());
     let client = build_client(ca_cert_path.as_deref(), insecure_skip_tls_verify)?;
     let url = format!("{}/api/cli/auth", base_url);
@@ -261,7 +244,6 @@ fn auth(
         .post(url)
         .json(&json!({
             "token": token,
-            "publicKeyPem": public_key_pem,
         }))
         .send()?;
 
@@ -272,65 +254,61 @@ fn auth(
     }
 
     let auth_response: AuthResponse = serde_json::from_str(&text)?;
-    save_config(&Config {
-        base_url,
-        key_id: auth_response.key_id.clone(),
-        private_key_pem,
-        ca_cert_path,
-        insecure_skip_tls_verify,
-        user: auth_response.user,
-    })?;
 
     divider();
     println!("EngineerLog CLI linked");
     divider();
-    println!("Key ID : {}", auth_response.key_id);
+    println!(
+        "User   : {} <{}>",
+        auth_response.user.name, auth_response.user.email
+    );
     println!("Config : {}", config_path()?.display());
+
+    save_config(&Config {
+        base_url,
+        api_token: auth_response.cli_token,
+        ca_cert_path,
+        insecure_skip_tls_verify,
+        user: auth_response.user,
+    })?;
     Ok(())
 }
 
-fn signed_request(
+fn request_json(
     config: &Config,
     method: &str,
     path_and_query: &str,
     body: Option<String>,
-) -> Result<RequestBuilder> {
+) -> Result<Value> {
     let client = build_client(
         config.ca_cert_path.as_deref(),
         config.insecure_skip_tls_verify,
     )?;
     let url = format!("{}{}", config.base_url, path_and_query);
-    let timestamp = Utc::now().timestamp_millis().to_string();
-    let nonce = Uuid::new_v4().to_string();
     let body_text = body.unwrap_or_default();
-    let body_hash = hex::encode(Sha256::digest(body_text.as_bytes()));
-    let canonical = [method, path_and_query, &timestamp, &nonce, &body_hash].join("\n");
-
-    let private_key = RsaPrivateKey::from_pkcs8_pem(&config.private_key_pem)?;
-    let signing_key = SigningKey::<Sha256>::new(private_key);
-    let signature = signing_key.sign(canonical.as_bytes());
-    let signature_b64 = general_purpose::STANDARD.encode(signature.to_vec());
-
-    let mut headers = HeaderMap::new();
-    headers.insert("x-elog-key-id", HeaderValue::from_str(&config.key_id)?);
-    headers.insert("x-elog-timestamp", HeaderValue::from_str(&timestamp)?);
-    headers.insert("x-elog-nonce", HeaderValue::from_str(&nonce)?);
-    headers.insert("x-elog-signature", HeaderValue::from_str(&signature_b64)?);
 
     let builder = match method {
         "GET" => client.get(url),
         "POST" => client.post(url),
         _ => bail!("Unsupported method: {}", method),
     }
-    .headers(headers);
+    .bearer_auth(&config.api_token);
 
-    if body_text.is_empty() {
-        Ok(builder)
+    let response = if body_text.is_empty() {
+        builder.send()?
     } else {
-        Ok(builder
+        builder
             .header("content-type", "application/json")
-            .body(body_text))
+            .body(body_text)
+            .send()?
+    };
+
+    let status = response.status();
+    let text = response.text()?;
+    if !status.is_success() {
+        bail!("{}", extract_error(&text));
     }
+    Ok(serde_json::from_str(&text)?)
 }
 
 fn send_json(
@@ -343,13 +321,7 @@ fn send_json(
         Some(value) => Some(serde_json::to_string(&value)?),
         None => None,
     };
-    let response = signed_request(config, method, path_and_query, body_text)?.send()?;
-    let status = response.status();
-    let text = response.text()?;
-    if !status.is_success() {
-        bail!("{}", extract_error(&text));
-    }
-    Ok(serde_json::from_str(&text)?)
+    request_json(config, method, path_and_query, body_text)
 }
 
 fn extract_error(text: &str) -> String {
@@ -370,7 +342,6 @@ fn whoami() -> Result<()> {
     println!("Email : {}", user["email"].as_str().unwrap_or("-"));
     println!("Role  : {}", user["role"].as_str().unwrap_or("-"));
     println!("Team  : {}", user["team"].as_str().unwrap_or("-"));
-    println!("Key   : {}", config.key_id);
     Ok(())
 }
 

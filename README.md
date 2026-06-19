@@ -142,7 +142,7 @@ Fitur bot:
 
 ## CLI Activity Log
 
-Repo ini punya project binary CLI terpisah di `engineerlog-cli/`. CLI tidak mengakses database langsung. Pairing awal mirip Telegram: user membuat token dari web profile, lalu CLI menukar token itu dengan public key RSA-2048. Setelah linked, setiap request CLI ditandatangani dengan RSA-SHA256, memakai timestamp dan nonce anti-replay. Jalur transport production tetap wajib HTTPS; HTTP hanya diizinkan untuk localhost.
+Repo ini punya project binary CLI terpisah di `engineerlog-cli/`. CLI tidak mengakses database langsung. Pairing awal mirip Telegram: user membuat token dari web profile, lalu CLI menukarnya dengan API token pribadi yang disimpan lokal. Jalur transport production tetap wajib HTTPS; HTTP hanya diizinkan untuk localhost.
 
 Build:
 
