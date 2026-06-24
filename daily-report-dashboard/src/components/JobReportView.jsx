@@ -34,6 +34,7 @@ const statusColor = (statusCategoryKey) => {
   if (statusCategoryKey === 'indeterminate') return [T.amber, T.amberLo];
   return [T.textMute, T.surfaceHi];
 };
+const LOGO_URL = 'https://www.sdt.co.id/uploads/config/seraphim-dt-og-1638678842.png';
 
 const pdf = {
   margin: 15,
@@ -54,7 +55,8 @@ const line = (doc, label, value, y, options = {}) => {
   setText(doc, options.size || 10, options.boldLabel);
   doc.text(label, options.labelX || pdf.labelX, y);
   doc.text(':', options.colonX || pdf.colonX, y);
-  doc.text(doc.splitTextToSize(String(value || '-'), options.width || 120), options.valueX || pdf.valueX, y);
+  const text = options.emptyAsBlank && !value ? '' : String(value || '-');
+  if (text) doc.text(doc.splitTextToSize(text, options.width || 120), options.valueX || pdf.valueX, y);
 };
 const section = (doc, title, y) => {
   setText(doc, 10, true);
@@ -64,15 +66,20 @@ const section = (doc, title, y) => {
   return y + 8;
 };
 const checkbox = (doc, x, y, label, checked) => {
-  doc.rect(x, y - 4, 5, 5);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.45);
+  doc.rect(x, y - 4.3, 5.2, 5.2);
   if (checked) {
-    setText(doc, 11, true);
-    doc.text('X', x + 1.2, y + 0.2);
+    doc.setLineWidth(0.55);
+    doc.line(x + 1.1, y - 3.2, x + 4.1, y - 0.2);
+    doc.line(x + 4.1, y - 3.2, x + 1.1, y - 0.2);
   }
   setText(doc, 10);
   doc.text(label, x + 6.5, y);
 };
 const boxedText = (doc, text, x, y, w, h) => {
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.45);
   doc.rect(x, y, w, h);
   setText(doc, 10);
   doc.text(doc.splitTextToSize(String(text || '-'), w - 2), x + 1.5, y + 5);
@@ -83,10 +90,21 @@ const imageSize = (dataUrl) => new Promise((resolve) => {
   img.onerror = () => resolve({ width: 1200, height: 800 });
   img.src = dataUrl;
 });
+const imageUrlToDataUrl = async (url) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Logo unavailable');
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
 
 const generateJobPdf = async (detail, manual) => {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const isChange = String(detail.issueTypeName || '').toLowerCase().includes('change');
+  const isChange = detail.type === 'change' || String(detail.issueTypeName || '').toLowerCase().includes('change');
   const actualAt = detail.actualStartDate || detail.createdAt;
   const engineer = detail.assigneeName || '-';
   const caseStatus = String(detail.statusName || '').toLowerCase();
@@ -94,12 +112,17 @@ const generateJobPdf = async (detail, manual) => {
   const issueRemark = detail.comments?.find((comment) => comment.remark)?.remark || '';
   const worklogRows = detail.worklogs?.length ? detail.worklogs : [{ objective: detail.summary, startedAt: actualAt, remark: '', id: detail.key }];
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(8, 33, 68);
-  doc.text('SERAPHIM', 18, 18);
-  doc.setFontSize(6);
-  doc.text('DIGITAL TECHNOLOGY', 43, 23);
+  try {
+    const logoDataUrl = await imageUrlToDataUrl(LOGO_URL);
+    doc.addImage(logoDataUrl, 'PNG', 16, 12, 46, 18);
+  } catch {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(8, 33, 68);
+    doc.text('SERAPHIM', 18, 18);
+    doc.setFontSize(6);
+    doc.text('DIGITAL TECHNOLOGY', 43, 23);
+  }
   setText(doc, 14, true);
   doc.text('JOB REPORT', 105, 44, { align: 'center' });
 
@@ -111,7 +134,7 @@ const generateJobPdf = async (detail, manual) => {
   line(doc, 'Company Address', detail.customer?.address, y, { width: 95 }); y += 13;
   line(doc, 'Customer PIC', manual.pic, y); y += 6;
   line(doc, 'Contact no', manual.contactNo, y); y += 6;
-  line(doc, 'Email', detail.reporterEmail || detail.reporterName, y); y += 11;
+  line(doc, 'Email', detail.reporterEmail || '-', y); y += 11;
 
   y = section(doc, 'Case Timestamp', y);
   line(doc, 'Engineer Response Time', fmtDateTime(actualAt), y);
@@ -124,7 +147,7 @@ const generateJobPdf = async (detail, manual) => {
   y = section(doc, 'Product Details', y);
   line(doc, 'Product Name', detail.productName, y); y += 6;
   line(doc, 'Product Type', detail.productType || detail.productName, y); y += 6;
-  line(doc, 'Item Category', '', y);
+  line(doc, 'Item Category', '', y, { emptyAsBlank: true });
   checkbox(doc, 68, y, 'Hardware', false);
   checkbox(doc, 92, y, 'Software', false); y += 13;
 
@@ -132,14 +155,16 @@ const generateJobPdf = async (detail, manual) => {
   checkbox(doc, 16, y + 8, 'Preventive', false);
   checkbox(doc, 16, y + 19, 'Corrective', !isChange);
   checkbox(doc, 16, y + 56, 'Enhancement', isChange);
-  line(doc, isChange ? 'Items requested' : 'Issue Description', '', y + 26, { labelX: 23, colonX: 64, valueX: 68 });
+  line(doc, isChange ? 'Items requested' : 'Issue Description', '', y + 26, { labelX: 23, colonX: 64, valueX: 68, emptyAsBlank: true });
   boxedText(doc, detail.summary, 68, y + 21, 124, 20);
   line(doc, 'Severity', detail.priority || '', y + 43);
-  line(doc, 'Ticket used', '', y + 72);
+  line(doc, 'Ticket Used', '', y + 72, { emptyAsBlank: true });
   checkbox(doc, 68, y + 72, 'Yes', Number(detail.ticketUsed || 0) > 0);
   checkbox(doc, 92, y + 72, 'No', Number(detail.ticketUsed || 0) <= 0);
-  setText(doc, 9);
-  doc.text(`Total: ${fmtTicket(detail.totalTicket)} | Used: ${fmtTicket(detail.ticketUsed)} | Remaining: ${fmtTicket(detail.remainingTicket)}`, 68, y + 80);
+  setText(doc, 10);
+  doc.text(`${fmtTicket(detail.ticketUsed)} Ticket`, 116, y + 72);
+  line(doc, 'Ticket Total', fmtTicket(detail.totalTicket), y + 80);
+  line(doc, 'Remaining Ticket', fmtTicket(detail.remainingTicket), y + 86);
 
   doc.addPage();
   y = section(doc, 'Activity Table', 18);
@@ -154,16 +179,15 @@ const generateJobPdf = async (detail, manual) => {
     margin: { left: 16, right: 16 },
   });
   y = Math.max(doc.lastAutoTable.finalY + 28, 112);
-  line(doc, 'Additional Remarks', '', y, { colonX: 58, valueX: 62 });
+  line(doc, 'Additional Remarks', '', y, { colonX: 58, valueX: 62, emptyAsBlank: true });
   boxedText(doc, issueRemark, 62, y - 6, 130, 22);
 
   y += 38;
   y = section(doc, 'Support Signoff', y);
-  line(doc, 'Case Status', '', y + 8, { colonX: 58, valueX: 62 });
+  line(doc, 'Case Status', '', y + 8, { colonX: 58, valueX: 62, emptyAsBlank: true });
   checkbox(doc, 62, y + 8, 'Complete / Solved', statusDone);
   checkbox(doc, 62, y + 15, 'Escalated', !statusDone && caseStatus.includes('escalat'));
   checkbox(doc, 62, y + 22, 'Pending Customer Action', !statusDone && caseStatus.includes('pending'));
-  line(doc, 'Tickets Remaining (if applicable)', fmtTicket(detail.remainingTicket), y + 36, { colonX: 58, valueX: 62 });
   setText(doc, 10);
   doc.text('Customer Name', 42, 220, { align: 'center' });
   doc.text('Engineer Name', 155, 220, { align: 'center' });
@@ -371,7 +395,7 @@ export function JobReportView() {
               <div style={{ fontSize: 11, color: T.textMute, marginBottom: 4 }}>Preview data Jira</div>
               <div style={{ fontSize: 12, color: T.textPri, lineHeight: 1.6 }}>
                 <div>Company: <strong>{detail?.customer?.name || '-'}</strong></div>
-                <div>Reporter: <strong>{detail?.reporterEmail || detail?.reporterName || '-'}</strong></div>
+                <div>Reporter Email: <strong>{detail?.reporterEmail || '-'}</strong></div>
                 <div>Engineer: <strong>{detail?.assigneeName || '-'}</strong></div>
                 <div>Worklog: <strong>{detail?.worklogs?.length || 0}</strong> item</div>
                 <div>Lampiran gambar: <strong>{detail?.imageAttachments?.length || 0}</strong> item</div>

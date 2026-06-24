@@ -615,6 +615,13 @@ const fetchJiraJobReportIssue = async (issueKey) => {
         fieldMap['products'],
         fieldMap['product type'],
     ].filter(Boolean);
+    const reporterEmailFields = [
+        fieldMap['reporter email'],
+        fieldMap['reported email'],
+        fieldMap['customer email'],
+        fieldMap['email'],
+        fieldMap['requester email'],
+    ].filter(Boolean);
     const queryFields = Array.from(new Set([
         'summary',
         'issuetype',
@@ -628,6 +635,7 @@ const fetchJiraJobReportIssue = async (issueKey) => {
         'comment',
         'attachment',
         ...productFields,
+        ...reporterEmailFields,
         fieldMap['actual start'],
         fieldMap['actual start date'],
         fieldMap['start date'],
@@ -675,7 +683,7 @@ const fetchJiraJobReportIssue = async (issueKey) => {
         resolutionDate: fields.resolutiondate || null,
         customerName: extractNamedFieldValueByMap(fields, fieldMap, ['Customer', 'Customer Name', 'Organization', 'Organizations', 'Client', 'Account']),
         reporterName: fields.reporter?.displayName || null,
-        reporterEmail: fields.reporter?.emailAddress || null,
+        reporterEmail: fields.reporter?.emailAddress || extractNamedFieldValueByMap(fields, fieldMap, ['Reporter Email', 'Reported Email', 'Customer Email', 'Email', 'Requester Email']),
         assigneeName: fields.assignee?.displayName || null,
         productName: extractNamedFieldValueByMap(fields, fieldMap, ['Product', 'Product Name', 'Affected Product', 'Products']),
         productType: extractNamedFieldValueByMap(fields, fieldMap, ['Product Type', 'Product', 'Product Name', 'Affected Product', 'Products']),
