@@ -284,7 +284,7 @@ export function CustomersView({ currentUser }) {
                 {jiraSuggestionMutation.isPending ? 'Mengambil...' : 'Muat dari Jira'}
               </Btn>
             </div>
-            <div style={{ position: 'relative' }}>
+            <div>
               <button
                 type="button"
                 onClick={() => setJiraDropdownOpen((value) => !value)}
@@ -294,14 +294,14 @@ export function CustomersView({ currentUser }) {
                 <span style={{ color: T.textMute }}>{jiraDropdownOpen ? '▲' : '▼'}</span>
               </button>
               {jiraDropdownOpen && (
-                <div style={{ position: 'absolute', zIndex: 20, left: 0, right: 0, top: 44, background: T.surface, border: `1px solid ${T.borderHi || T.border}`, borderRadius: 10, boxShadow: '0 18px 48px rgba(0,0,0,.38)', padding: 10 }}>
+                <div style={{ marginTop: 8, background: T.surface, border: `1px solid ${T.borderHi || T.border}`, borderRadius: 10, boxShadow: '0 10px 28px rgba(0,0,0,.28)', padding: 10 }}>
                   <Inp
                     value={jiraSearch}
                     onChange={(event) => setJiraSearch(event.target.value)}
                     placeholder="Ketik nama organization, contoh: Bank Mega"
                     style={{ marginBottom: 8 }}
                   />
-                  <div style={{ maxHeight: 190, overflow: 'auto', display: 'grid', gap: 4 }}>
+                  <div style={{ maxHeight: 150, overflow: 'auto', display: 'grid', gap: 4, paddingRight: 2 }}>
                     {jiraAutocompleteLoading && (
                       <div style={{ padding: '8px', color: T.textMute, fontSize: 12 }}>
                         Mencari organization di Jira...
