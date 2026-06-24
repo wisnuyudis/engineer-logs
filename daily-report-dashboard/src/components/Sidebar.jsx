@@ -48,6 +48,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
       label: 'Setting',
       children: [
         { id: "/taxonomy", icon: "🗂", label: "Master Activity" },
+        { id: "/customers", icon: "▣", label: "Master Customer" },
         { id: "/settings/smtp", icon: "✉", label: "SMTP" },
       ],
     });

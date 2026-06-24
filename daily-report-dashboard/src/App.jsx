@@ -12,6 +12,7 @@ import { NpsReportView } from './components/NpsReportView';
 import { ExecutiveReportView } from './components/ExecutiveReportView';
 import { ProfileView } from './components/ProfileView';
 import { TaxonomyView } from './components/TaxonomyView';
+import { CustomersView } from './components/CustomersView';
 import { KpiManagementView } from './components/KpiManagementView';
 import { KpiNpsView } from './components/KpiNpsView';
 import { AuditTrailView } from './components/AuditTrailView';
@@ -369,6 +370,7 @@ export default function App() {
                   <Route path="/kpi-nps" element={<KpiNpsView currentUser={user} />} />
                   <Route path="/audit" element={<AuditTrailView currentUser={user} />} />
                   <Route path="/taxonomy" element={<TaxonomyView currentUser={user} />} />
+                  <Route path="/customers" element={<CustomersView currentUser={user} />} />
                   <Route path="/settings/smtp" element={<SmtpSettingsView currentUser={user} />} />
                   <Route path="/docs" element={<DocsView currentUser={user} />} />
                   <Route path="*" element={<Navigate to="/" replace />} />

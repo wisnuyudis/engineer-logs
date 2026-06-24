@@ -86,6 +86,7 @@ export function AuditTrailView({ currentUser }) {
               <option value="kpi_scorecard">KPI</option>
               <option value="auth_session">Auth Session</option>
               <option value="master_activity">Master Activity</option>
+              <option value="customer">Customer</option>
               <option value="jira_account">Jira Account</option>
               <option value="telegram_link">Telegram Link</option>
             </select>
