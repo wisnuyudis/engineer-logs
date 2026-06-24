@@ -63,6 +63,12 @@ api.interceptors.response.use(
     const originalRequest = error.config || {};
     const isAuthRoute = typeof originalRequest.url === 'string' && originalRequest.url.includes('/auth/');
 
+    if (status === 503 && error.response?.data?.code === 'MAINTENANCE_MODE') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('maintenance:active', { detail: error.response.data.maintenance }));
+      }
+    }
+
     if (status === 401 && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true;
       try {

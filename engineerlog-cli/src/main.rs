@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -24,9 +24,9 @@ enum Commands {
         /// PEM CA certificate to trust for this EngineerLog server.
         #[arg(long)]
         ca_cert: Option<PathBuf>,
-        /// Disable TLS certificate verification. Use only as a temporary diagnostic workaround.
+        /// Enable strict TLS certificate verification. By default this CLI accepts the current internal certificate setup.
         #[arg(long)]
-        insecure_skip_tls_verify: bool,
+        tls_verify: bool,
     },
     /// Show the linked account.
     Whoami,
@@ -82,6 +82,20 @@ enum Commands {
     },
     /// Show available manual categories.
     Categories,
+    /// Print shell completion script.
+    Completions {
+        #[arg(value_enum)]
+        shell: CompletionShell,
+    },
+    #[command(name = "_complete-act", hide = true)]
+    CompleteAct,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -117,8 +131,8 @@ fn main() -> Result<()> {
             base_url,
             token,
             ca_cert,
-            insecure_skip_tls_verify,
-        } => auth(base_url, token, ca_cert, insecure_skip_tls_verify),
+            tls_verify,
+        } => auth(base_url, token, ca_cert, tls_verify),
         Commands::Whoami => whoami(),
         Commands::Add {
             act,
@@ -163,6 +177,8 @@ fn main() -> Result<()> {
             search,
         } => list_activities(limit, from, to, act, status, source, search),
         Commands::Categories => categories(),
+        Commands::Completions { shell } => completions(shell),
+        Commands::CompleteAct => complete_act(),
     }
 }
 
@@ -172,6 +188,14 @@ fn config_path() -> Result<PathBuf> {
         .join(".engineerlog");
     fs::create_dir_all(&dir)?;
     Ok(dir.join("config.json"))
+}
+
+fn category_cache_path() -> Result<PathBuf> {
+    let dir = dirs::home_dir()
+        .ok_or_else(|| anyhow!("Cannot resolve home directory"))?
+        .join(".engineerlog");
+    fs::create_dir_all(&dir)?;
+    Ok(dir.join("categories.json"))
 }
 
 fn load_config() -> Result<Config> {
@@ -223,19 +247,9 @@ fn build_client(ca_cert_path: Option<&str>, insecure_skip_tls_verify: bool) -> R
     Ok(builder.build()?)
 }
 
-fn auth(
-    base_url: String,
-    token: String,
-    ca_cert: Option<PathBuf>,
-    insecure_skip_tls_verify: bool,
-) -> Result<()> {
+fn auth(base_url: String, token: String, ca_cert: Option<PathBuf>, tls_verify: bool) -> Result<()> {
     let base_url = normalize_base_url(&base_url)?;
-    if ca_cert.is_some() && insecure_skip_tls_verify {
-        bail!("Pilih salah satu: --ca-cert atau --insecure-skip-tls-verify.");
-    }
-    if insecure_skip_tls_verify {
-        eprintln!("WARNING: TLS certificate verification disabled for this CLI profile.");
-    }
+    let insecure_skip_tls_verify = !tls_verify && ca_cert.is_none();
 
     let ca_cert_path = ca_cert.map(|path| path.to_string_lossy().to_string());
     let client = build_client(ca_cert_path.as_deref(), insecure_skip_tls_verify)?;
@@ -255,14 +269,24 @@ fn auth(
 
     let auth_response: AuthResponse = serde_json::from_str(&text)?;
 
-    divider();
-    println!("EngineerLog CLI linked");
-    divider();
-    println!(
-        "User   : {} <{}>",
-        auth_response.user.name, auth_response.user.email
+    render_kv_panel(
+        "EngineerLog CLI linked",
+        &[
+            (
+                "User",
+                format!("{} <{}>", auth_response.user.name, auth_response.user.email),
+            ),
+            ("Config", config_path()?.display().to_string()),
+            (
+                "TLS",
+                if insecure_skip_tls_verify {
+                    "verification disabled".to_string()
+                } else {
+                    "verification enabled".to_string()
+                },
+            ),
+        ],
     );
-    println!("Config : {}", config_path()?.display());
 
     save_config(&Config {
         base_url,
@@ -335,13 +359,15 @@ fn whoami() -> Result<()> {
     let config = load_config()?;
     let response = send_json(&config, "GET", "/api/cli/me", None)?;
     let user = response.get("user").unwrap_or(&Value::Null);
-    divider();
-    println!("EngineerLog Account");
-    divider();
-    println!("Name  : {}", user["name"].as_str().unwrap_or("-"));
-    println!("Email : {}", user["email"].as_str().unwrap_or("-"));
-    println!("Role  : {}", user["role"].as_str().unwrap_or("-"));
-    println!("Team  : {}", user["team"].as_str().unwrap_or("-"));
+    render_kv_panel(
+        "EngineerLog Account",
+        &[
+            ("Name", value_str(user, "name")),
+            ("Email", value_str(user, "email")),
+            ("Role", value_str(user, "role")),
+            ("Team", value_str(user, "team")),
+        ],
+    );
     Ok(())
 }
 
@@ -365,6 +391,7 @@ struct AddInput {
 
 fn add_activity(input: AddInput) -> Result<()> {
     let config = load_config()?;
+    ensure_valid_act(&config, &input.act)?;
     let dur = parse_duration_minutes(&input.dur)?;
     let body = json!({
         "actKey": input.act,
@@ -385,18 +412,20 @@ fn add_activity(input: AddInput) -> Result<()> {
     });
 
     let activity = send_json(&config, "POST", "/api/cli/activities", Some(body))?;
-    divider();
-    println!("Activity saved");
-    divider();
-    println!("ID     : {}", activity["id"].as_str().unwrap_or("-"));
-    println!("Date   : {}", activity["date"].as_str().unwrap_or("-"));
-    println!("Act    : {}", activity["actKey"].as_str().unwrap_or("-"));
-    println!(
-        "Dur    : {}",
-        format_minutes(activity["dur"].as_f64().unwrap_or(0.0))
+    render_kv_panel(
+        "Activity saved",
+        &[
+            ("ID", value_str(&activity, "id")),
+            ("Date", value_str(&activity, "date")),
+            ("Activity", value_str(&activity, "actKey")),
+            (
+                "Duration",
+                format_minutes(activity["dur"].as_f64().unwrap_or(0.0)),
+            ),
+            ("Status", value_str(&activity, "status")),
+            ("Topic", value_str(&activity, "topic")),
+        ],
     );
-    println!("Status : {}", activity["status"].as_str().unwrap_or("-"));
-    println!("Topic  : {}", activity["topic"].as_str().unwrap_or("-"));
     Ok(())
 }
 
@@ -420,57 +449,258 @@ fn list_activities(
     let response = send_json(&config, "GET", &path, None)?;
     let items = response["items"].as_array().cloned().unwrap_or_default();
 
-    divider();
-    println!("Recent Activities");
-    divider();
     if items.is_empty() {
-        println!("No activities found.");
+        render_box("Recent Activities", &["No activities found.".to_string()]);
         return Ok(());
     }
 
-    println!(
-        "{:<12} | {:<16} | {:<8} | {:<11} | {}",
-        "Date", "Activity", "Dur", "Status", "Topic"
+    let rows = items
+        .iter()
+        .map(|item| {
+            vec![
+                value_str(item, "date"),
+                value_str(item, "actKey"),
+                format_minutes(item["dur"].as_f64().unwrap_or(0.0)),
+                value_str(item, "status"),
+                value_str(item, "topic"),
+            ]
+        })
+        .collect::<Vec<_>>();
+    render_table(
+        "Recent Activities",
+        &["Date", "Activity", "Dur", "Status", "Topic"],
+        &rows,
+        &[12, 18, 8, 12, 42],
     );
-    println!("{}", "-".repeat(78));
-    for item in items {
-        println!(
-            "{:<12} | {:<16} | {:<8} | {:<11} | {}",
-            item["date"].as_str().unwrap_or("-"),
-            truncate(item["actKey"].as_str().unwrap_or("-"), 16),
-            format_minutes(item["dur"].as_f64().unwrap_or(0.0)),
-            truncate(item["status"].as_str().unwrap_or("-"), 11),
-            item["topic"].as_str().unwrap_or("-")
-        );
-    }
     Ok(())
 }
 
 fn categories() -> Result<()> {
     let config = load_config()?;
-    let response = send_json(&config, "GET", "/api/cli/categories", None)?;
-    let items = response["items"].as_array().cloned().unwrap_or_default();
+    let items = fetch_categories(&config)?;
 
-    divider();
-    println!("Available Categories");
-    divider();
-    println!(
-        "{:<18} | {:<24} | {:<10} | {}",
-        "Act Key", "Label", "Team", "Description"
-    );
-    println!("{}", "-".repeat(92));
-    for item in items {
-        println!(
-            "{:<18} | {:<24} | {:<10} | {}",
-            item["actKey"].as_str().unwrap_or("-"),
-            truncate(item["label"].as_str().unwrap_or("-"), 24),
-            item["team"].as_str().unwrap_or("-"),
-            item["desc"].as_str().unwrap_or("-")
+    if items.is_empty() {
+        render_box(
+            "Available Categories",
+            &["No categories found.".to_string()],
         );
+        return Ok(());
+    }
+
+    let rows = items
+        .iter()
+        .map(|item| {
+            vec![
+                value_str(item, "actKey"),
+                value_str(item, "label"),
+                value_str(item, "team"),
+                value_str(item, "desc"),
+            ]
+        })
+        .collect::<Vec<_>>();
+    render_table(
+        "Available Categories",
+        &["Act Key", "Label", "Team", "Description"],
+        &rows,
+        &[18, 24, 10, 44],
+    );
+    Ok(())
+}
+
+fn fetch_categories(config: &Config) -> Result<Vec<Value>> {
+    let response = send_json(config, "GET", "/api/cli/categories", None)?;
+    let items = response["items"].as_array().cloned().unwrap_or_default();
+    save_category_cache(&items)?;
+    Ok(items)
+}
+
+fn save_category_cache(items: &[Value]) -> Result<()> {
+    fs::write(category_cache_path()?, serde_json::to_string_pretty(items)?)?;
+    Ok(())
+}
+
+fn load_category_cache() -> Vec<Value> {
+    category_cache_path()
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn ensure_valid_act(config: &Config, act: &str) -> Result<()> {
+    let items = fetch_categories(config)?;
+    if items.iter().any(|item| value_str(item, "actKey") == act) {
+        return Ok(());
+    }
+
+    let needle = act.to_lowercase();
+    let mut suggestions = items
+        .iter()
+        .filter(|item| {
+            let key = value_str(item, "actKey").to_lowercase();
+            let label = value_str(item, "label").to_lowercase();
+            key.contains(&needle)
+                || needle.contains(&key)
+                || label.contains(&needle)
+                || key.starts_with(&needle)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if suggestions.is_empty() {
+        suggestions = items.iter().take(8).cloned().collect();
+    }
+
+    let rows = suggestions
+        .iter()
+        .map(|item| {
+            vec![
+                value_str(item, "actKey"),
+                value_str(item, "label"),
+                value_str(item, "team"),
+            ]
+        })
+        .collect::<Vec<_>>();
+
+    render_table(
+        "Category Suggestions",
+        &["Act Key", "Label", "Team"],
+        &rows,
+        &[20, 28, 12],
+    );
+    bail!(
+        "Kategori activity tidak dikenal: {}. Pilih salah satu act key di atas.",
+        act
+    )
+}
+
+fn complete_act() -> Result<()> {
+    for item in load_category_cache() {
+        let act_key = value_str(&item, "actKey");
+        if act_key != "-" {
+            println!("{}", act_key);
+        }
     }
     Ok(())
 }
 
+fn completions(shell: CompletionShell) -> Result<()> {
+    match shell {
+        CompletionShell::Bash => print!("{}", BASH_COMPLETION),
+        CompletionShell::Zsh => print!("{}", ZSH_COMPLETION),
+        CompletionShell::Fish => print!("{}", FISH_COMPLETION),
+    }
+    Ok(())
+}
+
+fn value_str(value: &Value, key: &str) -> String {
+    value[key]
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("-")
+        .to_string()
+}
+
+fn text_width(value: &str) -> usize {
+    value.chars().count()
+}
+
+fn fit_cell(value: &str, width: usize) -> String {
+    let clipped = truncate(value, width);
+    let padding = width.saturating_sub(text_width(&clipped));
+    format!("{}{}", clipped, " ".repeat(padding))
+}
+
+fn horizontal(left: &str, middle: &str, right: &str, widths: &[usize]) -> String {
+    let mut out = String::from(left);
+    for (index, width) in widths.iter().enumerate() {
+        out.push_str(&"─".repeat(width + 2));
+        out.push_str(if index + 1 == widths.len() {
+            right
+        } else {
+            middle
+        });
+    }
+    out
+}
+
+fn render_box(title: &str, lines: &[String]) {
+    let content_width = lines
+        .iter()
+        .map(|line| text_width(line))
+        .chain([text_width(title)])
+        .max()
+        .unwrap_or(24)
+        .max(24);
+
+    println!("╭{}╮", "─".repeat(content_width + 2));
+    println!(
+        "│ {}{} │",
+        title,
+        " ".repeat(content_width.saturating_sub(text_width(title)))
+    );
+    println!("├{}┤", "─".repeat(content_width + 2));
+    for line in lines {
+        println!(
+            "│ {}{} │",
+            line,
+            " ".repeat(content_width.saturating_sub(text_width(line)))
+        );
+    }
+    println!("╰{}╯", "─".repeat(content_width + 2));
+}
+
+fn render_kv_panel(title: &str, rows: &[(&str, String)]) {
+    let key_width = rows
+        .iter()
+        .map(|(key, _)| text_width(key))
+        .max()
+        .unwrap_or(0)
+        .max(8);
+    let value_width = rows
+        .iter()
+        .map(|(_, value)| text_width(value))
+        .max()
+        .unwrap_or(0)
+        .max(24);
+    let content_width = key_width + value_width + 3;
+
+    println!("╭{}╮", "─".repeat(content_width + 2));
+    println!(
+        "│ {}{} │",
+        title,
+        " ".repeat(content_width.saturating_sub(text_width(title)))
+    );
+    println!("├{}┤", "─".repeat(content_width + 2));
+    for (key, value) in rows {
+        println!(
+            "│ {} │ {}{} │",
+            fit_cell(key, key_width),
+            value,
+            " ".repeat(value_width.saturating_sub(text_width(value)))
+        );
+    }
+    println!("╰{}╯", "─".repeat(content_width + 2));
+}
+
+fn render_table(title: &str, headers: &[&str], rows: &[Vec<String>], widths: &[usize]) {
+    render_box(title, &[format!("{} item(s)", rows.len())]);
+    println!("{}", horizontal("┌", "┬", "┐", widths));
+    print!("│");
+    for (header, width) in headers.iter().zip(widths.iter()) {
+        print!(" {} │", fit_cell(header, *width));
+    }
+    println!();
+    println!("{}", horizontal("├", "┼", "┤", widths));
+    for row in rows {
+        print!("│");
+        for (cell, width) in row.iter().zip(widths.iter()) {
+            print!(" {} │", fit_cell(cell, *width));
+        }
+        println!();
+    }
+    println!("{}", horizontal("└", "┴", "┘", widths));
+}
 fn push_query(params: &mut Vec<String>, key: &str, value: Option<String>) {
     if let Some(value) = value {
         params.push(format!("{}={}", key, url_encode(&value)));
@@ -568,6 +798,123 @@ fn truncate(value: &str, width: usize) -> String {
     out
 }
 
-fn divider() {
-    println!("{}", "=".repeat(72));
+const BASH_COMPLETION: &str = r#"_elog()
+{
+  local cur prev cmd
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+  cmd="${COMP_WORDS[1]}"
+
+  if [[ "$prev" == "--act" ]]; then
+    COMPREPLY=( $(compgen -W "$(elog _complete-act 2>/dev/null)" -- "$cur") )
+    return 0
+  fi
+
+  if [[ "$COMP_CWORD" == "1" ]]; then
+    COMPREPLY=( $(compgen -W "auth whoami add list categories completions" -- "$cur") )
+    return 0
+  fi
+
+  case "$cmd" in
+    auth)
+      COMPREPLY=( $(compgen -W "--base-url --token --ca-cert --tls-verify" -- "$cur") )
+      ;;
+    add)
+      COMPREPLY=( $(compgen -W "--act --topic --dur --date --status --note --start --end --ticket --title --customer --pr --lead --value --nps" -- "$cur") )
+      ;;
+    list)
+      COMPREPLY=( $(compgen -W "--limit --from --to --act --status --source --search" -- "$cur") )
+      ;;
+    completions)
+      COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+      ;;
+  esac
 }
+complete -F _elog elog
+"#;
+
+const ZSH_COMPLETION: &str = r#"#compdef elog
+_elog() {
+  local -a commands opts acts
+  commands=(
+    'auth:pair this machine'
+    'whoami:show linked account'
+    'add:add activity log'
+    'list:show recent activities'
+    'categories:show available categories'
+    'completions:print completion script'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  if [[ ${words[CURRENT-1]} == "--act" ]]; then
+    acts=("${(@f)$(elog _complete-act 2>/dev/null)}")
+    _describe 'activity category' acts
+    return
+  fi
+
+  case ${words[2]} in
+    auth)
+      opts=(--base-url --token --ca-cert --tls-verify)
+      ;;
+    add)
+      opts=(--act --topic --dur --date --status --note --start --end --ticket --title --customer --pr --lead --value --nps)
+      ;;
+    list)
+      opts=(--limit --from --to --act --status --source --search)
+      ;;
+    completions)
+      opts=(bash zsh fish)
+      ;;
+    *)
+      opts=()
+      ;;
+  esac
+  compadd -- $opts
+}
+_elog "$@"
+"#;
+
+const FISH_COMPLETION: &str = r#"complete -c elog -f
+complete -c elog -n "__fish_use_subcommand" -a "auth" -d "Pair this machine"
+complete -c elog -n "__fish_use_subcommand" -a "whoami" -d "Show linked account"
+complete -c elog -n "__fish_use_subcommand" -a "add" -d "Add activity log"
+complete -c elog -n "__fish_use_subcommand" -a "list" -d "Show recent activities"
+complete -c elog -n "__fish_use_subcommand" -a "categories" -d "Show available categories"
+complete -c elog -n "__fish_use_subcommand" -a "completions" -d "Print completion script"
+
+complete -c elog -n "__fish_seen_subcommand_from auth" -l base-url -r
+complete -c elog -n "__fish_seen_subcommand_from auth" -l token -r
+complete -c elog -n "__fish_seen_subcommand_from auth" -l ca-cert -r
+complete -c elog -n "__fish_seen_subcommand_from auth" -l tls-verify
+
+complete -c elog -n "__fish_seen_subcommand_from add" -l act -a "(elog _complete-act 2>/dev/null)" -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l topic -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l dur -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l date -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l status -a "completed in_progress progress canceled" -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l note -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l start -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l end -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l ticket -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l title -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l customer -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l pr -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l lead -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l value -r
+complete -c elog -n "__fish_seen_subcommand_from add" -l nps -r
+
+complete -c elog -n "__fish_seen_subcommand_from list" -l limit -r
+complete -c elog -n "__fish_seen_subcommand_from list" -l from -r
+complete -c elog -n "__fish_seen_subcommand_from list" -l to -r
+complete -c elog -n "__fish_seen_subcommand_from list" -l act -a "(elog _complete-act 2>/dev/null)" -r
+complete -c elog -n "__fish_seen_subcommand_from list" -l status -a "completed in_progress progress canceled" -r
+complete -c elog -n "__fish_seen_subcommand_from list" -l source -a "manual cli app telegram jira all" -r
+complete -c elog -n "__fish_seen_subcommand_from list" -l search -r
+
+complete -c elog -n "__fish_seen_subcommand_from completions" -a "bash zsh fish"
+"#;

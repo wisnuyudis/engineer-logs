@@ -140,6 +140,27 @@ Fitur bot:
 - `/status ISSUEKEY` untuk cek cepat status Jira
 - reminder otomatis untuk due H-3, H-1, dan overdue
 
+## Maintenance Mode
+
+Maintenance mode dipakai sebagai safety switch saat migrasi database, deployment, atau pekerjaan operasional lain. Saat aktif, API akan mengembalikan HTTP `503` dengan kode `MAINTENANCE_MODE` untuk user non-admin, dan dashboard menampilkan halaman maintenance. Admin tetap bisa bypass secara default agar masih dapat memantau dan menonaktifkan mode ini.
+
+Cara pakai dari dashboard:
+
+- Buka `Setting` -> `SMTP`.
+- Gunakan panel `Maintenance Mode` di bagian atas.
+- Ubah pesan maintenance jika perlu, lalu aktifkan/nonaktifkan toggle.
+
+Cara paksa dari environment backend:
+
+```env
+MAINTENANCE_MODE=true
+MAINTENANCE_MESSAGE=EngineerLog sedang maintenance untuk deployment. Silakan coba lagi beberapa saat.
+MAINTENANCE_ADMIN_BYPASS=true
+MAINTENANCE_RETRY_AFTER_SECONDS=300
+```
+
+Jika `MAINTENANCE_MODE=true`, status maintenance tidak bisa diubah dari dashboard sampai environment tersebut dimatikan. Public status dapat dicek lewat `GET /api/maintenance/status`.
+
 ## CLI Activity Log
 
 Repo ini punya project binary CLI terpisah di `engineerlog-cli/`. CLI tidak mengakses database langsung. Pairing awal mirip Telegram: user membuat token dari web profile, lalu CLI menukarnya dengan API token pribadi yang disimpan lokal. Jalur transport production tetap wajib HTTPS; HTTP hanya diizinkan untuk localhost.
@@ -176,6 +197,21 @@ elog categories
 # Cek akun yang sedang linked
 elog whoami
 ```
+
+Autocomplete:
+
+```bash
+# zsh
+source <(elog completions zsh)
+
+# bash
+source <(elog completions bash)
+
+# fish
+elog completions fish > ~/.config/fish/completions/elog.fish
+```
+
+Jalankan `elog categories` sekali setelah auth untuk mengisi cache kategori lokal. Setelah itu `--act` dapat autocomplete dari kategori yang tersedia untuk user linked. Jika `--act` salah, `elog add` akan menampilkan suggestion kategori yang valid.
 
 Activity dari CLI disimpan dengan `source = cli`, tetap masuk filter manual di Activity Log, dan ikut muncul di command Telegram `/log_terakhir`.
 
@@ -227,6 +263,9 @@ JIRA_WORKLOG_POLL_ENABLED=true
 JIRA_WORKLOG_POLL_INTERVAL_MS=300000
 JIRA_WORKLOG_POLL_LOOKBACK_HOURS=168
 AUDIT_RETENTION_DAYS=7
+MAINTENANCE_MODE=false
+MAINTENANCE_ADMIN_BYPASS=true
+MAINTENANCE_RETRY_AFTER_SECONDS=300
 ```
 
 SMTP dapat diatur dari menu aplikasi, tetapi environment tetap dapat dipakai untuk konfigurasi awal jika service membutuhkan fallback.

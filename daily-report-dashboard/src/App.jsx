@@ -17,6 +17,7 @@ import { KpiNpsView } from './components/KpiNpsView';
 import { AuditTrailView } from './components/AuditTrailView';
 import { SmtpSettingsView } from './components/SmtpSettingsView';
 import { DocsView } from './components/DocsView';
+import { MaintenancePage } from './components/MaintenancePage';
 import { TaxonomyContext } from './contexts/TaxonomyContext';
 import { T, FONT, DISPLAY, applyThemeTokens } from './theme/tokens';
 import { RoleBadge, Avi, Btn } from './components/ui/Primitives';
@@ -45,6 +46,7 @@ export default function App() {
   });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 1024 : false));
+  const [maintenanceEvent, setMaintenanceEvent] = useState(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -74,6 +76,27 @@ export default function App() {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    const onMaintenance = (event) => setMaintenanceEvent(event.detail || { enabled: true });
+    window.addEventListener('maintenance:active', onMaintenance);
+    return () => window.removeEventListener('maintenance:active', onMaintenance);
+  }, []);
+
+  const { data: maintenanceStatus, refetch: refetchMaintenance } = useQuery({
+    queryKey: ['maintenance-status'],
+    queryFn: async () => {
+      const res = await api.get('/maintenance/status');
+      return res.data;
+    },
+    refetchInterval: 60000,
+  });
+
+  useEffect(() => {
+    if (maintenanceStatus?.enabled === false) {
+      setMaintenanceEvent(null);
+    }
+  }, [maintenanceStatus]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -181,8 +204,23 @@ export default function App() {
     return dict;
   }, [taxRaw]);
 
+  const activeMaintenance = maintenanceEvent?.enabled ? maintenanceEvent : maintenanceStatus;
+  const adminCanBypassMaintenance = user?.role === 'admin' && activeMaintenance?.adminBypass;
   if (!user) {
     return <LoginPage onLogin={u => { syncUser(u); navigate('/'); }} />;
+  }
+
+  if (activeMaintenance?.enabled && !adminCanBypassMaintenance) {
+    return (
+      <MaintenancePage
+        status={activeMaintenance}
+        currentUser={user}
+        onRetry={() => {
+          setMaintenanceEvent(null);
+          refetchMaintenance();
+        }}
+      />
+    );
   }
 
   // Define optimisic mutation callbacks to replace Prop Drilling useState
@@ -299,6 +337,12 @@ export default function App() {
                 <RoleBadge role={user.role} />
               </div>
             </div>
+
+            {activeMaintenance?.enabled && adminCanBypassMaintenance && (
+              <div style={{ marginBottom:14,padding:'10px 13px',borderRadius:10,border:`1px solid ${T.amber}45`,background:T.amberLo,color:T.amber,fontSize:12,fontWeight:800 }}>
+                Maintenance mode aktif. Admin bypass sedang digunakan.
+              </div>
+            )}
 
             {isLoading ? (
               <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "20px" }}>

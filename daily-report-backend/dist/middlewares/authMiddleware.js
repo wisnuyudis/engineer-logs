@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.requireRole = exports.authenticateToken = void 0;
+exports.requireRole = exports.authenticateToken = exports.getJwtSecret = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const getJwtSecret = () => {
     const value = process.env.JWT_SECRET;
@@ -13,6 +13,7 @@ const getJwtSecret = () => {
         return 'test-access-secret';
     throw new Error('JWT_SECRET must be set');
 };
+exports.getJwtSecret = getJwtSecret;
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
@@ -21,7 +22,7 @@ const authenticateToken = (req, res, next) => {
     const token = authHeader.slice(7).trim();
     if (!token)
         return res.status(401).json({ error: 'Access token missing' });
-    jsonwebtoken_1.default.verify(token, getJwtSecret(), (err, decoded) => {
+    jsonwebtoken_1.default.verify(token, (0, exports.getJwtSecret)(), (err, decoded) => {
         if (err)
             return res.status(401).json({ error: 'Invalid or expired token' });
         const payload = decoded;

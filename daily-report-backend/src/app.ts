@@ -14,6 +14,8 @@ import kpiRoutes from './routes/kpiRoutes';
 import auditRoutes from './routes/auditRoutes';
 import settingsRoutes from './routes/settingsRoutes';
 import reportRoutes from './routes/reportRoutes';
+import { maintenanceMiddleware } from './middlewares/maintenanceMiddleware';
+import { getPublicMaintenanceStatus } from './controllers/maintenanceController';
 import path from 'path';
 
 const app = express();
@@ -71,9 +73,12 @@ app.use(pinoHttp());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });
 });
+app.get('/api/maintenance/status', getPublicMaintenanceStatus);
 
 // Serve static files for attachments
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+app.use(maintenanceMiddleware);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

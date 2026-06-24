@@ -19,6 +19,8 @@ const kpiRoutes_1 = __importDefault(require("./routes/kpiRoutes"));
 const auditRoutes_1 = __importDefault(require("./routes/auditRoutes"));
 const settingsRoutes_1 = __importDefault(require("./routes/settingsRoutes"));
 const reportRoutes_1 = __importDefault(require("./routes/reportRoutes"));
+const maintenanceMiddleware_1 = require("./middlewares/maintenanceMiddleware");
+const maintenanceController_1 = require("./controllers/maintenanceController");
 const path_1 = __importDefault(require("path"));
 const app = (0, express_1.default)();
 const allowedOrigins = new Set([process.env.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://[::1]:5173'].filter(Boolean));
@@ -66,8 +68,10 @@ app.use((0, pino_http_1.default)());
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', time: new Date() });
 });
+app.get('/api/maintenance/status', maintenanceController_1.getPublicMaintenanceStatus);
 // Serve static files for attachments
 app.use('/uploads', express_1.default.static(path_1.default.join(__dirname, '../uploads')));
+app.use(maintenanceMiddleware_1.maintenanceMiddleware);
 app.use('/api/auth', authRoutes_1.default);
 app.use('/api/users', userRoutes_1.default);
 app.use('/api/invite', inviteRoutes_1.default);

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const getJwtSecret = () => {
+export const getJwtSecret = () => {
   const value = process.env.JWT_SECRET;
   if (value) return value;
   if (process.env.NODE_ENV === 'test') return 'test-access-secret';
