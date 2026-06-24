@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getJobReport = exports.getExecutiveReport = void 0;
+exports.getJobReportDetail = exports.getJobReport = exports.getExecutiveReport = void 0;
+const client_1 = require("@prisma/client");
 const jiraService_1 = require("../services/jiraService");
+const prisma = new client_1.PrismaClient();
 const monthKey = (value) => String(value || '').slice(0, 7) || 'unknown';
 const hoursBetween = (start, end) => {
     if (!start || !end)
@@ -78,6 +80,21 @@ const inferCustomerIdentity = (issue) => {
     return 'Unknown Customer';
 };
 const inferCustomer = (issue) => normalizeCustomer(inferCustomerIdentity(issue));
+const resolveCustomerMaster = async (jiraCustomerName) => {
+    const raw = String(jiraCustomerName || '').trim();
+    if (!raw)
+        return null;
+    const normalized = normalizeText(raw);
+    const customers = await prisma.customer.findMany({
+        where: { isActive: true },
+        select: { name: true, address: true, jiraOrganizationNames: true },
+    });
+    return customers.find((customer) => (normalizeText(customer.name) === normalized
+        || (customer.jiraOrganizationNames || []).some((name) => {
+            const org = normalizeText(name);
+            return org === normalized || normalized.includes(org) || org.includes(normalized);
+        }))) || null;
+};
 const issueText = (issue) => (`${issue.summary || ''} ${issue.comments.map((comment) => comment.bodyText).join(' ')}`);
 const classifyWorkTopic = (issue) => {
     const text = normalizeText(issueText(issue));
@@ -356,3 +373,32 @@ const getJobReport = async (req, res) => {
     }
 };
 exports.getJobReport = getJobReport;
+const getJobReportDetail = async (req, res) => {
+    try {
+        const issueKey = String(req.params.issueKey || '').trim().toUpperCase();
+        if (!/^SUP-\d+$/i.test(issueKey)) {
+            return res.status(400).json({ error: 'issueKey SUP tidak valid' });
+        }
+        const issue = await (0, jiraService_1.fetchJiraJobReportIssue)(issueKey);
+        const masterCustomer = await resolveCustomerMaster(issue.customerName);
+        const fallbackCustomer = issue.customerName || 'Unknown Customer';
+        res.json({
+            ...issue,
+            customer: {
+                sourceName: issue.customerName,
+                name: masterCustomer?.name || normalizeCustomer(fallbackCustomer),
+                address: masterCustomer?.address || null,
+                mapped: Boolean(masterCustomer),
+            },
+            type: String(issue.issueTypeName || '').toLowerCase().includes('change') ? 'change' : 'problem',
+            ticketUsed: ticketMetric(issue.ticketUsed),
+            totalTicket: ticketMetric(issue.totalTicket),
+            remainingTicket: ticketMetric(issue.remainingTicket),
+        });
+    }
+    catch (error) {
+        req.log?.error(error, 'Job report detail failed');
+        res.status(500).json({ error: error.message || 'Failed to build job report detail' });
+    }
+};
+exports.getJobReportDetail = getJobReportDetail;

@@ -7,4 +7,5 @@ const router = (0, express_1.Router)();
 router.use(authMiddleware_1.authenticateToken);
 router.get('/executive', reportController_1.getExecutiveReport);
 router.get('/jobs', reportController_1.getJobReport);
+router.get('/jobs/:issueKey', reportController_1.getJobReportDetail);
 exports.default = router;

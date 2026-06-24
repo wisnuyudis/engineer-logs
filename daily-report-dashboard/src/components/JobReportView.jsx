@@ -2,85 +2,201 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { toast } from 'sonner';
 import { T, DISPLAY, MONO } from '../theme/tokens';
-import { Card, Btn, Inp, Lbl, Tag } from './ui/Primitives';
+import { Card, Btn, Inp, Lbl, Modal, MHead, Tag } from './ui/Primitives';
 import api from '../lib/api';
 
 const currentQuarter = () => `Q${Math.floor(new Date().getMonth() / 3) + 1}`;
-const quarterRange = (year, quarter) => {
-  const ranges = {
-    Q1: [`${year}-01-01`, `${year}-03-31`],
-    Q2: [`${year}-04-01`, `${year}-06-30`],
-    Q3: [`${year}-07-01`, `${year}-09-30`],
-    Q4: [`${year}-10-01`, `${year}-12-31`],
-  };
-  return ranges[quarter] || ranges.Q1;
-};
+const quarterRange = (year, quarter) => ({
+  Q1: [`${year}-01-01`, `${year}-03-31`],
+  Q2: [`${year}-04-01`, `${year}-06-30`],
+  Q3: [`${year}-07-01`, `${year}-09-30`],
+  Q4: [`${year}-10-01`, `${year}-12-31`],
+}[quarter] || [`${year}-01-01`, `${year}-03-31`]);
 
+const safeName = (value) => String(value || 'job-report').replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+const fmtTicket = (value) => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
+const fmtDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+};
 const fmtDateTime = (value) => {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return date.toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }).replace('.', ':');
 };
-
-const fmtTicket = (value) => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
-const safeName = (value) => String(value || 'job-report').replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
-
 const statusColor = (statusCategoryKey) => {
   if (statusCategoryKey === 'done') return [T.green, T.greenLo];
   if (statusCategoryKey === 'indeterminate') return [T.amber, T.amberLo];
   return [T.textMute, T.surfaceHi];
 };
 
-const downloadJobPdf = (item) => {
+const pdf = {
+  margin: 15,
+  labelX: 16,
+  colonX: 64,
+  valueX: 68,
+  rightLabelX: 136,
+  rightColonX: 160,
+  rightValueX: 164,
+};
+
+const setText = (doc, size = 10, bold = false) => {
+  doc.setFont('helvetica', bold ? 'bold' : 'normal');
+  doc.setFontSize(size);
+  doc.setTextColor(0, 0, 0);
+};
+const line = (doc, label, value, y, options = {}) => {
+  setText(doc, options.size || 10, options.boldLabel);
+  doc.text(label, options.labelX || pdf.labelX, y);
+  doc.text(':', options.colonX || pdf.colonX, y);
+  doc.text(doc.splitTextToSize(String(value || '-'), options.width || 120), options.valueX || pdf.valueX, y);
+};
+const section = (doc, title, y) => {
+  setText(doc, 10, true);
+  doc.setFont('helvetica', 'bolditalic');
+  doc.text(title, pdf.labelX, y);
+  doc.line(pdf.labelX, y + 1, pdf.labelX + doc.getTextWidth(title), y + 1);
+  return y + 8;
+};
+const checkbox = (doc, x, y, label, checked) => {
+  doc.rect(x, y - 4, 5, 5);
+  if (checked) {
+    setText(doc, 11, true);
+    doc.text('X', x + 1.2, y + 0.2);
+  }
+  setText(doc, 10);
+  doc.text(label, x + 6.5, y);
+};
+const boxedText = (doc, text, x, y, w, h) => {
+  doc.rect(x, y, w, h);
+  setText(doc, 10);
+  doc.text(doc.splitTextToSize(String(text || '-'), w - 2), x + 1.5, y + 5);
+};
+const imageSize = (dataUrl) => new Promise((resolve) => {
+  const img = new Image();
+  img.onload = () => resolve({ width: img.width, height: img.height });
+  img.onerror = () => resolve({ width: 1200, height: 800 });
+  img.src = dataUrl;
+});
+
+const generateJobPdf = async (detail, manual) => {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const margin = 14;
+  const isChange = String(detail.issueTypeName || '').toLowerCase().includes('change');
+  const actualAt = detail.actualStartDate || detail.createdAt;
+  const engineer = detail.assigneeName || '-';
+  const caseStatus = String(detail.statusName || '').toLowerCase();
+  const statusDone = detail.statusCategoryKey === 'done' || caseStatus.includes('done') || caseStatus.includes('resolved') || caseStatus.includes('closed');
+  const issueRemark = detail.comments?.find((comment) => comment.remark)?.remark || '';
+  const worklogRows = detail.worklogs?.length ? detail.worklogs : [{ objective: detail.summary, startedAt: actualAt, remark: '', id: detail.key }];
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Job Report', margin, 18);
+  doc.setFontSize(22);
+  doc.setTextColor(8, 33, 68);
+  doc.text('SERAPHIM', 18, 18);
+  doc.setFontSize(6);
+  doc.text('DIGITAL TECHNOLOGY', 43, 23);
+  setText(doc, 14, true);
+  doc.text('JOB REPORT', 105, 44, { align: 'center' });
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Draft template - detail format will be refined later.', margin, 25);
+  line(doc, 'REPORT DATE', fmtDate(actualAt), 56, { labelX: 136, colonX: 160, valueX: 164 });
+  line(doc, 'Case ID', detail.key, 62, { labelX: 136, colonX: 160, valueX: 164 });
 
+  let y = section(doc, 'General Info', 74);
+  line(doc, 'Company Name', detail.customer?.name, y); y += 6;
+  line(doc, 'Company Address', detail.customer?.address, y, { width: 95 }); y += 13;
+  line(doc, 'Customer PIC', manual.pic, y); y += 6;
+  line(doc, 'Contact no', manual.contactNo, y); y += 6;
+  line(doc, 'Email', detail.reporterEmail || detail.reporterName, y); y += 11;
+
+  y = section(doc, 'Case Timestamp', y);
+  line(doc, 'Engineer Response Time', fmtDateTime(actualAt), y);
+  line(doc, 'Call received by', engineer, y, { labelX: pdf.rightLabelX, colonX: pdf.rightColonX, valueX: pdf.rightValueX }); y += 6;
+  line(doc, 'Support Start Time', fmtDateTime(detail.actualStartDate || actualAt), y);
+  line(doc, 'Call date/time', fmtDateTime(detail.createdAt || actualAt), y, { labelX: pdf.rightLabelX, colonX: pdf.rightColonX, valueX: pdf.rightValueX }); y += 6;
+  line(doc, 'Support End Time', fmtDateTime(detail.actualEndDate || detail.resolutionDate), y);
+  line(doc, 'Engineer Name', engineer, y, { labelX: pdf.rightLabelX, colonX: pdf.rightColonX, valueX: pdf.rightValueX }); y += 12;
+
+  y = section(doc, 'Product Details', y);
+  line(doc, 'Product Name', detail.productName, y); y += 6;
+  line(doc, 'Product Type', detail.productType || detail.productName, y); y += 6;
+  line(doc, 'Item Category', '', y);
+  checkbox(doc, 68, y, 'Hardware', false);
+  checkbox(doc, 92, y, 'Software', false); y += 13;
+
+  y = section(doc, 'Support Activity', y);
+  checkbox(doc, 16, y + 8, 'Preventive', false);
+  checkbox(doc, 16, y + 19, 'Corrective', !isChange);
+  checkbox(doc, 16, y + 56, 'Enhancement', isChange);
+  line(doc, isChange ? 'Items requested' : 'Issue Description', '', y + 26, { labelX: 23, colonX: 64, valueX: 68 });
+  boxedText(doc, detail.summary, 68, y + 21, 124, 20);
+  line(doc, 'Severity', detail.priority || '', y + 43);
+  line(doc, 'Ticket used', '', y + 72);
+  checkbox(doc, 68, y + 72, 'Yes', Number(detail.ticketUsed || 0) > 0);
+  checkbox(doc, 92, y + 72, 'No', Number(detail.ticketUsed || 0) <= 0);
+  setText(doc, 9);
+  doc.text(`Total: ${fmtTicket(detail.totalTicket)} | Used: ${fmtTicket(detail.ticketUsed)} | Remaining: ${fmtTicket(detail.remainingTicket)}`, 68, y + 80);
+
+  doc.addPage();
+  y = section(doc, 'Activity Table', 18);
   autoTable(doc, {
-    startY: 34,
+    startY: y + 2,
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 3 },
-    headStyles: { fillColor: [15, 118, 110], textColor: 255 },
-    head: [['Field', 'Value']],
-    body: [
-      ['SUP Key', item.key || '-'],
-      ['Customer', item.customer || '-'],
-      ['Summary', item.summary || '-'],
-      ['Type', item.issueTypeName || '[System] Change'],
-      ['Status', item.status || '-'],
-      ['Priority', item.priority || '-'],
-      ['Created', fmtDateTime(item.createdAt)],
-      ['Updated', fmtDateTime(item.updatedAt)],
-      ['Actual Start', fmtDateTime(item.actualStartDate)],
-      ['Actual End', fmtDateTime(item.actualEndDate)],
-      ['Ticket Used', fmtTicket(item.ticketUsed)],
-      ['Total Ticket', fmtTicket(item.totalTicket)],
-      ['Remaining Ticket', fmtTicket(item.remainingTicket)],
-    ],
-    columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 38 },
-      1: { cellWidth: 130 },
-    },
+    head: [['No', 'Objective', 'Date & Time', 'Remark']],
+    body: worklogRows.map((row, index) => [index + 1, row.objective || '-', fmtDateTime(row.startedAt), row.remark || '']),
+    styles: { fontSize: 9, cellPadding: 2.2, textColor: 0, lineColor: 0, lineWidth: 0.25 },
+    headStyles: { fillColor: [210, 210, 210], textColor: 0, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 10, halign: 'right' }, 1: { cellWidth: 62 }, 2: { cellWidth: 34 }, 3: { cellWidth: 74 } },
+    margin: { left: 16, right: 16 },
   });
+  y = Math.max(doc.lastAutoTable.finalY + 28, 112);
+  line(doc, 'Additional Remarks', '', y, { colonX: 58, valueX: 62 });
+  boxedText(doc, issueRemark, 62, y - 6, 130, 22);
 
-  doc.save(`job-report-${safeName(item.key)}.pdf`);
+  y += 38;
+  y = section(doc, 'Support Signoff', y);
+  line(doc, 'Case Status', '', y + 8, { colonX: 58, valueX: 62 });
+  checkbox(doc, 62, y + 8, 'Complete / Solved', statusDone);
+  checkbox(doc, 62, y + 15, 'Escalated', !statusDone && caseStatus.includes('escalat'));
+  checkbox(doc, 62, y + 22, 'Pending Customer Action', !statusDone && caseStatus.includes('pending'));
+  line(doc, 'Tickets Remaining (if applicable)', fmtTicket(detail.remainingTicket), y + 36, { colonX: 58, valueX: 62 });
+  setText(doc, 10);
+  doc.text('Customer Name', 42, 220, { align: 'center' });
+  doc.text('Engineer Name', 155, 220, { align: 'center' });
+  doc.line(24, 250, 70, 250);
+  doc.line(128, 250, 190, 250);
+  doc.text(manual.pic || '-', 47, 256, { align: 'center' });
+  doc.text(engineer, 159, 256, { align: 'center' });
+
+  doc.addPage();
+  y = section(doc, 'Lampiran', 18);
+  const images = detail.imageAttachments || [];
+  if (!images.length) {
+    setText(doc, 10);
+    doc.text('Tidak ada lampiran gambar pada tiket Jira.', 16, y + 8);
+  }
+  for (const attachment of images) {
+    const size = await imageSize(attachment.dataUrl);
+    const maxW = 178;
+    const maxH = 105;
+    const ratio = Math.min(maxW / size.width, maxH / size.height);
+    const w = size.width * ratio;
+    const h = size.height * ratio;
+    if (y + h + 16 > 282) {
+      doc.addPage();
+      y = section(doc, 'Lampiran', 18);
+    }
+    setText(doc, 9, true);
+    doc.text(attachment.filename, 16, y);
+    doc.addImage(attachment.dataUrl, attachment.mimeType.includes('png') ? 'PNG' : 'JPEG', 16, y + 4, w, h);
+    y += h + 14;
+  }
+
+  doc.save(`job-report-${safeName(detail.key)}.pdf`);
 };
 
 export function JobReportView() {
@@ -90,6 +206,12 @@ export function JobReportView() {
   const [dateFrom, setDateFrom] = useState(quarterRange(year, quarter)[0]);
   const [dateTo, setDateTo] = useState(quarterRange(year, quarter)[1]);
   const [search, setSearch] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [manual, setManual] = useState({ pic: '', contactNo: '' });
 
   const effectiveRange = useMemo(() => {
     if (mode === 'quarter') return quarterRange(year, quarter);
@@ -99,9 +221,7 @@ export function JobReportView() {
   const { data, isFetching, error, refetch } = useQuery({
     queryKey: ['job-report', effectiveRange[0], effectiveRange[1]],
     queryFn: async () => {
-      const res = await api.get('/reports/jobs', {
-        params: { startDate: effectiveRange[0], endDate: effectiveRange[1] },
-      });
+      const res = await api.get('/reports/jobs', { params: { startDate: effectiveRange[0], endDate: effectiveRange[1] } });
       return res.data;
     },
     enabled: Boolean(effectiveRange[0] && effectiveRange[1]),
@@ -111,10 +231,43 @@ export function JobReportView() {
     const needle = search.trim().toLowerCase();
     const items = data?.items || [];
     if (!needle) return items;
-    return items.filter((item) => (
-      `${item.key || ''} ${item.summary || ''} ${item.customer || ''} ${item.status || ''}`.toLowerCase().includes(needle)
-    ));
+    return items.filter((item) => `${item.key || ''} ${item.summary || ''} ${item.customer || ''} ${item.status || ''}`.toLowerCase().includes(needle));
   }, [data, search]);
+
+  const openPdfModal = async (item) => {
+    setSelectedItem(item);
+    setDetail(null);
+    setManual({ pic: '', contactNo: '' });
+    setModalOpen(true);
+    setLoadingDetail(true);
+    try {
+      const res = await api.get(`/reports/jobs/${item.key}`);
+      setDetail(res.data);
+    } catch (fetchError) {
+      toast.error(fetchError?.response?.data?.error || 'Gagal mengambil detail Jira untuk job report.');
+      setModalOpen(false);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const submitPdf = async (event) => {
+    event.preventDefault();
+    if (!manual.pic.trim()) {
+      toast.error('Customer PIC wajib diisi.');
+      return;
+    }
+    if (!detail) return;
+    setPdfBusy(true);
+    try {
+      await generateJobPdf(detail, manual);
+      setModalOpen(false);
+    } catch {
+      toast.error('Gagal membuat PDF Job Report.');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -124,7 +277,7 @@ export function JobReportView() {
             <div style={{ fontSize: 10, color: T.textMute, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.07em' }}>Reports</div>
             <div style={{ fontSize: 18, fontWeight: 900, color: T.textPri, fontFamily: DISPLAY, marginBottom: 6 }}>Job Report</div>
             <div style={{ fontSize: 12, color: T.textMute, lineHeight: 1.5, maxWidth: 760 }}>
-              List SUP dengan issue type Changes. Tombol PDF di kanan masih memakai draft template sampai detail report final ditentukan.
+              List SUP Changes. PDF otomatis mengambil detail Jira, worklog, remark, mapping customer, dan lampiran gambar.
             </div>
           </div>
           <Tag color={T.teal} lo={T.tealLo}>{data?.totals?.changes || 0} Changes</Tag>
@@ -158,17 +311,11 @@ export function JobReportView() {
               <Inp label="Search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="SUP key, customer, summary..." />
             </>
           )}
-          <Btn v="primary" onClick={() => refetch()} disabled={isFetching} style={{ height: 36 }}>
-            {isFetching ? 'Loading...' : 'Refresh'}
-          </Btn>
+          <Btn v="primary" onClick={() => refetch()} disabled={isFetching} style={{ height: 36 }}>{isFetching ? 'Loading...' : 'Refresh'}</Btn>
         </div>
       </Card>
 
-      {error && (
-        <Card p={14} style={{ borderColor: `${T.red}55`, color: T.red, fontSize: 12 }}>
-          {error?.response?.data?.error || error.message || 'Gagal memuat job report.'}
-        </Card>
-      )}
+      {error && <Card p={14} style={{ borderColor: `${T.red}55`, color: T.red, fontSize: 12 }}>{error?.response?.data?.error || error.message || 'Gagal memuat job report.'}</Card>}
 
       <Card p={0} style={{ overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
@@ -195,16 +342,14 @@ export function JobReportView() {
                       <div style={{ color: T.textPri, fontWeight: 700, marginBottom: 3 }}>{item.summary || '-'}</div>
                       <div style={{ color: T.textMute, fontSize: 11 }}>{item.issueTypeName || '[System] Change'}</div>
                     </td>
-                    <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
-                      <Tag color={color} lo={lo} small>{item.status || '-'}</Tag>
-                    </td>
+                    <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}><Tag color={color} lo={lo} small>{item.status || '-'}</Tag></td>
                     <td style={{ padding: '11px 12px', color: T.textSec, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDateTime(item.createdAt)}</td>
                     <td style={{ padding: '11px 12px', color: T.textSec, fontSize: 12, whiteSpace: 'nowrap' }}>
                       <span style={{ color: T.teal, fontWeight: 800 }}>{fmtTicket(item.ticketUsed)}</span>
                       <span style={{ color: T.textMute }}> / {fmtTicket(item.totalTicket)}</span>
                     </td>
                     <td style={{ padding: '11px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <Btn sz="sm" v="ghost" onClick={() => downloadJobPdf(item)}>[PDF]</Btn>
+                      <Btn sz="sm" v="ghost" onClick={() => openPdfModal(item)} disabled={loadingDetail && selectedItem?.key === item.key}>[PDF]</Btn>
                     </td>
                   </tr>
                 );
@@ -213,6 +358,32 @@ export function JobReportView() {
           </table>
         </div>
       </Card>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} width={520}>
+        <MHead title={`Download Job Report ${selectedItem?.key || ''}`} sub="Isi data manual yang belum tersedia dari Jira." onClose={() => setModalOpen(false)} />
+        {loadingDetail ? (
+          <div style={{ color: T.textMute, fontSize: 13 }}>Mengambil detail Jira...</div>
+        ) : (
+          <form onSubmit={submitPdf} style={{ display: 'grid', gap: 14 }}>
+            <Inp label="Customer PIC" required value={manual.pic} onChange={(event) => setManual((prev) => ({ ...prev, pic: event.target.value }))} placeholder="Nama PIC customer" />
+            <Inp label="Contact no" value={manual.contactNo} onChange={(event) => setManual((prev) => ({ ...prev, contactNo: event.target.value }))} placeholder="Nomor kontak PIC" />
+            <Card p={12} style={{ background: T.surfaceHi, boxShadow: 'none' }}>
+              <div style={{ fontSize: 11, color: T.textMute, marginBottom: 4 }}>Preview data Jira</div>
+              <div style={{ fontSize: 12, color: T.textPri, lineHeight: 1.6 }}>
+                <div>Company: <strong>{detail?.customer?.name || '-'}</strong></div>
+                <div>Reporter: <strong>{detail?.reporterEmail || detail?.reporterName || '-'}</strong></div>
+                <div>Engineer: <strong>{detail?.assigneeName || '-'}</strong></div>
+                <div>Worklog: <strong>{detail?.worklogs?.length || 0}</strong> item</div>
+                <div>Lampiran gambar: <strong>{detail?.imageAttachments?.length || 0}</strong> item</div>
+              </div>
+            </Card>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Btn type="button" v="ghost" onClick={() => setModalOpen(false)}>Batal</Btn>
+              <Btn type="submit" v="teal" disabled={pdfBusy || !detail}>{pdfBusy ? 'Membuat PDF...' : 'Download PDF'}</Btn>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }

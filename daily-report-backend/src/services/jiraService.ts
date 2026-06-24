@@ -17,7 +17,8 @@ const jiraFetch = async (pathname: string, options: RequestInit = {}) => {
 
   let res: Response;
   try {
-    res = await fetch(`${cleanUrl}${pathname}`, {
+    const targetUrl = /^https?:\/\//i.test(pathname) ? pathname : `${cleanUrl}${pathname}`;
+    res = await fetch(targetUrl, {
       method: 'GET',
       ...options,
       headers: {
@@ -678,6 +679,163 @@ export const fetchJiraOrganizationNameSuggestions = async (search = '', maxIssue
     maxIssues,
   });
   return filterOrganizationNames(issues.map((issue) => issue.customerName || ''), search);
+};
+
+const remarkFromText = (value: string | null | undefined) => {
+  const lines = String(value || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const remarkLine = lines.find((line) => /^remark\s*:/i.test(line));
+  return remarkLine ? remarkLine.replace(/^remark\s*:\s*/i, '').trim() : '';
+};
+
+const objectiveFromWorklogText = (value: string | null | undefined, fallback: string | null | undefined) => {
+  const lines = String(value || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const objectiveLines = lines.filter((line) => !/^remark\s*:/i.test(line));
+  return objectiveLines.join(' ') || fallback || '-';
+};
+
+const fetchIssueWorklogs = async (issueKey: string) => {
+  const res = await jiraFetch(`/rest/api/3/issue/${encodeURIComponent(issueKey)}/worklog?maxResults=1000`);
+  if (!res.ok) return [];
+  const data: any = await res.json();
+  return Array.isArray(data?.worklogs) ? data.worklogs : [];
+};
+
+const toAttachmentDataUrl = async (attachment: any) => {
+  const mimeType = String(attachment?.mimeType || '');
+  const size = Number(attachment?.size || 0);
+  if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType) || !attachment?.content || size > 5 * 1024 * 1024) return null;
+
+  const res = await jiraFetch(String(attachment.content));
+  if (!res.ok) return null;
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return {
+    id: String(attachment.id || attachment.filename || ''),
+    filename: String(attachment.filename || 'attachment'),
+    mimeType,
+    dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}`,
+  };
+};
+
+export type JiraJobReportIssue = {
+  key: string;
+  summary: string | null;
+  issueTypeName: string | null;
+  statusName: string | null;
+  statusCategoryKey: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  resolutionDate: string | null;
+  customerName: string | null;
+  reporterName: string | null;
+  reporterEmail: string | null;
+  assigneeName: string | null;
+  productName: string | null;
+  productType: string | null;
+  ticketUsed: number;
+  totalTicket: number;
+  remainingTicket: number;
+  comments: Array<{ id: string; createdAt: string | null; bodyText: string; remark: string }>;
+  worklogs: Array<{ id: string; startedAt: string | null; authorName: string | null; objective: string; remark: string; timeSpentSeconds: number }>;
+  imageAttachments: Array<{ id: string; filename: string; mimeType: string; dataUrl: string }>;
+};
+
+export const fetchJiraJobReportIssue = async (issueKey: string): Promise<JiraJobReportIssue> => {
+  const fieldMap = await loadJiraFieldNameMap();
+  const productFields = [
+    fieldMap['product'],
+    fieldMap['product name'],
+    fieldMap['affected product'],
+    fieldMap['products'],
+    fieldMap['product type'],
+  ].filter(Boolean);
+  const queryFields = Array.from(new Set([
+    'summary',
+    'issuetype',
+    'project',
+    'status',
+    'created',
+    'updated',
+    'resolutiondate',
+    'reporter',
+    'assignee',
+    'comment',
+    'attachment',
+    ...productFields,
+    fieldMap['actual start'],
+    fieldMap['actual start date'],
+    fieldMap['start date'],
+    fieldMap['actual end'],
+    fieldMap['actual end date'],
+    fieldMap['customer'],
+    fieldMap['customer name'],
+    fieldMap['organization'],
+    fieldMap['organizations'],
+    fieldMap['client'],
+    fieldMap['account'],
+    fieldMap['ticket used'],
+    fieldMap['total ticket'],
+    fieldMap['remaining ticket'],
+  ].filter(Boolean)));
+
+  const res = await jiraFetch(`/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=${queryFields.map(encodeURIComponent).join(',')}`);
+  if (!res.ok) {
+    throw new Error(`Gagal mengambil detail issue Jira ${issueKey}. Status: ${res.status}`);
+  }
+  const issue: any = await res.json();
+  const fields = issue.fields || {};
+  const worklogs = await fetchIssueWorklogs(issueKey);
+  const imageAttachments = (await Promise.all(
+    (Array.isArray(fields.attachment) ? fields.attachment : []).slice(0, 12).map(toAttachmentDataUrl)
+  )).filter(Boolean) as JiraJobReportIssue['imageAttachments'];
+
+  const comments = Array.isArray(fields.comment?.comments)
+    ? fields.comment.comments.map((comment: any) => {
+        const bodyText = flattenJiraComment(comment.body);
+        return {
+          id: String(comment.id),
+          createdAt: comment.created || null,
+          bodyText,
+          remark: remarkFromText(bodyText),
+        };
+      })
+    : [];
+
+  return {
+    key: String(issue.key || issueKey),
+    summary: fields.summary || null,
+    issueTypeName: fields.issuetype?.name || null,
+    statusName: fields.status?.name || null,
+    statusCategoryKey: fields.status?.statusCategory?.key || null,
+    createdAt: fields.created || null,
+    updatedAt: fields.updated || null,
+    actualStartDate: extractNamedFieldValueByMap(fields, fieldMap, ['Actual Start', 'Actual Start Date', 'Start date']),
+    actualEndDate: extractNamedFieldValueByMap(fields, fieldMap, ['Actual End', 'Actual End Date']),
+    resolutionDate: fields.resolutiondate || null,
+    customerName: extractNamedFieldValueByMap(fields, fieldMap, ['Customer', 'Customer Name', 'Organization', 'Organizations', 'Client', 'Account']),
+    reporterName: fields.reporter?.displayName || null,
+    reporterEmail: fields.reporter?.emailAddress || null,
+    assigneeName: fields.assignee?.displayName || null,
+    productName: extractNamedFieldValueByMap(fields, fieldMap, ['Product', 'Product Name', 'Affected Product', 'Products']),
+    productType: extractNamedFieldValueByMap(fields, fieldMap, ['Product Type', 'Product', 'Product Name', 'Affected Product', 'Products']),
+    ticketUsed: Number(extractNamedFieldValueByMap(fields, fieldMap, ['Ticket Used']) || 0),
+    totalTicket: Number(extractNamedFieldValueByMap(fields, fieldMap, ['Total Ticket']) || 0),
+    remainingTicket: Number(extractNamedFieldValueByMap(fields, fieldMap, ['Remaining Ticket']) || 0),
+    comments,
+    worklogs: worklogs.map((worklog: any) => {
+      const bodyText = flattenJiraComment(worklog.comment);
+      return {
+        id: String(worklog.id),
+        startedAt: worklog.started || null,
+        authorName: worklog.author?.displayName || null,
+        objective: objectiveFromWorklogText(bodyText, fields.summary),
+        remark: remarkFromText(bodyText),
+        timeSpentSeconds: Number(worklog.timeSpentSeconds || 0),
+      };
+    }),
+    imageAttachments,
+  };
 };
 
 export type KpiNpsJiraCandidate = {

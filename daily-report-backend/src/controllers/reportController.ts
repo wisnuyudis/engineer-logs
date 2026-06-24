@@ -1,6 +1,9 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
-import { searchJiraIssues, JiraSearchIssue } from '../services/jiraService';
+import { PrismaClient } from '@prisma/client';
+import { fetchJiraJobReportIssue, searchJiraIssues, JiraSearchIssue } from '../services/jiraService';
+
+const prisma = new PrismaClient();
 
 const monthKey = (value: string | null | undefined) => String(value || '').slice(0, 7) || 'unknown';
 
@@ -80,6 +83,23 @@ const inferCustomerIdentity = (issue: JiraSearchIssue) => {
 };
 
 const inferCustomer = (issue: JiraSearchIssue) => normalizeCustomer(inferCustomerIdentity(issue));
+
+const resolveCustomerMaster = async (jiraCustomerName: string | null | undefined) => {
+  const raw = String(jiraCustomerName || '').trim();
+  if (!raw) return null;
+  const normalized = normalizeText(raw);
+  const customers = await prisma.customer.findMany({
+    where: { isActive: true },
+    select: { name: true, address: true, jiraOrganizationNames: true },
+  });
+  return customers.find((customer) => (
+    normalizeText(customer.name) === normalized
+    || (customer.jiraOrganizationNames || []).some((name) => {
+      const org = normalizeText(name);
+      return org === normalized || normalized.includes(org) || org.includes(normalized);
+    })
+  )) || null;
+};
 
 const issueText = (issue: JiraSearchIssue) => (
   `${issue.summary || ''} ${issue.comments.map((comment) => comment.bodyText).join(' ')}`
@@ -377,5 +397,35 @@ export const getJobReport = async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     req.log?.error(error, 'Job report failed');
     res.status(500).json({ error: error.message || 'Failed to build job report' });
+  }
+};
+
+export const getJobReportDetail = async (req: AuthRequest, res: Response) => {
+  try {
+    const issueKey = String(req.params.issueKey || '').trim().toUpperCase();
+    if (!/^SUP-\d+$/i.test(issueKey)) {
+      return res.status(400).json({ error: 'issueKey SUP tidak valid' });
+    }
+
+    const issue = await fetchJiraJobReportIssue(issueKey);
+    const masterCustomer = await resolveCustomerMaster(issue.customerName);
+    const fallbackCustomer = issue.customerName || 'Unknown Customer';
+
+    res.json({
+      ...issue,
+      customer: {
+        sourceName: issue.customerName,
+        name: masterCustomer?.name || normalizeCustomer(fallbackCustomer),
+        address: masterCustomer?.address || null,
+        mapped: Boolean(masterCustomer),
+      },
+      type: String(issue.issueTypeName || '').toLowerCase().includes('change') ? 'change' : 'problem',
+      ticketUsed: ticketMetric(issue.ticketUsed),
+      totalTicket: ticketMetric(issue.totalTicket),
+      remainingTicket: ticketMetric(issue.remainingTicket),
+    });
+  } catch (error: any) {
+    req.log?.error(error, 'Job report detail failed');
+    res.status(500).json({ error: error.message || 'Failed to build job report detail' });
   }
 };
