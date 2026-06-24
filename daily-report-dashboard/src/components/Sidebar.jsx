@@ -27,6 +27,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
         ...(canViewKpiReport ? [{ id: "/reports/kpi", icon: "◇", label: "KPI Report" }] : []),
         ...(canViewNpsReport ? [{ id: "/reports/nps", icon: "◎", label: "NPS Report" }] : []),
         ...(isMgr(user.role) ? [{ id: "/reports/executive", icon: "▧", label: "Executive Report" }] : []),
+        ...(isMgr(user.role) ? [{ id: "/reports/jobs", icon: "▥", label: "Job Report" }] : []),
       ],
     },
   ];

@@ -6,4 +6,5 @@ const reportController_1 = require("../controllers/reportController");
 const router = (0, express_1.Router)();
 router.use(authMiddleware_1.authenticateToken);
 router.get('/executive', reportController_1.getExecutiveReport);
+router.get('/jobs', reportController_1.getJobReport);
 exports.default = router;

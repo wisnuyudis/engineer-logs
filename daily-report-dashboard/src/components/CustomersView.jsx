@@ -6,12 +6,21 @@ import { Card, Btn, Inp, Lbl, Modal, MHead, Tag } from './ui/Primitives';
 import { isAdmin } from '../constants/taxonomy';
 import api from '../lib/api';
 
-const EMPTY_FORM = { name: '', address: '', isActive: true };
+const EMPTY_FORM = { name: '', address: '', jiraOrganizationNamesText: '', isActive: true };
+
+const listToText = (value) => Array.isArray(value) ? value.join('\n') : '';
+const textToList = (value) => Array.from(new Set(
+  String(value || '')
+    .split(/\r?\n|,/)
+    .map((item) => item.trim().replace(/\s+/g, ' '))
+    .filter(Boolean)
+)).sort((a, b) => a.localeCompare(b));
 
 const normalizeForm = (form) => ({
   ...(form.id ? { id: form.id } : {}),
   name: String(form.name || '').trim().replace(/\s+/g, ' '),
   address: String(form.address || '').trim(),
+  jiraOrganizationNames: textToList(form.jiraOrganizationNamesText),
   isActive: Boolean(form.isActive),
 });
 
@@ -21,6 +30,7 @@ export function CustomersView({ currentUser }) {
   const [includeInactive, setIncludeInactive] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [jiraSuggestions, setJiraSuggestions] = useState([]);
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['customers', includeInactive],
@@ -35,7 +45,7 @@ export function CustomersView({ currentUser }) {
     const needle = search.trim().toLowerCase();
     if (!needle) return customers;
     return customers.filter((customer) => (
-      `${customer.name || ''} ${customer.address || ''}`.toLowerCase().includes(needle)
+      `${customer.name || ''} ${customer.address || ''} ${(customer.jiraOrganizationNames || []).join(' ')}`.toLowerCase().includes(needle)
     ));
   }, [customers, search]);
 
@@ -68,12 +78,25 @@ export function CustomersView({ currentUser }) {
     onError: (error) => toast.error(error?.response?.data?.error || 'Gagal mengubah status customer.'),
   });
 
+  const jiraSuggestionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.get('/customers/jira-organizations', { params: { search: form.name } });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setJiraSuggestions(data.items || []);
+      toast.success(`${data.items?.length || 0} organization Jira ditemukan.`);
+    },
+    onError: (error) => toast.error(error?.response?.data?.error || 'Gagal mengambil organization dari Jira.'),
+  });
+
   if (!isAdmin(currentUser?.role)) {
     return <div style={{ color: T.red, padding: 20 }}>Akses Ditolak. Hanya untuk Admin.</div>;
   }
 
   const openNew = () => {
     setForm(EMPTY_FORM);
+    setJiraSuggestions([]);
     setModalOpen(true);
   };
 
@@ -82,8 +105,10 @@ export function CustomersView({ currentUser }) {
       id: customer.id,
       name: customer.name || '',
       address: customer.address || '',
+      jiraOrganizationNamesText: listToText(customer.jiraOrganizationNames),
       isActive: Boolean(customer.isActive),
     });
+    setJiraSuggestions([]);
     setModalOpen(true);
   };
 
@@ -95,6 +120,15 @@ export function CustomersView({ currentUser }) {
       return;
     }
     saveMutation.mutate(payload);
+  };
+
+  const addJiraOrganization = (name) => {
+    const current = textToList(form.jiraOrganizationNamesText);
+    if (current.includes(name)) return;
+    setForm((prev) => ({
+      ...prev,
+      jiraOrganizationNamesText: [...current, name].sort((a, b) => a.localeCompare(b)).join('\n'),
+    }));
   };
 
   return (
@@ -159,6 +193,19 @@ export function CustomersView({ currentUser }) {
                 {customer.address || <span style={{ fontStyle: 'italic' }}>Alamat belum diisi.</span>}
               </div>
 
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: T.textMute, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>Jira Organization</div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    {(customer.jiraOrganizationNames || []).slice(0, 4).map((org) => (
+                      <Tag key={org} color={T.teal} lo={T.tealLo} small>{org}</Tag>
+                    ))}
+                    {(customer.jiraOrganizationNames || []).length > 4 && <Tag color={T.textMute} lo={T.surfaceHi} small>+{customer.jiraOrganizationNames.length - 4}</Tag>}
+                    {!(customer.jiraOrganizationNames || []).length && <span style={{ fontSize: 11, color: T.textMute }}>Belum ada organization.</span>}
+                  </div>
+                </div>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <Btn sz="sm" v="ghost" onClick={() => openEdit(customer)}>Edit</Btn>
               </div>
@@ -192,6 +239,42 @@ export function CustomersView({ currentUser }) {
               placeholder="Jl. Contoh No. 10, Jakarta"
               style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: T.surfaceHi, border: `1.5px solid ${T.border}`, color: T.textPri, outline: 'none', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
             />
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+              <Lbl>Jira Organization Mapping</Lbl>
+              <Btn
+                type="button"
+                sz="sm"
+                v="ghost"
+                onClick={() => jiraSuggestionMutation.mutate()}
+                disabled={jiraSuggestionMutation.isPending}
+              >
+                {jiraSuggestionMutation.isPending ? 'Mengambil...' : 'Ambil dari Jira'}
+              </Btn>
+            </div>
+            <textarea
+              value={form.jiraOrganizationNamesText}
+              onChange={(event) => setForm((prev) => ({ ...prev, jiraOrganizationNamesText: event.target.value }))}
+              rows={3}
+              placeholder="Contoh:&#10;Bank Mega - Crowdstrike&#10;Bank Mega - Appsealing"
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: T.surfaceHi, border: `1.5px solid ${T.border}`, color: T.textPri, outline: 'none', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+            />
+            {jiraSuggestions.length > 0 && (
+              <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 88, overflow: 'auto' }}>
+                {jiraSuggestions.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => addJiraOrganization(name)}
+                    style={{ border: `1px solid ${T.teal}40`, background: T.tealLo, color: T.teal, borderRadius: 999, padding: '4px 9px', fontSize: 11, cursor: 'pointer' }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 4, fontSize: 11, color: T.textMute }}>Suggestion diambil dari field Customer/Organization pada issue Jira yang pernah terbaca.</div>
           </div>
           <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, color: T.textSec, cursor: 'pointer' }}>
             <input

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchUpcomingJiraScheduleByAssignee = exports.fetchKpiNpsCandidates = exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklogsByIds = exports.fetchDeletedJiraWorklogChanges = exports.fetchUpdatedJiraWorklogChanges = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
+exports.fetchUpcomingJiraScheduleByAssignee = exports.fetchKpiNpsCandidates = exports.fetchJiraOrganizationNameSuggestions = exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklogsByIds = exports.fetchDeletedJiraWorklogChanges = exports.fetchUpdatedJiraWorklogChanges = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
 const jiraFetch = async (pathname, options = {}) => {
     const baseUrl = process.env.JIRA_BASE_URL;
     const email = process.env.JIRA_USER_EMAIL;
@@ -403,7 +403,7 @@ const fetchCompletedJiraTasksForQuarter = async (assigneeAccountId, startDate, e
     };
 };
 exports.fetchCompletedJiraTasksForQuarter = fetchCompletedJiraTasksForQuarter;
-const searchJiraIssues = async ({ jql, fields }) => {
+const searchJiraIssues = async ({ jql, fields, maxIssues }) => {
     const matchedIssues = [];
     let nextPageToken;
     const maxResults = 50;
@@ -516,6 +516,9 @@ const searchJiraIssues = async ({ jql, fields }) => {
                     : [],
                 linkedIssues: parseJiraIssueLinks(issue.fields?.issuelinks),
             });
+            if (maxIssues && matchedIssues.length >= maxIssues) {
+                return matchedIssues.slice(0, maxIssues);
+            }
         }
         nextPageToken = data.nextPageToken || undefined;
         if (!nextPageToken || data.isLast || issues.length === 0)
@@ -524,6 +527,19 @@ const searchJiraIssues = async ({ jql, fields }) => {
     return matchedIssues;
 };
 exports.searchJiraIssues = searchJiraIssues;
+const fetchJiraOrganizationNameSuggestions = async (search = '', maxIssues = 250) => {
+    const issues = await (0, exports.searchJiraIssues)({
+        jql: 'updated >= startOfDay("-365d") ORDER BY updated DESC',
+        fields: ['summary', 'project', 'updated'],
+        maxIssues,
+    });
+    const needle = search.trim().toLowerCase();
+    return Array.from(new Set(issues
+        .map((issue) => String(issue.customerName || '').trim())
+        .filter(Boolean)
+        .filter((name) => !needle || name.toLowerCase().includes(needle)))).sort((a, b) => a.localeCompare(b)).slice(0, 100);
+};
+exports.fetchJiraOrganizationNameSuggestions = fetchJiraOrganizationNameSuggestions;
 const chunk = (items, size) => {
     const chunks = [];
     for (let index = 0; index < items.length; index += size) {

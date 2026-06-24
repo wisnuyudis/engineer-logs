@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { writeAudit } from '../utils/auditTrail';
+import { fetchJiraOrganizationNameSuggestions } from '../services/jiraService';
 
 const prisma = new PrismaClient();
 
@@ -12,6 +13,16 @@ const toNameKey = (value: string) => value.toLowerCase();
 const normalizeAddress = (value: unknown) => {
   const address = String(value || '').trim();
   return address || null;
+};
+const normalizeStringList = (value: unknown) => {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || '').split(/\r?\n|,/);
+  return Array.from(new Set(
+    items
+      .map((item) => String(item || '').trim().replace(/\s+/g, ' '))
+      .filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b));
 };
 
 export const getCustomers = async (req: AuthRequest, res: Response) => {
@@ -54,6 +65,7 @@ export const createCustomer = async (req: AuthRequest, res: Response) => {
         name,
         normalizedName,
         address: normalizeAddress(req.body?.address),
+        jiraOrganizationNames: normalizeStringList(req.body?.jiraOrganizationNames),
         isActive: req.body?.isActive == null ? true : Boolean(req.body.isActive),
       },
     });
@@ -92,6 +104,7 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
         name,
         normalizedName,
         address: normalizeAddress(req.body?.address),
+        jiraOrganizationNames: normalizeStringList(req.body?.jiraOrganizationNames),
         isActive: req.body?.isActive == null ? current.isActive : Boolean(req.body.isActive),
       },
     });
@@ -134,5 +147,17 @@ export const toggleCustomer = async (req: AuthRequest, res: Response) => {
     res.json(updated);
   } catch {
     res.status(500).json({ error: 'Failed to update customer status' });
+  }
+};
+
+export const getJiraOrganizationSuggestions = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!isAdminRole(req.user?.role)) return res.status(403).json({ error: 'Insufficient permissions' });
+    const search = String(req.query.search || '');
+    const items = await fetchJiraOrganizationNameSuggestions(search);
+    res.json({ items });
+  } catch (error: any) {
+    req.log?.error(error, 'Failed to fetch Jira organization suggestions');
+    res.status(500).json({ error: error?.message || 'Failed to fetch Jira organization suggestions' });
   }
 };

@@ -488,6 +488,7 @@ export type JiraSearchIssue = {
 type SearchJiraIssuesOptions = {
   jql: string;
   fields: string[];
+  maxIssues?: number;
 };
 
 export type UpcomingJiraScheduleItem = {
@@ -502,7 +503,7 @@ export type UpcomingJiraScheduleItem = {
   issueTypeName: string | null;
 };
 
-export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions) => {
+export const searchJiraIssues = async ({ jql, fields, maxIssues }: SearchJiraIssuesOptions) => {
   const matchedIssues: JiraSearchIssue[] = [];
   let nextPageToken: string | undefined;
   const maxResults = 50;
@@ -617,6 +618,9 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
           : [],
         linkedIssues: parseJiraIssueLinks(issue.fields?.issuelinks),
       });
+      if (maxIssues && matchedIssues.length >= maxIssues) {
+        return matchedIssues.slice(0, maxIssues);
+      }
     }
 
     nextPageToken = data.nextPageToken || undefined;
@@ -624,6 +628,21 @@ export const searchJiraIssues = async ({ jql, fields }: SearchJiraIssuesOptions)
   }
 
   return matchedIssues;
+};
+
+export const fetchJiraOrganizationNameSuggestions = async (search = '', maxIssues = 250) => {
+  const issues = await searchJiraIssues({
+    jql: 'updated >= startOfDay("-365d") ORDER BY updated DESC',
+    fields: ['summary', 'project', 'updated'],
+    maxIssues,
+  });
+  const needle = search.trim().toLowerCase();
+  return Array.from(new Set(
+    issues
+      .map((issue) => String(issue.customerName || '').trim())
+      .filter(Boolean)
+      .filter((name) => !needle || name.toLowerCase().includes(needle))
+  )).sort((a, b) => a.localeCompare(b)).slice(0, 100);
 };
 
 export type KpiNpsJiraCandidate = {

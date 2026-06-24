@@ -10,6 +10,7 @@ import { ReportsView } from './components/ReportsView';
 import { KpiReportView } from './components/KpiReportView';
 import { NpsReportView } from './components/NpsReportView';
 import { ExecutiveReportView } from './components/ExecutiveReportView';
+import { JobReportView } from './components/JobReportView';
 import { ProfileView } from './components/ProfileView';
 import { TaxonomyView } from './components/TaxonomyView';
 import { CustomersView } from './components/CustomersView';
@@ -365,6 +366,7 @@ export default function App() {
                   <Route path="/reports/kpi" element={canViewKpiReport ? <KpiReportView activities={acts} members={members} currentUser={user} /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/reports/nps" element={canViewNpsReport ? <NpsReportView currentUser={user} /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/reports/executive" element={canViewExecutiveReport ? <ExecutiveReportView /> : <Navigate to="/reports/activity" replace />} />
+                  <Route path="/reports/jobs" element={canViewExecutiveReport ? <JobReportView /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={syncUser} />} />
                   <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
                   <Route path="/kpi-nps" element={<KpiNpsView currentUser={user} />} />

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getExecutiveReport = void 0;
+exports.getJobReport = exports.getExecutiveReport = void 0;
 const jiraService_1 = require("../services/jiraService");
 const monthKey = (value) => String(value || '').slice(0, 7) || 'unknown';
 const hoursBetween = (start, end) => {
@@ -301,3 +301,58 @@ const getExecutiveReport = async (req, res) => {
     }
 };
 exports.getExecutiveReport = getExecutiveReport;
+const getJobReport = async (req, res) => {
+    try {
+        const startDate = String(req.query.startDate || '');
+        const endDate = String(req.query.endDate || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+            return res.status(400).json({ error: 'startDate dan endDate wajib format YYYY-MM-DD' });
+        }
+        const clauses = [
+            'issuekey ~ "SUP-"',
+            'issuetype = "[System] Change"',
+            `created >= "${startDate}"`,
+            `created <= "${endDate}"`,
+        ];
+        const jql = `${clauses.join(' AND ')} ORDER BY created DESC`;
+        const issues = await (0, jiraService_1.searchJiraIssues)({
+            jql,
+            fields: ['summary', 'issuetype', 'project', 'status', 'priority', 'created', 'updated', 'resolutiondate', 'comment', 'timespent'],
+        });
+        res.json({
+            period: { startDate, endDate },
+            totals: {
+                changes: issues.length,
+                ticketUsed: ticketMetric(issues.reduce((sum, issue) => sum + Number(issue.ticketUsed || 0), 0)),
+                totalTicket: ticketMetric(issues.reduce((sum, issue) => sum + Number(issue.totalTicket || 0), 0)),
+                remainingTicket: ticketMetric(issues.reduce((sum, issue) => sum + Number(issue.remainingTicket || 0), 0)),
+            },
+            items: issues.map((issue) => ({
+                id: issue.id,
+                key: issue.key,
+                summary: issue.summary,
+                customer: inferCustomer(issue),
+                customerIdentity: inferCustomerIdentity(issue),
+                issueTypeName: issue.issueTypeName,
+                status: issue.statusName,
+                statusCategoryKey: issue.statusCategoryKey,
+                priority: issue.priorityName,
+                createdAt: issue.createdAt,
+                updatedAt: issue.updatedAt,
+                actualStartDate: issue.actualStartDate,
+                actualEndDate: issue.actualEndDate,
+                resolutionDate: issue.resolutionDate,
+                resolutionHours: hoursBetween(issue.actualStartDate, issue.actualEndDate),
+                ticketUsed: ticketMetric(issue.ticketUsed),
+                totalTicket: ticketMetric(issue.totalTicket),
+                remainingTicket: ticketMetric(issue.remainingTicket),
+                timeSpentSeconds: issue.timeSpentSeconds,
+            })),
+        });
+    }
+    catch (error) {
+        req.log?.error(error, 'Job report failed');
+        res.status(500).json({ error: error.message || 'Failed to build job report' });
+    }
+};
+exports.getJobReport = getJobReport;

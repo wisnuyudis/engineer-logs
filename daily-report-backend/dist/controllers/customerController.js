@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.toggleCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomers = void 0;
+exports.getJiraOrganizationSuggestions = exports.toggleCustomer = exports.updateCustomer = exports.createCustomer = exports.getCustomers = void 0;
 const client_1 = require("@prisma/client");
 const auditTrail_1 = require("../utils/auditTrail");
+const jiraService_1 = require("../services/jiraService");
 const prisma = new client_1.PrismaClient();
 const isAdminRole = (role) => String(role || '').toLowerCase() === 'admin';
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
@@ -10,6 +11,14 @@ const toNameKey = (value) => value.toLowerCase();
 const normalizeAddress = (value) => {
     const address = String(value || '').trim();
     return address || null;
+};
+const normalizeStringList = (value) => {
+    const items = Array.isArray(value)
+        ? value
+        : String(value || '').split(/\r?\n|,/);
+    return Array.from(new Set(items
+        .map((item) => String(item || '').trim().replace(/\s+/g, ' '))
+        .filter(Boolean))).sort((a, b) => a.localeCompare(b));
 };
 const getCustomers = async (req, res) => {
     try {
@@ -50,6 +59,7 @@ const createCustomer = async (req, res) => {
                 name,
                 normalizedName,
                 address: normalizeAddress(req.body?.address),
+                jiraOrganizationNames: normalizeStringList(req.body?.jiraOrganizationNames),
                 isActive: req.body?.isActive == null ? true : Boolean(req.body.isActive),
             },
         });
@@ -87,6 +97,7 @@ const updateCustomer = async (req, res) => {
                 name,
                 normalizedName,
                 address: normalizeAddress(req.body?.address),
+                jiraOrganizationNames: normalizeStringList(req.body?.jiraOrganizationNames),
                 isActive: req.body?.isActive == null ? current.isActive : Boolean(req.body.isActive),
             },
         });
@@ -130,3 +141,17 @@ const toggleCustomer = async (req, res) => {
     }
 };
 exports.toggleCustomer = toggleCustomer;
+const getJiraOrganizationSuggestions = async (req, res) => {
+    try {
+        if (!isAdminRole(req.user?.role))
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        const search = String(req.query.search || '');
+        const items = await (0, jiraService_1.fetchJiraOrganizationNameSuggestions)(search);
+        res.json({ items });
+    }
+    catch (error) {
+        req.log?.error(error, 'Failed to fetch Jira organization suggestions');
+        res.status(500).json({ error: error?.message || 'Failed to fetch Jira organization suggestions' });
+    }
+};
+exports.getJiraOrganizationSuggestions = getJiraOrganizationSuggestions;
