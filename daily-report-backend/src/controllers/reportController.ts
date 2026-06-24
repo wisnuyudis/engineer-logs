@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { PrismaClient } from '@prisma/client';
-import { fetchJiraJobReportIssue, searchJiraIssues, JiraSearchIssue } from '../services/jiraService';
+import { fetchJiraJobReportChangeIssues, fetchJiraJobReportIssue, searchJiraIssues, JiraSearchIssue } from '../services/jiraService';
 
 const prisma = new PrismaClient();
 
@@ -351,18 +351,7 @@ export const getJobReport = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'startDate dan endDate wajib format YYYY-MM-DD' });
     }
 
-    const clauses = [
-      'issuekey ~ "SUP-"',
-      'issuetype = "[System] Change"',
-      `created >= "${startDate}"`,
-      `created <= "${endDate}"`,
-    ];
-    const jql = `${clauses.join(' AND ')} ORDER BY created DESC`;
-
-    const issues = await searchJiraIssues({
-      jql,
-      fields: ['summary', 'issuetype', 'project', 'status', 'priority', 'created', 'updated', 'resolutiondate', 'comment', 'timespent'],
-    });
+    const issues = await fetchJiraJobReportChangeIssues(startDate, endDate);
 
     res.json({
       period: { startDate, endDate },

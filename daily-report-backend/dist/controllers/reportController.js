@@ -325,17 +325,7 @@ const getJobReport = async (req, res) => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
             return res.status(400).json({ error: 'startDate dan endDate wajib format YYYY-MM-DD' });
         }
-        const clauses = [
-            'issuekey ~ "SUP-"',
-            'issuetype = "[System] Change"',
-            `created >= "${startDate}"`,
-            `created <= "${endDate}"`,
-        ];
-        const jql = `${clauses.join(' AND ')} ORDER BY created DESC`;
-        const issues = await (0, jiraService_1.searchJiraIssues)({
-            jql,
-            fields: ['summary', 'issuetype', 'project', 'status', 'priority', 'created', 'updated', 'resolutiondate', 'comment', 'timespent'],
-        });
+        const issues = await (0, jiraService_1.fetchJiraJobReportChangeIssues)(startDate, endDate);
         res.json({
             period: { startDate, endDate },
             totals: {

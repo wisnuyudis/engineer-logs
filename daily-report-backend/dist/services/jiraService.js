@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchUpcomingJiraScheduleByAssignee = exports.fetchKpiNpsCandidates = exports.fetchJiraJobReportIssue = exports.fetchJiraOrganizationNameSuggestions = exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklogsByIds = exports.fetchDeletedJiraWorklogChanges = exports.fetchUpdatedJiraWorklogChanges = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
+exports.fetchUpcomingJiraScheduleByAssignee = exports.fetchKpiNpsCandidates = exports.fetchJiraJobReportChangeIssues = exports.fetchJiraJobReportIssue = exports.fetchJiraOrganizationNameSuggestions = exports.searchJiraIssues = exports.fetchCompletedJiraTasksForQuarter = exports.fetchJiraWorklogsByIds = exports.fetchDeletedJiraWorklogChanges = exports.fetchUpdatedJiraWorklogChanges = exports.fetchJiraWorklog = exports.fetchJiraIssue = exports.fetchJiraTicket = exports.resolveJiraActKey = void 0;
 const jiraFetch = async (pathname, options = {}) => {
     const baseUrl = process.env.JIRA_BASE_URL;
     const email = process.env.JIRA_USER_EMAIL;
@@ -698,6 +698,23 @@ const fetchJiraJobReportIssue = async (issueKey) => {
     };
 };
 exports.fetchJiraJobReportIssue = fetchJiraJobReportIssue;
+const fetchJiraJobReportChangeIssues = async (startDate, endDate) => {
+    const fieldMap = await loadJiraFieldNameMap();
+    const actualStartField = fieldMap['actual start'] || fieldMap['actual start date'] || fieldMap['start date'];
+    const dateClauses = actualStartField
+        ? [`"${actualStartField}" >= "${startDate}"`, `"${actualStartField}" <= "${endDate}"`]
+        : [`created >= "${startDate}"`, `created <= "${endDate}"`];
+    const clauses = [
+        'issuekey ~ "SUP-"',
+        'issuetype = "[System] Change"',
+        ...dateClauses,
+    ];
+    return (0, exports.searchJiraIssues)({
+        jql: `${clauses.join(' AND ')} ORDER BY ${actualStartField ? `"${actualStartField}"` : 'created'} DESC`,
+        fields: ['summary', 'issuetype', 'project', 'status', 'priority', 'created', 'updated', 'resolutiondate', 'comment', 'timespent'],
+    });
+};
+exports.fetchJiraJobReportChangeIssues = fetchJiraJobReportChangeIssues;
 const chunk = (items, size) => {
     const chunks = [];
     for (let index = 0; index < items.length; index += size) {

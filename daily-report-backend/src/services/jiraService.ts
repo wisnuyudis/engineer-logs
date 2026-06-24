@@ -838,6 +838,24 @@ export const fetchJiraJobReportIssue = async (issueKey: string): Promise<JiraJob
   };
 };
 
+export const fetchJiraJobReportChangeIssues = async (startDate: string, endDate: string) => {
+  const fieldMap = await loadJiraFieldNameMap();
+  const actualStartField = fieldMap['actual start'] || fieldMap['actual start date'] || fieldMap['start date'];
+  const dateClauses = actualStartField
+    ? [`"${actualStartField}" >= "${startDate}"`, `"${actualStartField}" <= "${endDate}"`]
+    : [`created >= "${startDate}"`, `created <= "${endDate}"`];
+  const clauses = [
+    'issuekey ~ "SUP-"',
+    'issuetype = "[System] Change"',
+    ...dateClauses,
+  ];
+
+  return searchJiraIssues({
+    jql: `${clauses.join(' AND ')} ORDER BY ${actualStartField ? `"${actualStartField}"` : 'created'} DESC`,
+    fields: ['summary', 'issuetype', 'project', 'status', 'priority', 'created', 'updated', 'resolutiondate', 'comment', 'timespent'],
+  });
+};
+
 export type KpiNpsJiraCandidate = {
   scope: 'impl_project' | 'op_task' | 'pm_record';
   jiraIssueId: string;
