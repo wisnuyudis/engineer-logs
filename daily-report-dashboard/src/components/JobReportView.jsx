@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { T, DISPLAY, MONO } from '../theme/tokens';
 import { Card, Btn, Inp, Lbl, Modal, MHead, Tag } from './ui/Primitives';
 import api from '../lib/api';
+import sdtLogoUrl from '../assets/sdt-logo.png';
 
 const currentQuarter = () => `Q${Math.floor(new Date().getMonth() / 3) + 1}`;
 const quarterRange = (year, quarter) => ({
@@ -34,7 +35,7 @@ const statusColor = (statusCategoryKey) => {
   if (statusCategoryKey === 'indeterminate') return [T.amber, T.amberLo];
   return [T.textMute, T.surfaceHi];
 };
-const LOGO_URL = 'https://www.sdt.co.id/uploads/config/seraphim-dt-og-1638678842.png';
+const LOGO_URL = sdtLogoUrl;
 
 const pdf = {
   margin: 15,
@@ -77,12 +78,21 @@ const checkbox = (doc, x, y, label, checked) => {
   setText(doc, 10);
   doc.text(label, x + 6.5, y);
 };
-const boxedText = (doc, text, x, y, w, h) => {
+const boxedText = (doc, text, x, y, w, h, options = {}) => {
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.45);
   doc.rect(x, y, w, h);
   setText(doc, 10);
-  doc.text(doc.splitTextToSize(String(text || '-'), w - 2), x + 1.5, y + 5);
+  const value = options.emptyAsBlank && !text ? '' : String(text || '-');
+  if (value) doc.text(doc.splitTextToSize(value, w - 2), x + 1.5, y + 5);
+};
+const supportActivityBox = (doc, title, detailLabel, detailText, checked, y) => {
+  checkbox(doc, 16, y, title, checked);
+  setText(doc, 10);
+  doc.text(detailLabel, 23, y + 10);
+  doc.text(':', 64, y + 10);
+  boxedText(doc, checked ? detailText : '', 68, y + 4, 124, 22, { emptyAsBlank: true });
+  return y + 32;
 };
 const imageSize = (dataUrl) => new Promise((resolve) => {
   const img = new Image();
@@ -152,19 +162,13 @@ const generateJobPdf = async (detail, manual) => {
   checkbox(doc, 92, y, 'Software', false); y += 13;
 
   y = section(doc, 'Support Activity', y);
-  checkbox(doc, 16, y + 8, 'Preventive', false);
-  checkbox(doc, 16, y + 19, 'Corrective', !isChange);
-  checkbox(doc, 16, y + 56, 'Enhancement', isChange);
-  line(doc, isChange ? 'Items requested' : 'Issue Description', '', y + 26, { labelX: 23, colonX: 64, valueX: 68, emptyAsBlank: true });
-  boxedText(doc, detail.summary, 68, y + 21, 124, 20);
-  line(doc, 'Severity', detail.priority || '', y + 43);
-  line(doc, 'Ticket Used', '', y + 72, { emptyAsBlank: true });
-  checkbox(doc, 68, y + 72, 'Yes', Number(detail.ticketUsed || 0) > 0);
-  checkbox(doc, 92, y + 72, 'No', Number(detail.ticketUsed || 0) <= 0);
-  setText(doc, 10);
-  doc.text(`${fmtTicket(detail.ticketUsed)} Ticket`, 116, y + 72);
-  line(doc, 'Ticket Total', fmtTicket(detail.totalTicket), y + 80);
-  line(doc, 'Remaining Ticket', fmtTicket(detail.remainingTicket), y + 86);
+  checkbox(doc, 16, y + 4, 'Preventive', false);
+  y += 16;
+  const correctiveY = y;
+  y = supportActivityBox(doc, 'Corrective', 'Issue Description', detail.summary, !isChange, y);
+  line(doc, 'Severity', !isChange ? detail.priority : '', correctiveY + 31, { labelX: 23, colonX: 64, valueX: 68, emptyAsBlank: true });
+  y += 8;
+  y = supportActivityBox(doc, 'Enhancement', 'Items requested', detail.summary, isChange, y);
 
   doc.addPage();
   y = section(doc, 'Activity Table', 18);
@@ -183,18 +187,24 @@ const generateJobPdf = async (detail, manual) => {
   boxedText(doc, issueRemark, 62, y - 6, 130, 22);
 
   y += 38;
+  y = section(doc, 'Ticket Information', y);
+  line(doc, 'Ticket Used', `${Number(detail.ticketUsed || 0) > 0 ? 'Yes' : 'No'} - ${fmtTicket(detail.ticketUsed)} Ticket`, y); y += 6;
+  line(doc, 'Ticket Total', fmtTicket(detail.totalTicket), y); y += 6;
+  line(doc, 'Remaining Ticket', fmtTicket(detail.remainingTicket), y); y += 12;
+
   y = section(doc, 'Support Signoff', y);
   line(doc, 'Case Status', '', y + 8, { colonX: 58, valueX: 62, emptyAsBlank: true });
   checkbox(doc, 62, y + 8, 'Complete / Solved', statusDone);
   checkbox(doc, 62, y + 15, 'Escalated', !statusDone && caseStatus.includes('escalat'));
   checkbox(doc, 62, y + 22, 'Pending Customer Action', !statusDone && caseStatus.includes('pending'));
   setText(doc, 10);
-  doc.text('Customer Name', 42, 220, { align: 'center' });
-  doc.text('Engineer Name', 155, 220, { align: 'center' });
-  doc.line(24, 250, 70, 250);
-  doc.line(128, 250, 190, 250);
-  doc.text(manual.pic || '-', 47, 256, { align: 'center' });
-  doc.text(engineer, 159, 256, { align: 'center' });
+  const signY = Math.max(y + 58, 220);
+  doc.text('Customer Name', 42, signY, { align: 'center' });
+  doc.text('Engineer Name', 155, signY, { align: 'center' });
+  doc.line(24, signY + 30, 70, signY + 30);
+  doc.line(128, signY + 30, 190, signY + 30);
+  doc.text(manual.pic || '-', 47, signY + 36, { align: 'center' });
+  doc.text(engineer, 159, signY + 36, { align: 'center' });
 
   doc.addPage();
   y = section(doc, 'Lampiran', 18);
