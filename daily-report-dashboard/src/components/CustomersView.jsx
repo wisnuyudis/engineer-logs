@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { T, DISPLAY } from '../theme/tokens';
@@ -6,21 +6,24 @@ import { Card, Btn, Inp, Lbl, Modal, MHead, Tag } from './ui/Primitives';
 import { isAdmin } from '../constants/taxonomy';
 import api from '../lib/api';
 
-const EMPTY_FORM = { name: '', address: '', jiraOrganizationNamesText: '', isActive: true };
+const EMPTY_FORM = { name: '', address: '', jiraOrganizationNames: [], isActive: true };
 
-const listToText = (value) => Array.isArray(value) ? value.join('\n') : '';
 const textToList = (value) => Array.from(new Set(
-  String(value || '')
-    .split(/\r?\n|,/)
-    .map((item) => item.trim().replace(/\s+/g, ' '))
+  (Array.isArray(value) ? value : String(value || '').split(/\r?\n|,/))
+    .map((item) => String(item || '').trim().replace(/\s+/g, ' '))
     .filter(Boolean)
 )).sort((a, b) => a.localeCompare(b));
+const filterList = (items, search) => {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return items;
+  return items.filter((item) => item.toLowerCase().includes(needle));
+};
 
 const normalizeForm = (form) => ({
   ...(form.id ? { id: form.id } : {}),
   name: String(form.name || '').trim().replace(/\s+/g, ' '),
   address: String(form.address || '').trim(),
-  jiraOrganizationNames: textToList(form.jiraOrganizationNamesText),
+  jiraOrganizationNames: textToList(form.jiraOrganizationNames),
   isActive: Boolean(form.isActive),
 });
 
@@ -31,6 +34,9 @@ export function CustomersView({ currentUser }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [jiraSuggestions, setJiraSuggestions] = useState([]);
+  const [jiraSearch, setJiraSearch] = useState('');
+  const [jiraDropdownOpen, setJiraDropdownOpen] = useState(false);
+  const [jiraAutocompleteLoading, setJiraAutocompleteLoading] = useState(false);
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['customers', includeInactive],
@@ -80,7 +86,7 @@ export function CustomersView({ currentUser }) {
 
   const jiraSuggestionMutation = useMutation({
     mutationFn: async () => {
-      const res = await api.get('/customers/jira-organizations', { params: { search: form.name } });
+      const res = await api.get('/customers/jira-organizations');
       return res.data;
     },
     onSuccess: (data) => {
@@ -90,6 +96,23 @@ export function CustomersView({ currentUser }) {
     onError: (error) => toast.error(error?.response?.data?.error || 'Gagal mengambil organization dari Jira.'),
   });
 
+  useEffect(() => {
+    if (!modalOpen || !jiraDropdownOpen || jiraSearch.trim().length < 2) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setJiraAutocompleteLoading(true);
+      api.get('/customers/jira-organizations', { params: { search: jiraSearch.trim() } })
+        .then((res) => {
+          const nextItems = res.data?.items || [];
+          setJiraSuggestions((prev) => Array.from(new Set([...prev, ...nextItems])).sort((a, b) => a.localeCompare(b)));
+        })
+        .catch(() => null)
+        .finally(() => setJiraAutocompleteLoading(false));
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [jiraDropdownOpen, jiraSearch, modalOpen]);
+
   if (!isAdmin(currentUser?.role)) {
     return <div style={{ color: T.red, padding: 20 }}>Akses Ditolak. Hanya untuk Admin.</div>;
   }
@@ -97,6 +120,8 @@ export function CustomersView({ currentUser }) {
   const openNew = () => {
     setForm(EMPTY_FORM);
     setJiraSuggestions([]);
+    setJiraSearch('');
+    setJiraDropdownOpen(false);
     setModalOpen(true);
   };
 
@@ -105,10 +130,12 @@ export function CustomersView({ currentUser }) {
       id: customer.id,
       name: customer.name || '',
       address: customer.address || '',
-      jiraOrganizationNamesText: listToText(customer.jiraOrganizationNames),
+      jiraOrganizationNames: textToList(customer.jiraOrganizationNames),
       isActive: Boolean(customer.isActive),
     });
     setJiraSuggestions([]);
+    setJiraSearch('');
+    setJiraDropdownOpen(false);
     setModalOpen(true);
   };
 
@@ -122,14 +149,18 @@ export function CustomersView({ currentUser }) {
     saveMutation.mutate(payload);
   };
 
-  const addJiraOrganization = (name) => {
-    const current = textToList(form.jiraOrganizationNamesText);
-    if (current.includes(name)) return;
+  const toggleJiraOrganization = (name) => {
+    const current = textToList(form.jiraOrganizationNames);
     setForm((prev) => ({
       ...prev,
-      jiraOrganizationNamesText: [...current, name].sort((a, b) => a.localeCompare(b)).join('\n'),
+      jiraOrganizationNames: current.includes(name)
+        ? current.filter((item) => item !== name)
+        : [...current, name].sort((a, b) => a.localeCompare(b)),
     }));
   };
+
+  const selectedJiraOrganizations = textToList(form.jiraOrganizationNames);
+  const jiraOptions = filterList(Array.from(new Set([...selectedJiraOrganizations, ...jiraSuggestions])).sort((a, b) => a.localeCompare(b)), jiraSearch);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -250,31 +281,69 @@ export function CustomersView({ currentUser }) {
                 onClick={() => jiraSuggestionMutation.mutate()}
                 disabled={jiraSuggestionMutation.isPending}
               >
-                {jiraSuggestionMutation.isPending ? 'Mengambil...' : 'Ambil dari Jira'}
+                {jiraSuggestionMutation.isPending ? 'Mengambil...' : 'Muat dari Jira'}
               </Btn>
             </div>
-            <textarea
-              value={form.jiraOrganizationNamesText}
-              onChange={(event) => setForm((prev) => ({ ...prev, jiraOrganizationNamesText: event.target.value }))}
-              rows={3}
-              placeholder="Contoh:&#10;Bank Mega - Crowdstrike&#10;Bank Mega - Appsealing"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, background: T.surfaceHi, border: `1.5px solid ${T.border}`, color: T.textPri, outline: 'none', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
-            />
-            {jiraSuggestions.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setJiraDropdownOpen((value) => !value)}
+                style={{ width: '100%', minHeight: 38, padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${T.border}`, background: T.surfaceHi, color: selectedJiraOrganizations.length ? T.textPri : T.textMute, fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
+              >
+                <span>{selectedJiraOrganizations.length ? `${selectedJiraOrganizations.length} organization dipilih` : 'Pilih Jira organization...'}</span>
+                <span style={{ color: T.textMute }}>{jiraDropdownOpen ? '▲' : '▼'}</span>
+              </button>
+              {jiraDropdownOpen && (
+                <div style={{ position: 'absolute', zIndex: 20, left: 0, right: 0, top: 44, background: T.surface, border: `1px solid ${T.borderHi || T.border}`, borderRadius: 10, boxShadow: '0 18px 48px rgba(0,0,0,.38)', padding: 10 }}>
+                  <Inp
+                    value={jiraSearch}
+                    onChange={(event) => setJiraSearch(event.target.value)}
+                    placeholder="Ketik nama organization, contoh: Bank Mega"
+                    style={{ marginBottom: 8 }}
+                  />
+                  <div style={{ maxHeight: 190, overflow: 'auto', display: 'grid', gap: 4 }}>
+                    {jiraAutocompleteLoading && (
+                      <div style={{ padding: '8px', color: T.textMute, fontSize: 12 }}>
+                        Mencari organization di Jira...
+                      </div>
+                    )}
+                    {jiraOptions.length > 0 ? jiraOptions.map((name) => {
+                      const checked = selectedJiraOrganizations.includes(name);
+                      return (
+                        <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 8, background: checked ? T.tealLo : 'transparent', color: checked ? T.teal : T.textSec, cursor: 'pointer', fontSize: 12, lineHeight: 1.35 }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleJiraOrganization(name)}
+                          />
+                          <span>{name}</span>
+                        </label>
+                      );
+                    }) : (
+                      <div style={{ padding: '14px 8px', color: T.textMute, fontSize: 12, textAlign: 'center' }}>
+                        {jiraSearch.trim().length >= 2 ? 'Tidak ada organization yang cocok.' : 'Ketik minimal 2 huruf atau klik Muat dari Jira.'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {selectedJiraOrganizations.length > 0 && (
               <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 88, overflow: 'auto' }}>
-                {jiraSuggestions.map((name) => (
+                {selectedJiraOrganizations.map((name) => (
                   <button
                     key={name}
                     type="button"
-                    onClick={() => addJiraOrganization(name)}
+                    onClick={() => toggleJiraOrganization(name)}
                     style={{ border: `1px solid ${T.teal}40`, background: T.tealLo, color: T.teal, borderRadius: 999, padding: '4px 9px', fontSize: 11, cursor: 'pointer' }}
+                    title="Klik untuk menghapus"
                   >
-                    {name}
+                    {name} ×
                   </button>
                 ))}
               </div>
             )}
-            <div style={{ marginTop: 4, fontSize: 11, color: T.textMute }}>Suggestion diambil dari field Customer/Organization pada issue Jira yang pernah terbaca.</div>
+            <div style={{ marginTop: 4, fontSize: 11, color: T.textMute }}>Referensi dropdown diambil dari Jira Organization. Jika endpoint Organization tidak tersedia, sistem fallback ke field Customer/Organization dari issue Jira.</div>
           </div>
           <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, color: T.textSec, cursor: 'pointer' }}>
             <input

@@ -527,17 +527,49 @@ const searchJiraIssues = async ({ jql, fields, maxIssues }) => {
     return matchedIssues;
 };
 exports.searchJiraIssues = searchJiraIssues;
-const fetchJiraOrganizationNameSuggestions = async (search = '', maxIssues = 250) => {
+const filterOrganizationNames = (names, search = '') => {
+    const needle = search.trim().toLowerCase();
+    return Array.from(new Set(names
+        .map((name) => String(name || '').trim())
+        .filter(Boolean)
+        .filter((name) => !needle || name.toLowerCase().includes(needle)))).sort((a, b) => a.localeCompare(b)).slice(0, 150);
+};
+const fetchJiraServiceDeskOrganizationNames = async () => {
+    const names = [];
+    let start = 0;
+    const limit = 100;
+    while (start < 1000) {
+        const res = await jiraFetch(`/rest/servicedeskapi/organization?start=${start}&limit=${limit}`);
+        if (!res.ok) {
+            throw new Error(`Jira Service Management organization endpoint unavailable. Status: ${res.status}`);
+        }
+        const data = await res.json();
+        const values = Array.isArray(data?.values) ? data.values : [];
+        for (const item of values) {
+            if (item?.name)
+                names.push(String(item.name));
+        }
+        if (!values.length || data?.isLastPage)
+            break;
+        start += Number(data?.limit || values.length || limit);
+    }
+    return names;
+};
+const fetchJiraOrganizationNameSuggestions = async (search = '', maxIssues = 1000) => {
+    try {
+        const organizationNames = await fetchJiraServiceDeskOrganizationNames();
+        if (organizationNames.length)
+            return filterOrganizationNames(organizationNames, search);
+    }
+    catch {
+        // Fallback below uses issue fields when Jira Service Management organizations are not available.
+    }
     const issues = await (0, exports.searchJiraIssues)({
-        jql: 'updated >= startOfDay("-365d") ORDER BY updated DESC',
+        jql: 'updated >= startOfDay("-1825d") ORDER BY updated DESC',
         fields: ['summary', 'project', 'updated'],
         maxIssues,
     });
-    const needle = search.trim().toLowerCase();
-    return Array.from(new Set(issues
-        .map((issue) => String(issue.customerName || '').trim())
-        .filter(Boolean)
-        .filter((name) => !needle || name.toLowerCase().includes(needle)))).sort((a, b) => a.localeCompare(b)).slice(0, 100);
+    return filterOrganizationNames(issues.map((issue) => issue.customerName || ''), search);
 };
 exports.fetchJiraOrganizationNameSuggestions = fetchJiraOrganizationNameSuggestions;
 const chunk = (items, size) => {
