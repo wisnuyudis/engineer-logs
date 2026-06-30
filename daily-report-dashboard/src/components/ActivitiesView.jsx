@@ -417,11 +417,11 @@ export function ActivitiesView({ currentUser, members = [], onAdd }) {
         </div>
       )}
 
-      <Modal open={logOpen} onClose={()=>setLog(false)} width={560}>
+      <Modal open={logOpen} onClose={()=>setLog(false)} width={560} closeOnBackdrop={false}>
         <MHead title="Log Aktivitas" sub={new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} onClose={()=>setLog(false)} />
         <LogForm user={currentUser} onSave={()=>{onAdd();setLog(false);}} onCancel={()=>setLog(false)} />
       </Modal>
-      <Modal open={!!editActivity} onClose={()=>setEditActivity(null)} width={560}>
+      <Modal open={!!editActivity} onClose={()=>setEditActivity(null)} width={560} closeOnBackdrop={false}>
         <MHead title="Edit Aktivitas" sub="Hanya aktivitas input manual yang bisa diubah" onClose={()=>setEditActivity(null)} />
         <LogForm
           user={currentUser}

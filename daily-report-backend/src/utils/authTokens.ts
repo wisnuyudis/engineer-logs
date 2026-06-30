@@ -10,10 +10,11 @@ const requireSecret = (name: 'JWT_SECRET' | 'JWT_REFRESH_SECRET', fallback?: str
 
 const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
 const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
-const ACCESS_EXPIRES_IN = '15m';
-const REFRESH_EXPIRES_IN = '1d';
+const ACCESS_EXPIRES_IN = (process.env.ACCESS_TOKEN_EXPIRES_IN || '12h') as any;
+const REFRESH_EXPIRES_IN = (process.env.REFRESH_TOKEN_EXPIRES_IN || '7d') as any;
 const MFA_CHALLENGE_EXPIRES_IN = '10m';
-export const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const SESSION_TIMEOUT_HOURS = Number(process.env.SESSION_TIMEOUT_HOURS || 168);
+export const SESSION_TIMEOUT_MS = Math.max(1, Number.isFinite(SESSION_TIMEOUT_HOURS) ? SESSION_TIMEOUT_HOURS : 168) * 60 * 60 * 1000;
 
 export type JwtUserPayload = {
   userId: string;

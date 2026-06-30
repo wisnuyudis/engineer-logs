@@ -28,7 +28,8 @@ import React from 'react';
 import api from './lib/api';
 import { canViewJobReport, canViewKpiNps, isMgr } from './constants/taxonomy';
 
-const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const SESSION_TIMEOUT_HOURS = Number(import.meta.env.VITE_SESSION_TIMEOUT_HOURS || 168);
+const SESSION_TIMEOUT_MS = Math.max(1, Number.isFinite(SESSION_TIMEOUT_HOURS) ? SESSION_TIMEOUT_HOURS : 168) * 60 * 60 * 1000;
 const LAST_ACTIVITY_KEY = 'last_activity_at';
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
 

@@ -16,10 +16,11 @@ const requireSecret = (name, fallback) => {
 };
 const ACCESS_SECRET = requireSecret('JWT_SECRET', 'test-access-secret');
 const REFRESH_SECRET = requireSecret('JWT_REFRESH_SECRET', 'test-refresh-secret');
-const ACCESS_EXPIRES_IN = '15m';
-const REFRESH_EXPIRES_IN = '1d';
+const ACCESS_EXPIRES_IN = (process.env.ACCESS_TOKEN_EXPIRES_IN || '12h');
+const REFRESH_EXPIRES_IN = (process.env.REFRESH_TOKEN_EXPIRES_IN || '7d');
 const MFA_CHALLENGE_EXPIRES_IN = '10m';
-exports.SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const SESSION_TIMEOUT_HOURS = Number(process.env.SESSION_TIMEOUT_HOURS || 168);
+exports.SESSION_TIMEOUT_MS = Math.max(1, Number.isFinite(SESSION_TIMEOUT_HOURS) ? SESSION_TIMEOUT_HOURS : 168) * 60 * 60 * 1000;
 const signAccessToken = (payload) => jsonwebtoken_1.default.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });
 exports.signAccessToken = signAccessToken;
 const signRefreshToken = (payload) => jsonwebtoken_1.default.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });

@@ -64,10 +64,10 @@ export function Card({ children, p=20, style:s={}, glow, onClick }) {
     </div>
   );
 }
-export function Modal({ open, onClose, children, width=500 }) {
+export function Modal({ open, onClose, children, width=500, closeOnBackdrop=true }) {
   if(!open) return null;
   return (
-    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,backdropFilter:"blur(8px)" }}>
+    <div onClick={e=>e.target===e.currentTarget&&closeOnBackdrop&&onClose()} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,backdropFilter:"blur(8px)" }}>
       <div style={{ background:T.surface,border:`1px solid ${T.borderHi}`,borderRadius:18,padding:28,width,maxWidth:"94vw",maxHeight:"92vh",overflowY:"auto",boxShadow:"0 32px 80px rgba(0,0,0,.6)" }}>
         {children}
       </div>
@@ -116,7 +116,7 @@ export function PwInp({ label, value, onChange, error }) {
         <input type={show?"text":"password"} value={value} onChange={onChange}
           onFocus={()=>sf(true)} onBlur={()=>sf(false)}
           style={{ width:"100%",background:T.surfaceHi,color:T.textPri,fontSize:13,border:`1.5px solid ${error?T.red:f?T.indigo:T.border}`,borderRadius:8,padding:"8px 90px 8px 12px",outline:"none",boxSizing:"border-box",fontFamily:FONT }} />
-        <button onClick={()=>ss(v=>!v)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.textMute,cursor:"pointer",fontSize:11,fontFamily:FONT }}>
+        <button type="button" onClick={()=>ss(v=>!v)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.textMute,cursor:"pointer",fontSize:11,fontFamily:FONT }}>
           {show?"Sembunyikan":"Tampilkan"}
         </button>
       </div>
