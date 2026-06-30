@@ -166,14 +166,17 @@ export const login = async (req: Request, res: Response) => {
 export const verifyMfaLogin = async (req: Request, res: Response) => {
   let stage = 'start';
   let userIdForLog: string | null = null;
+  let diagnosticCode = 'MFA_UNKNOWN_ERROR';
   try {
     const { challengeToken, code } = req.body || {};
     stage = 'verify_challenge';
+    diagnosticCode = 'MFA_CHALLENGE_INVALID';
     const payload = verifyMfaChallengeToken(String(challengeToken || ''));
     userIdForLog = payload.userId;
     if (payload.purpose !== 'login') return res.status(400).json({ error: 'Challenge MFA tidak valid.' });
 
     stage = 'load_user';
+    diagnosticCode = 'MFA_USER_STATE_INVALID';
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user || user.status === 'suspended' || !user.mfaEnabled || !user.mfaSecretEnc) {
       req.log?.warn({
@@ -187,8 +190,10 @@ export const verifyMfaLogin = async (req: Request, res: Response) => {
     }
 
     stage = 'decrypt_secret';
+    diagnosticCode = 'MFA_SECRET_DECRYPT_FAILED';
     const secret = decryptMfaSecret(user.mfaSecretEnc);
     stage = 'verify_totp';
+    diagnosticCode = 'MFA_TOTP_INVALID';
     if (!verifyTotp(secret, String(code || ''))) {
       await writeAuditSystem({
         userId: user.id,
@@ -204,6 +209,8 @@ export const verifyMfaLogin = async (req: Request, res: Response) => {
     const response = await issueSession(req, res, user, 'auth.login_mfa');
     res.json(response);
   } catch (error) {
+    if (error instanceof Error && error.name === 'TokenExpiredError') diagnosticCode = 'MFA_CHALLENGE_EXPIRED';
+    if (error instanceof Error && error.name === 'JsonWebTokenError') diagnosticCode = 'MFA_CHALLENGE_SIGNATURE_INVALID';
     const unsafePayload = decodeJwtPayloadUnsafe(String(req.body?.challengeToken || ''));
     const metadata = {
       stage,
@@ -231,7 +238,11 @@ export const verifyMfaLogin = async (req: Request, res: Response) => {
       ipAddress: req.ip || null,
       userAgent: req.headers['user-agent'] || null,
     });
-    res.status(401).json({ error: 'Challenge MFA tidak valid atau kedaluwarsa.' });
+    res.status(401).json({
+      error: 'Challenge MFA tidak valid atau kedaluwarsa.',
+      diagnosticCode,
+      diagnosticStage: stage,
+    });
   }
 };
 

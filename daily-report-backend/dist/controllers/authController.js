@@ -144,14 +144,17 @@ exports.login = login;
 const verifyMfaLogin = async (req, res) => {
     let stage = 'start';
     let userIdForLog = null;
+    let diagnosticCode = 'MFA_UNKNOWN_ERROR';
     try {
         const { challengeToken, code } = req.body || {};
         stage = 'verify_challenge';
+        diagnosticCode = 'MFA_CHALLENGE_INVALID';
         const payload = (0, authTokens_1.verifyMfaChallengeToken)(String(challengeToken || ''));
         userIdForLog = payload.userId;
         if (payload.purpose !== 'login')
             return res.status(400).json({ error: 'Challenge MFA tidak valid.' });
         stage = 'load_user';
+        diagnosticCode = 'MFA_USER_STATE_INVALID';
         const user = await prisma.user.findUnique({ where: { id: payload.userId } });
         if (!user || user.status === 'suspended' || !user.mfaEnabled || !user.mfaSecretEnc) {
             req.log?.warn({
@@ -164,8 +167,10 @@ const verifyMfaLogin = async (req, res) => {
             return res.status(401).json({ error: 'Challenge MFA tidak valid.' });
         }
         stage = 'decrypt_secret';
+        diagnosticCode = 'MFA_SECRET_DECRYPT_FAILED';
         const secret = (0, totp_1.decryptMfaSecret)(user.mfaSecretEnc);
         stage = 'verify_totp';
+        diagnosticCode = 'MFA_TOTP_INVALID';
         if (!(0, totp_1.verifyTotp)(secret, String(code || ''))) {
             await (0, auditTrail_1.writeAuditSystem)({
                 userId: user.id,
@@ -181,6 +186,10 @@ const verifyMfaLogin = async (req, res) => {
         res.json(response);
     }
     catch (error) {
+        if (error instanceof Error && error.name === 'TokenExpiredError')
+            diagnosticCode = 'MFA_CHALLENGE_EXPIRED';
+        if (error instanceof Error && error.name === 'JsonWebTokenError')
+            diagnosticCode = 'MFA_CHALLENGE_SIGNATURE_INVALID';
         const unsafePayload = decodeJwtPayloadUnsafe(String(req.body?.challengeToken || ''));
         const metadata = {
             stage,
@@ -208,7 +217,11 @@ const verifyMfaLogin = async (req, res) => {
             ipAddress: req.ip || null,
             userAgent: req.headers['user-agent'] || null,
         });
-        res.status(401).json({ error: 'Challenge MFA tidak valid atau kedaluwarsa.' });
+        res.status(401).json({
+            error: 'Challenge MFA tidak valid atau kedaluwarsa.',
+            diagnosticCode,
+            diagnosticStage: stage,
+        });
     }
 };
 exports.verifyMfaLogin = verifyMfaLogin;
