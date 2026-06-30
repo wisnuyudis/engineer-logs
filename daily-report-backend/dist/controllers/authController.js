@@ -14,6 +14,19 @@ const prisma = new client_1.PrismaClient();
 const REFRESH_COOKIE = 'refresh_token';
 const isSuperAdminRole = (role) => ['admin', 'superadmin', 'super_admin', 'super admin'].includes(String(role || '').trim().toLowerCase());
 const isMfaEnforcedRole = (role) => !isSuperAdminRole(role);
+const decodeJwtPayloadUnsafe = (token) => {
+    try {
+        const payloadRaw = String(token || '').split('.')[1];
+        if (!payloadRaw)
+            return null;
+        const normalized = payloadRaw.replace(/-/g, '+').replace(/_/g, '/');
+        const json = Buffer.from(normalized, 'base64').toString('utf8');
+        return JSON.parse(json);
+    }
+    catch {
+        return null;
+    }
+};
 const buildAuthUser = (user) => ({
     id: user.id,
     email: user.email,
@@ -168,16 +181,33 @@ const verifyMfaLogin = async (req, res) => {
         res.json(response);
     }
     catch (error) {
-        req.log?.warn({
+        const unsafePayload = decodeJwtPayloadUnsafe(String(req.body?.challengeToken || ''));
+        const metadata = {
             stage,
-            userId: userIdForLog,
+            userIdFromUnverifiedToken: unsafePayload?.userId || null,
+            purposeFromUnverifiedToken: unsafePayload?.purpose || null,
+            issuedAtFromUnverifiedToken: unsafePayload?.iat ? new Date(Number(unsafePayload.iat) * 1000).toISOString() : null,
+            expiresAtFromUnverifiedToken: unsafePayload?.exp ? new Date(Number(unsafePayload.exp) * 1000).toISOString() : null,
             errorName: error instanceof Error ? error.name : 'UnknownError',
             errorMessage: error instanceof Error ? error.message : String(error),
             hasChallengeToken: Boolean(req.body?.challengeToken),
             challengeTokenLength: String(req.body?.challengeToken || '').length,
             codeLength: String(req.body?.code || '').replace(/\s+/g, '').length,
             serverTime: new Date().toISOString(),
+        };
+        req.log?.warn({
+            userId: userIdForLog,
+            ...metadata,
         }, 'MFA login challenge failed');
+        await (0, auditTrail_1.writeAuditSystem)({
+            userId: userIdForLog || unsafePayload?.userId || null,
+            action: 'mfa.challenge_failed',
+            entityType: 'user',
+            entityId: userIdForLog || unsafePayload?.userId || null,
+            metadata,
+            ipAddress: req.ip || null,
+            userAgent: req.headers['user-agent'] || null,
+        });
         res.status(401).json({ error: 'Challenge MFA tidak valid atau kedaluwarsa.' });
     }
 };
