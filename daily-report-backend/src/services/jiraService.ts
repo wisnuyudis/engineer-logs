@@ -731,6 +731,8 @@ export type JiraJobReportIssue = {
   reporterName: string | null;
   reporterEmail: string | null;
   assigneeName: string | null;
+  assigneeAccountId: string | null;
+  customerPic: string | null;
   productName: string | null;
   productType: string | null;
   ticketUsed: number;
@@ -757,6 +759,16 @@ export const fetchJiraJobReportIssue = async (issueKey: string): Promise<JiraJob
     fieldMap['email'],
     fieldMap['requester email'],
   ].filter(Boolean);
+  const customerPicFields = [
+    fieldMap['pic'],
+    fieldMap['customer pic'],
+    fieldMap['customer pic name'],
+    fieldMap['pic customer'],
+    fieldMap['contact person'],
+    fieldMap['contact name'],
+    fieldMap['request participant'],
+    fieldMap['request participants'],
+  ].filter(Boolean);
   const queryFields = Array.from(new Set([
     'summary',
     'issuetype',
@@ -771,6 +783,7 @@ export const fetchJiraJobReportIssue = async (issueKey: string): Promise<JiraJob
     'attachment',
     ...productFields,
     ...reporterEmailFields,
+    ...customerPicFields,
     fieldMap['actual start'],
     fieldMap['actual start date'],
     fieldMap['start date'],
@@ -825,6 +838,17 @@ export const fetchJiraJobReportIssue = async (issueKey: string): Promise<JiraJob
     reporterName: fields.reporter?.displayName || null,
     reporterEmail: fields.reporter?.emailAddress || extractNamedFieldValueByMap(fields, fieldMap, ['Reporter Email', 'Reported Email', 'Customer Email', 'Email', 'Requester Email']),
     assigneeName: fields.assignee?.displayName || null,
+    assigneeAccountId: fields.assignee?.accountId || null,
+    customerPic: extractNamedFieldValueByMap(fields, fieldMap, [
+      'PIC',
+      'Customer PIC',
+      'Customer PIC Name',
+      'PIC Customer',
+      'Contact Person',
+      'Contact Name',
+      'Request participant',
+      'Request participants',
+    ]),
     productName: extractNamedFieldValueByMap(fields, fieldMap, ['Product', 'Product Name', 'Affected Product', 'Products']),
     productType: extractNamedFieldValueByMap(fields, fieldMap, ['Product Type', 'Product', 'Product Name', 'Affected Product', 'Products']),
     ticketUsed: Number(extractNamedFieldValueByMap(fields, fieldMap, ['Ticket Used']) || 0),
@@ -846,7 +870,7 @@ export const fetchJiraJobReportIssue = async (issueKey: string): Promise<JiraJob
   };
 };
 
-export const fetchJiraJobReportChangeIssues = async (startDate: string, endDate: string) => {
+export const fetchJiraJobReportChangeIssues = async (startDate: string, endDate: string, options: { assigneeAccountId?: string | null } = {}) => {
   const fieldMap = await loadJiraFieldNameMap();
   const actualStartField = fieldMap['actual start'] || fieldMap['actual start date'] || fieldMap['start date'];
   const dateClauses = actualStartField
@@ -856,11 +880,12 @@ export const fetchJiraJobReportChangeIssues = async (startDate: string, endDate:
     'issuekey ~ "SUP-"',
     'issuetype = "[System] Change"',
     ...dateClauses,
+    ...(options.assigneeAccountId ? [`assignee = "${options.assigneeAccountId}"`] : []),
   ];
 
   return searchJiraIssues({
     jql: `${clauses.join(' AND ')} ORDER BY ${actualStartField ? `"${actualStartField}"` : 'created'} DESC`,
-    fields: ['summary', 'issuetype', 'project', 'status', 'priority', 'created', 'updated', 'resolutiondate', 'comment', 'timespent'],
+    fields: ['summary', 'issuetype', 'project', 'status', 'priority', 'created', 'updated', 'resolutiondate', 'comment', 'timespent', 'assignee'],
   });
 };
 

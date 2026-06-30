@@ -26,7 +26,7 @@ import { RoleBadge, Avi, Btn } from './components/ui/Primitives';
 import { Toaster } from 'sonner';
 import React from 'react';
 import api from './lib/api';
-import { canViewKpiNps, isMgr } from './constants/taxonomy';
+import { canViewJobReport, canViewKpiNps, isMgr } from './constants/taxonomy';
 
 const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const LAST_ACTIVITY_KEY = 'last_activity_at';
@@ -268,6 +268,7 @@ export default function App() {
     "/reports/kpi": "KPI Report",
     "/reports/nps": "NPS Report",
     "/reports/executive": "Executive Report",
+    "/reports/jobs": "Job Report",
     "/profile": "Profil Saya",
     "/kpi-admin": "KPI",
     "/kpi-nps": "KPI NPS",
@@ -284,6 +285,7 @@ export default function App() {
   const canViewKpiReport = ['admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(String(user.role || '').toLowerCase());
   const canViewNpsReport = canViewKpiNps(user.role);
   const canViewExecutiveReport = isMgr(user.role);
+  const canViewJobsReport = canViewJobReport(user.role);
 
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.textPri }}>
@@ -366,7 +368,7 @@ export default function App() {
                   <Route path="/reports/kpi" element={canViewKpiReport ? <KpiReportView activities={acts} members={members} currentUser={user} /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/reports/nps" element={canViewNpsReport ? <NpsReportView currentUser={user} /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/reports/executive" element={canViewExecutiveReport ? <ExecutiveReportView /> : <Navigate to="/reports/activity" replace />} />
-                  <Route path="/reports/jobs" element={canViewExecutiveReport ? <JobReportView /> : <Navigate to="/reports/activity" replace />} />
+                  <Route path="/reports/jobs" element={canViewJobsReport ? <JobReportView /> : <Navigate to="/reports/activity" replace />} />
                   <Route path="/profile" element={<ProfileView user={user} activities={acts} onUpdate={syncUser} />} />
                   <Route path="/kpi-admin" element={<KpiManagementView currentUser={user} />} />
                   <Route path="/kpi-nps" element={<KpiNpsView currentUser={user} />} />

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T, FONT, DISPLAY } from '../theme/tokens';
-import { canManageKpi, canManageKpiNps, canViewKpiNps, isMgr, teamOf } from '../constants/taxonomy';
+import { canManageKpi, canManageKpiNps, canViewJobReport, canViewKpiNps, isMgr, teamOf } from '../constants/taxonomy';
 import { Avi, RoleBadge, TeamBadge, Divider } from './ui/Primitives';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -11,6 +11,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
   const [openGroups, setOpenGroups] = useState({});
   const canViewKpiReport = ['admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(String(user.role || '').toLowerCase());
   const canViewNpsReport = canViewKpiNps(user.role);
+  const canViewJobs = canViewJobReport(user.role);
 
   const coreItems = [
     { id: "/", icon: "▦", label: "Dashboard" },
@@ -27,7 +28,7 @@ export function Sidebar({ user, onLogout, isMobile = false, mobileOpen = false, 
         ...(canViewKpiReport ? [{ id: "/reports/kpi", icon: "◇", label: "KPI Report" }] : []),
         ...(canViewNpsReport ? [{ id: "/reports/nps", icon: "◎", label: "NPS Report" }] : []),
         ...(isMgr(user.role) ? [{ id: "/reports/executive", icon: "▧", label: "Executive Report" }] : []),
-        ...(isMgr(user.role) ? [{ id: "/reports/jobs", icon: "▥", label: "Job Report" }] : []),
+        ...(canViewJobs ? [{ id: "/reports/jobs", icon: "▥", label: "Job Report" }] : []),
       ],
     },
   ];

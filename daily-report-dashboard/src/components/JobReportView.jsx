@@ -277,6 +277,7 @@ export function JobReportView() {
     try {
       const res = await api.get(`/reports/jobs/${item.key}`);
       setDetail(res.data);
+      setManual((prev) => ({ ...prev, pic: res.data?.customerPic || '' }));
     } catch (fetchError) {
       toast.error(fetchError?.response?.data?.error || 'Gagal mengambil detail Jira untuk job report.');
       setModalOpen(false);
@@ -405,6 +406,7 @@ export function JobReportView() {
               <div style={{ fontSize: 11, color: T.textMute, marginBottom: 4 }}>Preview data Jira</div>
               <div style={{ fontSize: 12, color: T.textPri, lineHeight: 1.6 }}>
                 <div>Company: <strong>{detail?.customer?.name || '-'}</strong></div>
+                <div>Customer PIC: <strong>{detail?.customerPic || '-'}</strong></div>
                 <div>Reporter Email: <strong>{detail?.reporterEmail || '-'}</strong></div>
                 <div>Engineer: <strong>{detail?.assigneeName || '-'}</strong></div>
                 <div>Worklog: <strong>{detail?.worklogs?.length || 0}</strong> item</div>

@@ -14,6 +14,9 @@ const hoursBetween = (start, end) => {
     return diff / 36e5;
 };
 const ticketMetric = (value) => Number((Number(value || 0) || 0).toFixed(2));
+const normalizeRole = (role) => String(role || '').trim().toLowerCase();
+const isJobReportManagerRole = (role) => ['admin', 'superadmin', 'super_admin', 'super admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(normalizeRole(role));
+const isJobReportEngineerRole = (role) => ['delivery', 'se', 'service_engineer', 'engineer', 'presales', 'sales engineer'].includes(normalizeRole(role));
 const ticketNumber = (key) => {
     const match = String(key || '').match(/(\d+)$/);
     return match ? Number(match[1]) : 0;
@@ -325,9 +328,25 @@ const getJobReport = async (req, res) => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
             return res.status(400).json({ error: 'startDate dan endDate wajib format YYYY-MM-DD' });
         }
-        const issues = await (0, jiraService_1.fetchJiraJobReportChangeIssues)(startDate, endDate);
+        const actor = await prisma.user.findUnique({
+            where: { id: String(req.user?.userId || '') },
+            select: { id: true, role: true, jiraAccountId: true },
+        });
+        if (!actor)
+            return res.status(401).json({ error: 'Unauthorized' });
+        if (!isJobReportManagerRole(actor.role) && !isJobReportEngineerRole(actor.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        if (isJobReportEngineerRole(actor.role) && !actor.jiraAccountId) {
+            return res.status(403).json({ error: 'Hubungkan akun Jira terlebih dahulu untuk membuka Job Report engineer.' });
+        }
+        const assigneeAccountId = isJobReportEngineerRole(actor.role) && !isJobReportManagerRole(actor.role)
+            ? actor.jiraAccountId
+            : null;
+        const issues = await (0, jiraService_1.fetchJiraJobReportChangeIssues)(startDate, endDate, { assigneeAccountId });
         res.json({
             period: { startDate, endDate },
+            scope: assigneeAccountId ? 'assigned' : 'all',
             totals: {
                 changes: issues.length,
                 ticketUsed: ticketMetric(issues.reduce((sum, issue) => sum + Number(issue.ticketUsed || 0), 0)),
@@ -343,6 +362,8 @@ const getJobReport = async (req, res) => {
                 issueTypeName: issue.issueTypeName,
                 status: issue.statusName,
                 statusCategoryKey: issue.statusCategoryKey,
+                assigneeAccountId: issue.assigneeAccountId,
+                assigneeName: issue.assigneeDisplayName,
                 priority: issue.priorityName,
                 createdAt: issue.createdAt,
                 updatedAt: issue.updatedAt,
@@ -369,7 +390,24 @@ const getJobReportDetail = async (req, res) => {
         if (!/^SUP-\d+$/i.test(issueKey)) {
             return res.status(400).json({ error: 'issueKey SUP tidak valid' });
         }
+        const actor = await prisma.user.findUnique({
+            where: { id: String(req.user?.userId || '') },
+            select: { id: true, role: true, jiraAccountId: true },
+        });
+        if (!actor)
+            return res.status(401).json({ error: 'Unauthorized' });
+        if (!isJobReportManagerRole(actor.role) && !isJobReportEngineerRole(actor.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
         const issue = await (0, jiraService_1.fetchJiraJobReportIssue)(issueKey);
+        if (isJobReportEngineerRole(actor.role) && !isJobReportManagerRole(actor.role)) {
+            if (!actor.jiraAccountId) {
+                return res.status(403).json({ error: 'Hubungkan akun Jira terlebih dahulu untuk membuka Job Report engineer.' });
+            }
+            if (issue.assigneeAccountId !== actor.jiraAccountId) {
+                return res.status(403).json({ error: 'Job Report ini hanya bisa diakses oleh engineer yang assigned pada tiket.' });
+            }
+        }
         const masterCustomer = await resolveCustomerMaster(issue.customerName);
         const fallbackCustomer = issue.customerName || 'Unknown Customer';
         res.json({

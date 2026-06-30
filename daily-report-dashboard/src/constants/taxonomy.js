@@ -47,6 +47,8 @@ export const isPM = (role) => {
 export const isAdmin = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin"].includes(role);
 
 export const isMgr = (role) => ["Admin", "admin", "superadmin", "Superadmin", "super_admin", "Super Admin", "super admin", "Head Delivery", "Head Presales", "mgr_ps", "mgr_dl"].includes(role);
+export const isEngineer = (role) => ["delivery", "se", "service_engineer", "engineer", "presales", "sales engineer"].includes(String(role || "").toLowerCase());
+export const canViewJobReport = (role) => isMgr(role) || isEngineer(role);
 export const canManageKpi = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery"].includes(role);
 export const canManageKpiNps = (role) => ["Admin", "admin", "mgr_dl", "Head Delivery", "PM", "pm"].includes(role);
 export const hasKpiProfile = (role) => ["delivery", "SE", "PM", "pm"].includes(role);

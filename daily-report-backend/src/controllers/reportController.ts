@@ -16,6 +16,12 @@ const hoursBetween = (start?: string | null, end?: string | null) => {
 
 const ticketMetric = (value?: number | null) => Number((Number(value || 0) || 0).toFixed(2));
 
+const normalizeRole = (role?: string | null) => String(role || '').trim().toLowerCase();
+const isJobReportManagerRole = (role?: string | null) =>
+  ['admin', 'superadmin', 'super_admin', 'super admin', 'mgr_dl', 'mgr_ps', 'head delivery', 'head presales'].includes(normalizeRole(role));
+const isJobReportEngineerRole = (role?: string | null) =>
+  ['delivery', 'se', 'service_engineer', 'engineer', 'presales', 'sales engineer'].includes(normalizeRole(role));
+
 const ticketNumber = (key: string | null | undefined) => {
   const match = String(key || '').match(/(\d+)$/);
   return match ? Number(match[1]) : 0;
@@ -351,10 +357,26 @@ export const getJobReport = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'startDate dan endDate wajib format YYYY-MM-DD' });
     }
 
-    const issues = await fetchJiraJobReportChangeIssues(startDate, endDate);
+    const actor = await prisma.user.findUnique({
+      where: { id: String(req.user?.userId || '') },
+      select: { id: true, role: true, jiraAccountId: true },
+    });
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    if (!isJobReportManagerRole(actor.role) && !isJobReportEngineerRole(actor.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    if (isJobReportEngineerRole(actor.role) && !actor.jiraAccountId) {
+      return res.status(403).json({ error: 'Hubungkan akun Jira terlebih dahulu untuk membuka Job Report engineer.' });
+    }
+
+    const assigneeAccountId = isJobReportEngineerRole(actor.role) && !isJobReportManagerRole(actor.role)
+      ? actor.jiraAccountId
+      : null;
+    const issues = await fetchJiraJobReportChangeIssues(startDate, endDate, { assigneeAccountId });
 
     res.json({
       period: { startDate, endDate },
+      scope: assigneeAccountId ? 'assigned' : 'all',
       totals: {
         changes: issues.length,
         ticketUsed: ticketMetric(issues.reduce((sum, issue) => sum + Number(issue.ticketUsed || 0), 0)),
@@ -370,6 +392,8 @@ export const getJobReport = async (req: AuthRequest, res: Response) => {
         issueTypeName: issue.issueTypeName,
         status: issue.statusName,
         statusCategoryKey: issue.statusCategoryKey,
+        assigneeAccountId: issue.assigneeAccountId,
+        assigneeName: issue.assigneeDisplayName,
         priority: issue.priorityName,
         createdAt: issue.createdAt,
         updatedAt: issue.updatedAt,
@@ -396,7 +420,24 @@ export const getJobReportDetail = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'issueKey SUP tidak valid' });
     }
 
+    const actor = await prisma.user.findUnique({
+      where: { id: String(req.user?.userId || '') },
+      select: { id: true, role: true, jiraAccountId: true },
+    });
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    if (!isJobReportManagerRole(actor.role) && !isJobReportEngineerRole(actor.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     const issue = await fetchJiraJobReportIssue(issueKey);
+    if (isJobReportEngineerRole(actor.role) && !isJobReportManagerRole(actor.role)) {
+      if (!actor.jiraAccountId) {
+        return res.status(403).json({ error: 'Hubungkan akun Jira terlebih dahulu untuk membuka Job Report engineer.' });
+      }
+      if (issue.assigneeAccountId !== actor.jiraAccountId) {
+        return res.status(403).json({ error: 'Job Report ini hanya bisa diakses oleh engineer yang assigned pada tiket.' });
+      }
+    }
     const masterCustomer = await resolveCustomerMaster(issue.customerName);
     const fallbackCustomer = issue.customerName || 'Unknown Customer';
 
