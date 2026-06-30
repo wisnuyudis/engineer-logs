@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
-import { deleteSyncedJiraWorklog, getTodayDateKey, syncTodayJiraWorklogToActivity } from '../services/jiraSyncService';
+import { deleteSyncedJiraWorklog, getCurrentMonthKey, syncCurrentMonthJiraWorklogToActivity } from '../services/jiraSyncService';
 import { writeAudit, writeAuditSystem } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
@@ -346,7 +346,7 @@ export const handleJiraWorklogWebhook = async (req: Request, res: Response) => {
     }
 
     if (eventName.includes('deleted')) {
-      const activity = await deleteSyncedJiraWorklog(String(worklogId), { onlyDate: getTodayDateKey() });
+      const activity = await deleteSyncedJiraWorklog(String(worklogId), { onlyMonth: getCurrentMonthKey() });
       await writeAuditSystem({
         action: activity ? 'jira.webhook.deleted' : 'jira.webhook.skipped_out_of_date',
         entityType: 'jira_webhook',
@@ -370,7 +370,7 @@ export const handleJiraWorklogWebhook = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Webhook payload tidak memiliki issue key/id' });
     }
 
-    const activity = await syncTodayJiraWorklogToActivity(String(issueKey), String(worklogId));
+    const activity = await syncCurrentMonthJiraWorklogToActivity(String(issueKey), String(worklogId));
     if (!activity) {
       return res.json({ ok: true, action: 'skipped_out_of_date' });
     }

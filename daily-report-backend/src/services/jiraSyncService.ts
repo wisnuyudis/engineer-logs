@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 const getAppTimeZone = () => process.env.APP_TIMEZONE || 'Asia/Jakarta';
 
-export const getTodayDateKey = () => {
+const getDatePartsInAppTimeZone = () => {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: getAppTimeZone(),
     year: 'numeric',
@@ -13,8 +13,17 @@ export const getTodayDateKey = () => {
     day: '2-digit',
   });
   const parts = formatter.formatToParts(new Date());
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+};
+
+export const getTodayDateKey = () => {
+  const values = getDatePartsInAppTimeZone();
   return `${values.year}-${values.month}-${values.day}`;
+};
+
+export const getCurrentMonthKey = () => {
+  const values = getDatePartsInAppTimeZone();
+  return `${values.year}-${values.month}`;
 };
 
 const toDateParts = (isoString: string | null) => {
@@ -54,7 +63,7 @@ const addMinutes = (time: string | null, minutes: number) => {
 export const syncJiraWorklogToActivity = async (
   issueKeyOrId: string,
   worklogId: string,
-  options: { onlyDate?: string | null } = {}
+  options: { onlyDate?: string | null; onlyMonth?: string | null } = {}
 ) => {
   const [issue, worklog] = await Promise.all([
     fetchJiraIssue(issueKeyOrId),
@@ -76,6 +85,10 @@ export const syncJiraWorklogToActivity = async (
   const { date, startTime } = toDateParts(worklog.started);
   const allowedDate = options.onlyDate === undefined ? null : options.onlyDate;
   if (allowedDate && date !== allowedDate) {
+    return null;
+  }
+  const allowedMonth = options.onlyMonth === undefined ? null : options.onlyMonth;
+  if (allowedMonth && date.slice(0, 7) !== allowedMonth) {
     return null;
   }
 
@@ -128,13 +141,17 @@ export const syncJiraWorklogToActivity = async (
 export const syncTodayJiraWorklogToActivity = (issueKeyOrId: string, worklogId: string) =>
   syncJiraWorklogToActivity(issueKeyOrId, worklogId, { onlyDate: getTodayDateKey() });
 
-export const deleteSyncedJiraWorklog = async (worklogId: string, options: { onlyDate?: string | null } = {}) => {
+export const syncCurrentMonthJiraWorklogToActivity = (issueKeyOrId: string, worklogId: string) =>
+  syncJiraWorklogToActivity(issueKeyOrId, worklogId, { onlyMonth: getCurrentMonthKey() });
+
+export const deleteSyncedJiraWorklog = async (worklogId: string, options: { onlyDate?: string | null; onlyMonth?: string | null } = {}) => {
   const activity = await prisma.activity.findFirst({
     where: { jiraWorklogId: worklogId }
   });
 
   if (!activity) return null;
   if (options.onlyDate && activity.date !== options.onlyDate) return null;
+  if (options.onlyMonth && activity.date.slice(0, 7) !== options.onlyMonth) return null;
   return prisma.activity.delete({
     where: { id: activity.id }
   });

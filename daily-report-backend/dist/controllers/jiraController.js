@@ -306,7 +306,7 @@ const handleJiraWorklogWebhook = async (req, res) => {
             return res.status(400).json({ error: 'Webhook payload tidak memiliki event/worklogId yang cukup' });
         }
         if (eventName.includes('deleted')) {
-            const activity = await (0, jiraSyncService_1.deleteSyncedJiraWorklog)(String(worklogId), { onlyDate: (0, jiraSyncService_1.getTodayDateKey)() });
+            const activity = await (0, jiraSyncService_1.deleteSyncedJiraWorklog)(String(worklogId), { onlyMonth: (0, jiraSyncService_1.getCurrentMonthKey)() });
             await (0, auditTrail_1.writeAuditSystem)({
                 action: activity ? 'jira.webhook.deleted' : 'jira.webhook.skipped_out_of_date',
                 entityType: 'jira_webhook',
@@ -328,7 +328,7 @@ const handleJiraWorklogWebhook = async (req, res) => {
             });
             return res.status(400).json({ error: 'Webhook payload tidak memiliki issue key/id' });
         }
-        const activity = await (0, jiraSyncService_1.syncTodayJiraWorklogToActivity)(String(issueKey), String(worklogId));
+        const activity = await (0, jiraSyncService_1.syncCurrentMonthJiraWorklogToActivity)(String(issueKey), String(worklogId));
         if (!activity) {
             return res.json({ ok: true, action: 'skipped_out_of_date' });
         }

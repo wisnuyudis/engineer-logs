@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { fetchDeletedJiraWorklogChanges, fetchJiraWorklogsByIds, fetchUpdatedJiraWorklogChanges } from './jiraService';
-import { deleteSyncedJiraWorklog, getTodayDateKey, syncJiraWorklogToActivity } from './jiraSyncService';
+import { deleteSyncedJiraWorklog, getCurrentMonthKey, syncJiraWorklogToActivity } from './jiraSyncService';
 
 const prisma = new PrismaClient();
 
@@ -15,7 +15,7 @@ const envBool = (value: string | undefined, fallback: boolean) => {
 
 const getIntervalMs = () => Math.max(60_000, Number(process.env.JIRA_WORKLOG_POLL_INTERVAL_MS || 300_000));
 const getMaxUpdatesPerRun = () => Math.max(1, Number(process.env.JIRA_WORKLOG_POLL_MAX_UPDATES || 200));
-const getTodayStartMs = () => Date.parse(`${getTodayDateKey()}T00:00:00+07:00`);
+const getCurrentMonthStartMs = () => Date.parse(`${getCurrentMonthKey()}-01T00:00:00+07:00`);
 
 const toNumber = (value: unknown) => {
   const number = Number(value || 0);
@@ -25,9 +25,9 @@ const toNumber = (value: unknown) => {
 const getSince = async () => {
   const setting = await prisma.setting.findUnique({ where: { key: SETTING_KEY } });
   const stored = Number(setting?.value || 0);
-  const todayStart = getTodayStartMs();
-  if (Number.isFinite(stored) && stored > 0) return Math.max(Math.min(stored, Date.now()), todayStart);
-  return todayStart;
+  const monthStart = getCurrentMonthStartMs();
+  if (Number.isFinite(stored) && stored > 0) return Math.max(Math.min(stored, Date.now()), monthStart);
+  return monthStart;
 };
 
 const setSince = async (since: number) => {
@@ -45,12 +45,12 @@ const setSince = async (since: number) => {
   });
 };
 
-const upsertDailyPollAudit = async (
+const upsertMonthlyPollAudit = async (
   action: 'jira.worklog_poll.synced' | 'jira.worklog_poll.partial' | 'jira.worklog_poll.failed',
-  todayDate: string,
+  monthKey: string,
   runMetadata: Record<string, any>
 ) => {
-  const entityId = `jira_worklog_poll:${todayDate}`;
+  const entityId = `jira_worklog_poll:${monthKey}`;
   const current = await prisma.auditLog.findFirst({
     where: {
       entityType: 'jira_worklog_poll',
@@ -68,7 +68,7 @@ const upsertDailyPollAudit = async (
   ].slice(-20);
   const nextMetadata = {
     ...currentMetadata,
-    onlyDate: todayDate,
+    onlyMonth: monthKey,
     runCount,
     firstRunAt: currentMetadata.firstRunAt || new Date().toISOString(),
     lastRunAt: new Date().toISOString(),
@@ -116,7 +116,7 @@ export const pollJiraWorklogsOnce = async () => {
   let deleted = 0;
   let skippedOutOfDate = 0;
   const errors: Array<{ worklogId: string; error: string }> = [];
-  const todayDate = getTodayDateKey();
+  const monthKey = getCurrentMonthKey();
 
   try {
     const [updatedResult, deletedResult] = await Promise.all([
@@ -127,7 +127,7 @@ export const pollJiraWorklogsOnce = async () => {
 
     for (const change of deletedResult.values) {
       try {
-        const deletedActivity = await deleteSyncedJiraWorklog(change.worklogId, { onlyDate: todayDate });
+        const deletedActivity = await deleteSyncedJiraWorklog(change.worklogId, { onlyMonth: monthKey });
         if (deletedActivity) deleted += 1;
         else skippedOutOfDate += 1;
       } catch (error: any) {
@@ -146,7 +146,7 @@ export const pollJiraWorklogsOnce = async () => {
       try {
         const issueId = issueIdByWorklogId.get(change.worklogId);
         if (!issueId) throw new Error('Issue ID worklog Jira tidak ditemukan dari endpoint worklog/list.');
-        const activity = await syncJiraWorklogToActivity(issueId, change.worklogId, { onlyDate: todayDate });
+        const activity = await syncJiraWorklogToActivity(issueId, change.worklogId, { onlyMonth: monthKey });
         if (activity) synced += 1;
         else skippedOutOfDate += 1;
       } catch (error: any) {
@@ -156,7 +156,7 @@ export const pollJiraWorklogsOnce = async () => {
 
     await setSince(nextSince);
 
-    await upsertDailyPollAudit(errors.length ? 'jira.worklog_poll.partial' : 'jira.worklog_poll.synced', todayDate, {
+    await upsertMonthlyPollAudit(errors.length ? 'jira.worklog_poll.partial' : 'jira.worklog_poll.synced', monthKey, {
       since,
       nextSince,
       updatedSeen: updatedResult.values.length,
@@ -167,9 +167,9 @@ export const pollJiraWorklogsOnce = async () => {
       errors: errors.slice(0, 20),
     });
 
-    return { skipped: false, since, nextSince, synced, deleted, skippedOutOfDate, onlyDate: todayDate, errors };
+    return { skipped: false, since, nextSince, synced, deleted, skippedOutOfDate, onlyMonth: monthKey, errors };
   } catch (error: any) {
-    await upsertDailyPollAudit('jira.worklog_poll.failed', todayDate, {
+    await upsertMonthlyPollAudit('jira.worklog_poll.failed', monthKey, {
       since,
       nextSince,
       errors: [{ error: error.message || 'Jira worklog poll failed' }],

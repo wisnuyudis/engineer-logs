@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteSyncedJiraWorklog = exports.syncTodayJiraWorklogToActivity = exports.syncJiraWorklogToActivity = exports.getTodayDateKey = void 0;
+exports.deleteSyncedJiraWorklog = exports.syncCurrentMonthJiraWorklogToActivity = exports.syncTodayJiraWorklogToActivity = exports.syncJiraWorklogToActivity = exports.getCurrentMonthKey = exports.getTodayDateKey = void 0;
 const client_1 = require("@prisma/client");
 const jiraService_1 = require("./jiraService");
 const prisma = new client_1.PrismaClient();
 const getAppTimeZone = () => process.env.APP_TIMEZONE || 'Asia/Jakarta';
-const getTodayDateKey = () => {
+const getDatePartsInAppTimeZone = () => {
     const formatter = new Intl.DateTimeFormat('en-CA', {
         timeZone: getAppTimeZone(),
         year: 'numeric',
@@ -13,10 +13,18 @@ const getTodayDateKey = () => {
         day: '2-digit',
     });
     const parts = formatter.formatToParts(new Date());
-    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+};
+const getTodayDateKey = () => {
+    const values = getDatePartsInAppTimeZone();
     return `${values.year}-${values.month}-${values.day}`;
 };
 exports.getTodayDateKey = getTodayDateKey;
+const getCurrentMonthKey = () => {
+    const values = getDatePartsInAppTimeZone();
+    return `${values.year}-${values.month}`;
+};
+exports.getCurrentMonthKey = getCurrentMonthKey;
 const toDateParts = (isoString) => {
     if (!isoString) {
         return {
@@ -67,6 +75,10 @@ const syncJiraWorklogToActivity = async (issueKeyOrId, worklogId, options = {}) 
     if (allowedDate && date !== allowedDate) {
         return null;
     }
+    const allowedMonth = options.onlyMonth === undefined ? null : options.onlyMonth;
+    if (allowedMonth && date.slice(0, 7) !== allowedMonth) {
+        return null;
+    }
     const durMinutes = Math.max(1, Math.round(worklog.timeSpentSeconds / 60));
     const endTime = addMinutes(startTime, durMinutes);
     const actKey = (0, jiraService_1.resolveJiraActKey)(issue.key, issue.issueTypeName, issue.projectName, issue.workTypeName);
@@ -106,6 +118,8 @@ const syncJiraWorklogToActivity = async (issueKeyOrId, worklogId, options = {}) 
 exports.syncJiraWorklogToActivity = syncJiraWorklogToActivity;
 const syncTodayJiraWorklogToActivity = (issueKeyOrId, worklogId) => (0, exports.syncJiraWorklogToActivity)(issueKeyOrId, worklogId, { onlyDate: (0, exports.getTodayDateKey)() });
 exports.syncTodayJiraWorklogToActivity = syncTodayJiraWorklogToActivity;
+const syncCurrentMonthJiraWorklogToActivity = (issueKeyOrId, worklogId) => (0, exports.syncJiraWorklogToActivity)(issueKeyOrId, worklogId, { onlyMonth: (0, exports.getCurrentMonthKey)() });
+exports.syncCurrentMonthJiraWorklogToActivity = syncCurrentMonthJiraWorklogToActivity;
 const deleteSyncedJiraWorklog = async (worklogId, options = {}) => {
     const activity = await prisma.activity.findFirst({
         where: { jiraWorklogId: worklogId }
@@ -113,6 +127,8 @@ const deleteSyncedJiraWorklog = async (worklogId, options = {}) => {
     if (!activity)
         return null;
     if (options.onlyDate && activity.date !== options.onlyDate)
+        return null;
+    if (options.onlyMonth && activity.date.slice(0, 7) !== options.onlyMonth)
         return null;
     return prisma.activity.delete({
         where: { id: activity.id }
