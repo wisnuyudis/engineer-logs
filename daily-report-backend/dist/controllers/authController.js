@@ -219,12 +219,7 @@ const verifyMfaLogin = async (req, res) => {
             ipAddress: req.ip || null,
             userAgent: req.headers['user-agent'] || null,
         });
-        res.status(401).json({
-            error: 'Challenge MFA tidak valid atau kedaluwarsa.',
-            diagnosticCode,
-            diagnosticStage: stage,
-            diagnosticError: error instanceof Error ? error.message : String(error),
-        });
+        res.status(401).json({ error: 'Challenge MFA tidak valid atau kedaluwarsa.' });
     }
 };
 exports.verifyMfaLogin = verifyMfaLogin;

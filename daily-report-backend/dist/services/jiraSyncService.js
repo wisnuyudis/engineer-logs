@@ -1,9 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteSyncedJiraWorklog = exports.syncJiraWorklogToActivity = void 0;
+exports.deleteSyncedJiraWorklog = exports.syncTodayJiraWorklogToActivity = exports.syncJiraWorklogToActivity = exports.getTodayDateKey = void 0;
 const client_1 = require("@prisma/client");
 const jiraService_1 = require("./jiraService");
 const prisma = new client_1.PrismaClient();
+const getAppTimeZone = () => process.env.APP_TIMEZONE || 'Asia/Jakarta';
+const getTodayDateKey = () => {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: getAppTimeZone(),
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
+    const parts = formatter.formatToParts(new Date());
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+};
+exports.getTodayDateKey = getTodayDateKey;
 const toDateParts = (isoString) => {
     if (!isoString) {
         return {
@@ -35,7 +48,7 @@ const addMinutes = (time, minutes) => {
     const mm = String(total % 60).padStart(2, '0');
     return `${hh}:${mm}`;
 };
-const syncJiraWorklogToActivity = async (issueKeyOrId, worklogId) => {
+const syncJiraWorklogToActivity = async (issueKeyOrId, worklogId, options = {}) => {
     const [issue, worklog] = await Promise.all([
         (0, jiraService_1.fetchJiraIssue)(issueKeyOrId),
         (0, jiraService_1.fetchJiraWorklog)(issueKeyOrId, worklogId),
@@ -50,6 +63,10 @@ const syncJiraWorklogToActivity = async (issueKeyOrId, worklogId) => {
         throw new Error(`Belum ada user app yang terhubung ke Jira accountId ${worklog.authorAccountId}.`);
     }
     const { date, startTime } = toDateParts(worklog.started);
+    const allowedDate = options.onlyDate === undefined ? null : options.onlyDate;
+    if (allowedDate && date !== allowedDate) {
+        return null;
+    }
     const durMinutes = Math.max(1, Math.round(worklog.timeSpentSeconds / 60));
     const endTime = addMinutes(startTime, durMinutes);
     const actKey = (0, jiraService_1.resolveJiraActKey)(issue.key, issue.issueTypeName, issue.projectName, issue.workTypeName);
@@ -87,11 +104,15 @@ const syncJiraWorklogToActivity = async (issueKeyOrId, worklogId) => {
     });
 };
 exports.syncJiraWorklogToActivity = syncJiraWorklogToActivity;
-const deleteSyncedJiraWorklog = async (worklogId) => {
+const syncTodayJiraWorklogToActivity = (issueKeyOrId, worklogId) => (0, exports.syncJiraWorklogToActivity)(issueKeyOrId, worklogId, { onlyDate: (0, exports.getTodayDateKey)() });
+exports.syncTodayJiraWorklogToActivity = syncTodayJiraWorklogToActivity;
+const deleteSyncedJiraWorklog = async (worklogId, options = {}) => {
     const activity = await prisma.activity.findFirst({
         where: { jiraWorklogId: worklogId }
     });
     if (!activity)
+        return null;
+    if (options.onlyDate && activity.date !== options.onlyDate)
         return null;
     return prisma.activity.delete({
         where: { id: activity.id }

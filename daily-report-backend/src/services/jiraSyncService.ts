@@ -3,6 +3,20 @@ import { fetchJiraIssue, fetchJiraWorklog, resolveJiraActKey } from './jiraServi
 
 const prisma = new PrismaClient();
 
+const getAppTimeZone = () => process.env.APP_TIMEZONE || 'Asia/Jakarta';
+
+export const getTodayDateKey = () => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: getAppTimeZone(),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
 const toDateParts = (isoString: string | null) => {
   if (!isoString) {
     return {
@@ -37,7 +51,11 @@ const addMinutes = (time: string | null, minutes: number) => {
   return `${hh}:${mm}`;
 };
 
-export const syncJiraWorklogToActivity = async (issueKeyOrId: string, worklogId: string) => {
+export const syncJiraWorklogToActivity = async (
+  issueKeyOrId: string,
+  worklogId: string,
+  options: { onlyDate?: string | null } = {}
+) => {
   const [issue, worklog] = await Promise.all([
     fetchJiraIssue(issueKeyOrId),
     fetchJiraWorklog(issueKeyOrId, worklogId),
@@ -56,6 +74,11 @@ export const syncJiraWorklogToActivity = async (issueKeyOrId: string, worklogId:
   }
 
   const { date, startTime } = toDateParts(worklog.started);
+  const allowedDate = options.onlyDate === undefined ? null : options.onlyDate;
+  if (allowedDate && date !== allowedDate) {
+    return null;
+  }
+
   const durMinutes = Math.max(1, Math.round(worklog.timeSpentSeconds / 60));
   const endTime = addMinutes(startTime, durMinutes);
   const actKey = resolveJiraActKey(
@@ -102,12 +125,16 @@ export const syncJiraWorklogToActivity = async (issueKeyOrId: string, worklogId:
   });
 };
 
-export const deleteSyncedJiraWorklog = async (worklogId: string) => {
+export const syncTodayJiraWorklogToActivity = (issueKeyOrId: string, worklogId: string) =>
+  syncJiraWorklogToActivity(issueKeyOrId, worklogId, { onlyDate: getTodayDateKey() });
+
+export const deleteSyncedJiraWorklog = async (worklogId: string, options: { onlyDate?: string | null } = {}) => {
   const activity = await prisma.activity.findFirst({
     where: { jiraWorklogId: worklogId }
   });
 
   if (!activity) return null;
+  if (options.onlyDate && activity.date !== options.onlyDate) return null;
   return prisma.activity.delete({
     where: { id: activity.id }
   });

@@ -306,16 +306,16 @@ const handleJiraWorklogWebhook = async (req, res) => {
             return res.status(400).json({ error: 'Webhook payload tidak memiliki event/worklogId yang cukup' });
         }
         if (eventName.includes('deleted')) {
-            await (0, jiraSyncService_1.deleteSyncedJiraWorklog)(String(worklogId));
+            const activity = await (0, jiraSyncService_1.deleteSyncedJiraWorklog)(String(worklogId), { onlyDate: (0, jiraSyncService_1.getTodayDateKey)() });
             await (0, auditTrail_1.writeAuditSystem)({
-                action: 'jira.webhook.deleted',
+                action: activity ? 'jira.webhook.deleted' : 'jira.webhook.skipped_out_of_date',
                 entityType: 'jira_webhook',
                 entityId: String(worklogId),
                 metadata: buildWebhookAudit(req),
                 ipAddress: req.ip || null,
                 userAgent: req.headers['user-agent'] || null,
             });
-            return res.json({ ok: true, action: 'deleted' });
+            return res.json({ ok: true, action: activity ? 'deleted' : 'skipped_out_of_date' });
         }
         if (!issueKey) {
             await (0, auditTrail_1.writeAuditSystem)({
@@ -328,15 +328,10 @@ const handleJiraWorklogWebhook = async (req, res) => {
             });
             return res.status(400).json({ error: 'Webhook payload tidak memiliki issue key/id' });
         }
-        const activity = await (0, jiraSyncService_1.syncJiraWorklogToActivity)(String(issueKey), String(worklogId));
-        await (0, auditTrail_1.writeAuditSystem)({
-            action: 'jira.webhook.synced',
-            entityType: 'jira_webhook',
-            entityId: String(worklogId),
-            metadata: buildWebhookAudit(req, { activityId: activity.id }),
-            ipAddress: req.ip || null,
-            userAgent: req.headers['user-agent'] || null,
-        });
+        const activity = await (0, jiraSyncService_1.syncTodayJiraWorklogToActivity)(String(issueKey), String(worklogId));
+        if (!activity) {
+            return res.json({ ok: true, action: 'skipped_out_of_date' });
+        }
         res.json({ ok: true, action: 'upserted', activityId: activity.id });
     }
     catch (error) {

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middlewares/authMiddleware';
-import { deleteSyncedJiraWorklog, syncJiraWorklogToActivity } from '../services/jiraSyncService';
+import { deleteSyncedJiraWorklog, getTodayDateKey, syncTodayJiraWorklogToActivity } from '../services/jiraSyncService';
 import { writeAudit, writeAuditSystem } from '../utils/auditTrail';
 
 const prisma = new PrismaClient();
@@ -346,16 +346,16 @@ export const handleJiraWorklogWebhook = async (req: Request, res: Response) => {
     }
 
     if (eventName.includes('deleted')) {
-      await deleteSyncedJiraWorklog(String(worklogId));
+      const activity = await deleteSyncedJiraWorklog(String(worklogId), { onlyDate: getTodayDateKey() });
       await writeAuditSystem({
-        action: 'jira.webhook.deleted',
+        action: activity ? 'jira.webhook.deleted' : 'jira.webhook.skipped_out_of_date',
         entityType: 'jira_webhook',
         entityId: String(worklogId),
         metadata: buildWebhookAudit(req),
         ipAddress: req.ip || null,
         userAgent: req.headers['user-agent'] || null,
       });
-      return res.json({ ok: true, action: 'deleted' });
+      return res.json({ ok: true, action: activity ? 'deleted' : 'skipped_out_of_date' });
     }
 
     if (!issueKey) {
@@ -370,15 +370,10 @@ export const handleJiraWorklogWebhook = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Webhook payload tidak memiliki issue key/id' });
     }
 
-    const activity = await syncJiraWorklogToActivity(String(issueKey), String(worklogId));
-    await writeAuditSystem({
-      action: 'jira.webhook.synced',
-      entityType: 'jira_webhook',
-      entityId: String(worklogId),
-      metadata: buildWebhookAudit(req, { activityId: activity.id }),
-      ipAddress: req.ip || null,
-      userAgent: req.headers['user-agent'] || null,
-    });
+    const activity = await syncTodayJiraWorklogToActivity(String(issueKey), String(worklogId));
+    if (!activity) {
+      return res.json({ ok: true, action: 'skipped_out_of_date' });
+    }
     res.json({ ok: true, action: 'upserted', activityId: activity.id });
   } catch (error: any) {
     await writeAuditSystem({
