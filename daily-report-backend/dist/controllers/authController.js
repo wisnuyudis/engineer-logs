@@ -129,16 +129,30 @@ const login = async (req, res) => {
 };
 exports.login = login;
 const verifyMfaLogin = async (req, res) => {
+    let stage = 'start';
+    let userIdForLog = null;
     try {
         const { challengeToken, code } = req.body || {};
+        stage = 'verify_challenge';
         const payload = (0, authTokens_1.verifyMfaChallengeToken)(String(challengeToken || ''));
+        userIdForLog = payload.userId;
         if (payload.purpose !== 'login')
             return res.status(400).json({ error: 'Challenge MFA tidak valid.' });
+        stage = 'load_user';
         const user = await prisma.user.findUnique({ where: { id: payload.userId } });
         if (!user || user.status === 'suspended' || !user.mfaEnabled || !user.mfaSecretEnc) {
+            req.log?.warn({
+                userId: payload.userId,
+                userFound: Boolean(user),
+                status: user?.status || null,
+                mfaEnabled: Boolean(user?.mfaEnabled),
+                hasMfaSecretEnc: Boolean(user?.mfaSecretEnc),
+            }, 'MFA login rejected before TOTP verification');
             return res.status(401).json({ error: 'Challenge MFA tidak valid.' });
         }
+        stage = 'decrypt_secret';
         const secret = (0, totp_1.decryptMfaSecret)(user.mfaSecretEnc);
+        stage = 'verify_totp';
         if (!(0, totp_1.verifyTotp)(secret, String(code || ''))) {
             await (0, auditTrail_1.writeAuditSystem)({
                 userId: user.id,
@@ -154,6 +168,16 @@ const verifyMfaLogin = async (req, res) => {
         res.json(response);
     }
     catch (error) {
+        req.log?.warn({
+            stage,
+            userId: userIdForLog,
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+            errorMessage: error instanceof Error ? error.message : String(error),
+            hasChallengeToken: Boolean(req.body?.challengeToken),
+            challengeTokenLength: String(req.body?.challengeToken || '').length,
+            codeLength: String(req.body?.code || '').replace(/\s+/g, '').length,
+            serverTime: new Date().toISOString(),
+        }, 'MFA login challenge failed');
         res.status(401).json({ error: 'Challenge MFA tidak valid atau kedaluwarsa.' });
     }
 };
