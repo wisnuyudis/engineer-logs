@@ -206,6 +206,8 @@ export const verifyMfaLogin = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Kode authenticator tidak valid.' });
     }
 
+    stage = 'issue_session';
+    diagnosticCode = 'MFA_SESSION_CREATE_FAILED';
     const response = await issueSession(req, res, user, 'auth.login_mfa');
     res.json(response);
   } catch (error) {
@@ -242,6 +244,7 @@ export const verifyMfaLogin = async (req: Request, res: Response) => {
       error: 'Challenge MFA tidak valid atau kedaluwarsa.',
       diagnosticCode,
       diagnosticStage: stage,
+      diagnosticError: error instanceof Error ? error.message : String(error),
     });
   }
 };
