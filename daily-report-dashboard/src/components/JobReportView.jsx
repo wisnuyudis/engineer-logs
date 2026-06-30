@@ -150,7 +150,7 @@ const generateJobPdf = async (detail, manual) => {
   line(doc, 'Engineer Response Time', fmtDateTime(actualAt), y);
   line(doc, 'Call received by', engineer, y, { labelX: pdf.rightLabelX, colonX: pdf.rightColonX, valueX: pdf.rightValueX }); y += 6;
   line(doc, 'Support Start Time', fmtDateTime(detail.actualStartDate || actualAt), y);
-  line(doc, 'Call date/time', fmtDateTime(detail.createdAt || actualAt), y, { labelX: pdf.rightLabelX, colonX: pdf.rightColonX, valueX: pdf.rightValueX }); y += 6;
+  line(doc, 'Call date/time', fmtDateTime(actualAt), y, { labelX: pdf.rightLabelX, colonX: pdf.rightColonX, valueX: pdf.rightValueX }); y += 6;
   line(doc, 'Support End Time', fmtDateTime(detail.actualEndDate || detail.resolutionDate), y);
   line(doc, 'Engineer Name', engineer, y, { labelX: pdf.rightLabelX, colonX: pdf.rightColonX, valueX: pdf.rightValueX }); y += 12;
 
